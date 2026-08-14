@@ -93,7 +93,7 @@ publish:
 
     - run: npm ci
     - run: npm run build
-    - run: npm publish --access public
+    - run: npm publish --provenance --access public
 ```
 
 Requirements:
@@ -101,9 +101,18 @@ Requirements:
 - `permissions: id-token: write` is mandatory; without it OIDC fails.
 - `registry-url: https://registry.npmjs.org` tells `setup-node` to configure
   the registry for publishing.
+- The `--provenance` flag is what triggers the OIDC token exchange. Without it,
+  `npm publish` sends an unauthenticated PUT and npm returns a 404/403 error.
 - No `NODE_AUTH_TOKEN` or `secrets.NPM_TOKEN` is used.
 - Provenance attestations are generated automatically because the package is
   public, the repo is public, and publishing is via OIDC.
+
+Troubleshooting:
+
+- If you see `E404 Not Found` on `npm publish`, the OIDC token is not
+  authorized for the package. Double-check on npmjs.com that the trusted
+  publisher is attached to **this package** (Package page → Access →
+  Publishing access), not just created in your account settings.
 
 ## Versioning and release
 

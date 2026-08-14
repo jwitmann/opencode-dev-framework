@@ -106,6 +106,7 @@ Keep both. The custom tool lets the agent call verification explicitly; the slas
 - **`package-lock.json` is now committed.** Development gitignored it (AGENTS.md: no lockfiles until intentionally releasing). With 0.1.0 release prep and the first real CI run, the lockfile is tracked so `actions/setup-node`'s `cache: npm` and reproducible `npm ci` installs work.
 - **Actions pinned to v5.** `actions/checkout@v5` and `actions/setup-node@v5` run on Node 24 runners; v4 targeted deprecated Node 20.
 - **Publishing uses OIDC trusted publishing.** After the npm 2026-07-08 deprecation of 2FA-bypass token publishing, the workflow was migrated to OIDC (`id-token: write`, `registry-url`, no `NPM_TOKEN`). `package.json` includes the exact `repository.url` required by npm's trusted publisher validation.
+- **OIDC publish needs `--provenance`.** The first OIDC attempt for `v0.1.3` failed with `E404 Not Found` because the workflow ran `npm publish --access public` without `--provenance`; without that flag npm does not exchange the GitHub ID token for an npm publish token. Adding `--provenance --access public` fixed it. The trusted publisher must also be attached to the package on npmjs.com.
 
 ## References
 

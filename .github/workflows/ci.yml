@@ -50,4 +50,6 @@ jobs:
 
       - run: npm ci
       - run: npm run build
-      - run: npm publish --access public
+      # --provenance is required for OIDC/trusted-publishing authentication.
+      # npm uses the GitHub ID token to obtain a short-lived publish token.
+      - run: npm publish --provenance --access public
