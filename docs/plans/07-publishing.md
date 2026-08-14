@@ -98,21 +98,35 @@ publish:
 
 Requirements:
 
-- `permissions: id-token: write` is mandatory; without it OIDC fails.
+- `permissions: id-token: write` is mandatory; without it provenance signing
+  fails.
 - `registry-url: https://registry.npmjs.org` tells `setup-node` to configure
   the registry for publishing.
-- The `--provenance` flag is what triggers the OIDC token exchange. Without it,
-  `npm publish` sends an unauthenticated PUT and npm returns a 404/403 error.
-- No `NODE_AUTH_TOKEN` or `secrets.NPM_TOKEN` is used.
-- Provenance attestations are generated automatically because the package is
-  public, the repo is public, and publishing is via OIDC.
+- `NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}` authenticates the publish.
+  Create a granular access token on npmjs.com (see below).
+- `--provenance` adds a Sigstore attestation via OIDC; it is independent of
+  the publish token.
 
-Troubleshooting:
+## npm access token setup
 
-- If you see `E404 Not Found` on `npm publish`, the OIDC token is not
-  authorized for the package. Double-check on npmjs.com that the trusted
-  publisher is attached to **this package** (Package page → Access →
-  Publishing access), not just created in your account settings.
+Because npm's OIDC trusted-publishing UI is unreliable, the workflow uses a
+granular access token for authentication.
+
+1. Go to **<https://www.npmjs.com/settings/jwitmann/tokens>** (Access Tokens).
+2. Create a **Granular Access Token**:
+   - **Token name:** `github-actions-opencode-dev-framework`
+   - **Packages and scopes:** choose **Only select packages and scopes**, then
+     pick `opencode-dev-framework`
+   - **Permissions:** **Read and write**
+   - **Bypass 2FA:** **Enabled** (required for automated publishing)
+   - **Expiration:** 90 days (or your preferred duration)
+3. Copy the token.
+4. In your GitHub repo, go to **Settings → Secrets and variables → Actions**.
+5. Create or update a repository secret named `NPM_TOKEN` with the copied token.
+
+Note: npm is deprecating 2FA-bypass granular access tokens for direct
+publishing around January 2027. Before then, migrate back to OIDC trusted
+publishing once npm's setup flow is stable.
 
 ## Versioning and release
 
