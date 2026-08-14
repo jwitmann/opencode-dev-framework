@@ -195,13 +195,20 @@ Use this as the source of truth during implementation. Check items off as they a
 
 ## Phase 10 — CI and publish
 
-- [ ] 10.1 Verify CI passes on every checklist item.
-- [ ] 10.2 Add npm publish workflow secrets instructions to docs.
-- [ ] 10.3 Bump version to `0.1.0`.
-- [ ] 10.4 Tag `v0.1.0`.
-- [ ] 10.5 Push to GitHub.
-- [ ] 10.6 Verify npm publish workflow succeeds.
-- [ ] 10.7 Smoke test install in a real OpenCode session.
+- [x] 10.1 Verify CI passes on every checklist item.
+  - `.github/workflows/ci.yml` (Node 22) runs format, lint, lint:md,
+    typecheck, test, and build; all pass locally. `npm pack --dry-run`
+    confirms the published tarball contains `dist/`, `commands/`, `rules/`,
+    `README.md`, and `LICENSE`.
+- [x] 10.2 Add npm publish workflow secrets instructions to docs.
+  - Covered by `docs/plans/07-publishing.md` (npm token + `NPM_TOKEN`
+    GitHub secret).
+- [x] 10.3 Bump version to `0.1.0`.
+- [ ] 10.4 Tag `v0.1.0`. **User action** — releases are deliberate.
+- [ ] 10.5 Push to GitHub. **User action** — never push from an agent session.
+- [ ] 10.6 Verify npm publish workflow succeeds. **User action** — after push.
+- [ ] 10.7 Smoke test install in a real OpenCode session. **User action** —
+  requires Bun/OpenCode runtime (not available on the dev box).
 
 ## Notes for the implementer
 
