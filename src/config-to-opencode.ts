@@ -64,7 +64,10 @@ export function normalizeCommandMap(map: CommandMap | undefined): NormalizedComm
   if (typeof map === "string") {
     return { default: map, byExtension: {} };
   }
-  return { byExtension: map };
+  // A `default` key inside the map acts as the fallback command; every other
+  // key is a per-extension override.
+  const { default: defaultCommand, ...byExtension } = map;
+  return defaultCommand === undefined ? { byExtension } : { default: defaultCommand, byExtension };
 }
 
 /** Split a command string into argv tokens, honoring simple quotes. */

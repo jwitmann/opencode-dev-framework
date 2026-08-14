@@ -94,17 +94,17 @@ Use this as the source of truth during implementation. Check items off as they a
 
 ## Phase 4 — Edit-time lint
 
-- [ ] 4.1 Implement `src/lint.ts`
+- [x] 4.1 Implement `src/lint.ts`
   - Resolve linter command for file extension.
   - Substitute `{file}`.
   - Run command via host adapter with timeout.
   - Return stdout, stderr, exit code.
-- [ ] 4.2 Implement `file.edited` hook in `src/index.ts`
+- [x] 4.2 Implement `file.edited` hook in `src/index.ts`
   - Skip if `on_edit.lint` is false.
   - Skip if file matches `exclude`.
   - Run linter and log result.
   - In `strict`, throw on lint failure (configurable).
-- [ ] 4.3 Unit tests for lint
+- [x] 4.3 Unit tests for lint
   - linter runs for changed `.go` file
   - no lint for excluded file
   - timeout respected

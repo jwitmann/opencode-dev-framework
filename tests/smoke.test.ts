@@ -70,7 +70,10 @@ describe("plugin entry point", () => {
     const { ctx, logged } = stubCtx(dir);
     const hooks = await devFramework(ctx);
     const guardHook = hooks["tool.execute.before"];
-    await guardHook?.({ tool: "edit", sessionID: "s1", callID: "c1" }, { args: { filePath: ".env" } });
+    await guardHook?.(
+      { tool: "edit", sessionID: "s1", callID: "c1" },
+      { args: { filePath: ".env" } },
+    );
     expect(logged.some((entry) => entry.level === "warn")).toBe(true);
   });
 });
