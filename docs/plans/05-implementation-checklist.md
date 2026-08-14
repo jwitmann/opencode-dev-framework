@@ -31,6 +31,7 @@ Use this as the source of truth during implementation. Check items off as they a
   - `tests/`
   - `examples/go-service/`
 - [ ] 1.7 Add GitHub Actions workflow `.github/workflows/ci.yml`
+  - Use Node.js v22 (not Bun) because Bun is not available in this environment.
   - run lint
   - run tests
   - run build
@@ -161,6 +162,10 @@ Use this as the source of truth during implementation. Check items off as they a
 
 ## Phase 9 — Documentation and examples
 
+- [x] 9.0 Create `AGENTS.md`
+  - Project purpose and conventions.
+  - Build/test commands.
+  - Important rules for agents working on this codebase.
 - [ ] 9.1 Write `README.md`
   - What it does.
   - Install instructions.
