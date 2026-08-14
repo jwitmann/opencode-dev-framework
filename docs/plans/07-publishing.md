@@ -6,21 +6,37 @@ Actions. No long-lived npm token is stored in GitHub secrets.
 ## npm account setup
 
 1. Create or log in to your npm account: <https://www.npmjs.com/>
-2. Enable two-factor authentication (2FA) on your npm account.
+2. npm now requires either **two-factor authentication (2FA)** on your account
+   or a **granular access token with "Bypass 2FA" enabled** for direct
+   publishing. For the one-time first publish, the bypass-token route below is
+   usually fastest.
 
 ## First-time package creation
 
 Trusted publishing requires the package to already exist on npm. If
-`opencode-dev-framework` has never been published, publish the first version
-manually from your local machine:
+`opencode-dev-framework` has never been published, create a one-time granular
+access token and publish manually:
 
-```bash
-npm login
-npm publish --access public
-```
+1. On npmjs.com, go to **Settings → Access Tokens → Generate New Token →
+   Granular Access Token**.
+2. Set the token permissions:
+   - **Package:** `opencode-dev-framework`
+   - **Permissions:** `Publish`
+   - **Bypass two-factor authentication:** enabled
+3. Copy the token.
+4. Back in your terminal:
 
-After the package exists, remove the local publish token and switch to OIDC for
-all future publishes.
+   ```bash
+   npm logout
+   export NPM_TOKEN=<paste-token-here>
+   NODE_AUTH_TOKEN=$NPM_TOKEN npm publish --access public
+   unset NPM_TOKEN
+   ```
+
+5. Revoke the token on npmjs.com once the package exists.
+
+After the package exists, configure the GitHub Actions trusted publisher and
+use OIDC for all future publishes.
 
 ## Configure trusted publishing on npmjs.com
 
@@ -136,6 +152,28 @@ Release steps:
 4. Check OpenCode logs for plugin initialization message.
 
 ## Troubleshooting
+
+### `Set the BROWSER environment variable` during `npm login`
+
+`npm login` defaults to web authentication and tries to open a browser. In a
+headless shell, WSL, or SSH session this fails with:
+
+```text
+npm error Set the BROWSER environment variable to your desired browser.
+```
+
+Use legacy terminal-based login instead:
+
+```bash
+npm login --auth-type=legacy
+```
+
+Then enter your npm username, password, and 2FA/OTP code. Alternatively, print
+the web URL instead of opening a browser:
+
+```bash
+BROWSER=echo npm login
+```
 
 ### `ENEEDAUTH` during `npm publish`
 
