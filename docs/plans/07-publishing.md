@@ -71,6 +71,12 @@ jobs:
 
 Note: OpenCode uses Bun, so CI should use Bun. If the project uses npm scripts, make sure they work with `bun run`.
 
+> **As implemented:** CI uses Node.js 22 with `npm ci` (Bun is not available on
+> the dev box; the plugin stays Bun-compatible at runtime). `package-lock.json`
+> is committed as of the 0.1.0 release prep so `npm ci` and the `cache: npm`
+> option work. GitHub Actions are pinned to `actions/checkout@v5` and
+> `actions/setup-node@v5` (Node 24 runners).
+
 ## Versioning and release
 
 Follow SemVer:

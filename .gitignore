@@ -2,5 +2,3 @@ node_modules/
 dist/
 .DS_Store
 *.log
-# Lockfile is committed only when intentionally releasing (see AGENTS.md).
-package-lock.json
