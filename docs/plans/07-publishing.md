@@ -1,81 +1,91 @@
 # Publishing Guide
 
-## npm package setup
+This project publishes to npm using **trusted publishing (OIDC)** from GitHub
+Actions. No long-lived npm token is stored in GitHub secrets.
+
+## npm account setup
 
 1. Create or log in to your npm account: <https://www.npmjs.com/>
-2. Create an access token:
-   - Type: **Automation** or **Publish**.
-   - No 2FA prompt (automation token).
-3. Copy the token.
+2. Enable two-factor authentication (2FA) on your npm account.
 
-## GitHub repository setup
+## First-time package creation
 
-1. Create the GitHub repository `opencode-dev-framework`.
-2. Push the local repo:
+Trusted publishing requires the package to already exist on npm. If
+`opencode-dev-framework` has never been published, publish the first version
+manually from your local machine:
 
-   ```bash
-   git remote add origin git@github.com:<user>/opencode-dev-framework.git
-   git branch -M main
-   git push -u origin main
-   ```
+```bash
+npm login
+npm publish --access public
+```
 
-3. Add the npm token as a repository secret:
-   - Go to **Settings → Secrets and variables → Actions**.
-   - Click **New repository secret**.
-   - Name: `NPM_TOKEN`.
-   - Value: the npm access token.
+After the package exists, remove the local publish token and switch to OIDC for
+all future publishes.
+
+## Configure trusted publishing on npmjs.com
+
+1. Go to the package page on npmjs.com:
+   <https://www.npmjs.com/package/opencode-dev-framework>
+2. Click **Settings** → **Trusted publishing**.
+3. Under **Select your publisher**, choose **GitHub Actions**.
+4. Fill in the form exactly as follows:
+   - **Organization or user**: `jwitmann`
+   - **Repository**: `opencode-dev-framework`
+   - **Workflow filename**: `ci.yml`
+   - **Environment name**: leave blank
+   - **Allowed actions**: check **npm publish**
+5. Save the trusted publisher.
+
+> ⚠️ npm does not validate this form when you save it. Typos only show up as
+> `ENEEDAUTH` when the workflow runs, so double-check every field.
+
+## Required `package.json` field
+
+The `repository.url` in `package.json` must exactly match the GitHub repository
+used for trusted publishing:
+
+```json
+"repository": {
+  "type": "git",
+  "url": "git+https://github.com/jwitmann/opencode-dev-framework.git"
+}
+```
 
 ## CI workflow
 
-Create `.github/workflows/ci.yml`:
+The repository already contains `.github/workflows/ci.yml`. The relevant
+publish job looks like this:
 
 ```yaml
-name: CI
+publish:
+  name: Publish to npm
+  if: startsWith(github.ref, 'refs/tags/v')
+  needs: validate
+  runs-on: ubuntu-latest
+  permissions:
+    contents: read
+    id-token: write
+  steps:
+    - uses: actions/checkout@v5
 
-on:
-  push:
-    branches: [main]
-    tags: ["v*"]
-  pull_request:
-    branches: [main]
+    - uses: actions/setup-node@v5
+      with:
+        node-version: 22
+        registry-url: https://registry.npmjs.org
 
-jobs:
-  test:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v1
-        with:
-          bun-version: latest
-      - run: bun install
-      - run: bun run lint
-      - run: bun run typecheck
-      - run: bun run test
-      - run: bun run build
-
-  publish:
-    needs: test
-    runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/v')
-    steps:
-      - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v1
-        with:
-          bun-version: latest
-      - run: bun install
-      - run: bun run build
-      - run: npm publish --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+    - run: npm ci
+    - run: npm run build
+    - run: npm publish --access public
 ```
 
-Note: OpenCode uses Bun, so CI should use Bun. If the project uses npm scripts, make sure they work with `bun run`.
+Requirements:
 
-> **As implemented:** CI uses Node.js 22 with `npm ci` (Bun is not available on
-> the dev box; the plugin stays Bun-compatible at runtime). `package-lock.json`
-> is committed as of the 0.1.0 release prep so `npm ci` and the `cache: npm`
-> option work. GitHub Actions are pinned to `actions/checkout@v5` and
-> `actions/setup-node@v5` (Node 24 runners).
+- `permissions: id-token: write` is mandatory; without it OIDC fails.
+- `registry-url: https://registry.npmjs.org` tells `setup-node` to configure
+  the registry for publishing.
+- No `NODE_AUTH_TOKEN` or `secrets.NPM_TOKEN` is used.
+- Provenance attestations are generated automatically because the package is
+  public, the repo is public, and publishing is via OIDC.
 
 ## Versioning and release
 
@@ -87,30 +97,32 @@ Follow SemVer:
 
 Release steps:
 
-1. Update `CHANGELOG.md`.
+1. Update `CHANGELOG.md` (optional).
 2. Bump version in `package.json`.
 3. Commit: `git commit -am "Release v0.1.0"`.
 4. Tag: `git tag -a v0.1.0 -m "Release v0.1.0"`.
 5. Push: `git push origin main --tags`.
-6. CI will publish automatically.
+6. CI validates and publishes automatically.
 
 ## Pre-publish checklist
 
 - [ ] `package.json` name is `opencode-dev-framework`.
 - [ ] `package.json` version is updated.
+- [ ] `package.json` `repository.url` exactly matches the GitHub repo.
 - [ ] `files` array includes `dist`, `commands`, `rules`.
 - [ ] `main` points to `dist/index.js`.
 - [ ] `types` points to `dist/index.d.ts`.
 - [ ] `LICENSE` exists.
 - [ ] `README.md` exists.
+- [ ] npm trusted publisher is configured for `jwitmann/opencode-dev-framework` with workflow `ci.yml`.
 - [ ] `npm run build` succeeds.
 - [ ] `npm run test` succeeds.
-- [ ] `NPM_TOKEN` secret is set in GitHub.
 - [ ] `.npmignore` or `files` array excludes source/tests from the published package.
 
 ## Post-publish verification
 
-1. Visit <https://www.npmjs.com/package/opencode-dev-framework> and confirm the version is live.
+1. Visit <https://www.npmjs.com/package/opencode-dev-framework> and confirm the
+   version is live.
 2. In a scratch directory, create:
 
    ```json
@@ -132,25 +144,33 @@ npm error code ENEEDAUTH
 npm error need auth This command requires you to be logged in to https://registry.npmjs.org/
 ```
 
-This means the `publish` job ran with an empty `NODE_AUTH_TOKEN`. Check:
+With OIDC, this almost always means the trusted publisher configuration does not
+match the workflow run. Check:
 
-1. The repository secret `NPM_TOKEN` is set under **Settings → Secrets and
-   variables → Actions**. It must be an **Automation** or **Publish** token from
-   <https://www.npmjs.com/settings/tokens>.
-2. The secret name matches exactly. The workflow uses
-   `secrets.NPM_TOKEN`; `NPM-TOKEN`, `npm_token`, etc. will not work.
-3. If you created an **environment** secret instead of a repository secret, add
-   an `environment:` key to the `publish` job so it can access that secret.
+1. npmjs.com trusted publisher fields exactly match:
+   - organization/user: `jwitmann`
+   - repository: `opencode-dev-framework`
+   - workflow filename: `ci.yml` (case-sensitive, including `.yml`)
+2. The publish job has `permissions: id-token: write`.
+3. The workflow file exists on the commit that the tag points to.
+4. `package.json` `repository.url` exactly matches
+   `git+https://github.com/jwitmann/opencode-dev-framework.git`.
+5. You are using GitHub-hosted runners. Self-hosted runners do not support
+   OIDC trusted publishing.
 
-### Tag pushed but publish job did not run
+### Provenance is not generated
 
-Make sure the tag name starts with `v` (for example, `v0.1.0`). The workflow
-`if: startsWith(github.ref, 'refs/tags/v')` only triggers on those tags.
+Provenance is only auto-generated for public packages published from public
+repositories via OIDC. Private repos must disable provenance or publish
+manually.
 
 ## Documentation of known limitations
 
 The README and docs must clearly state:
 
-- This is a community project, not affiliated with OpenCode or the original dev-framework team.
-- The completion gate is advisory because OpenCode does not expose a blocking completion hook.
-- Some features rely on OpenCode native config (`permission`, `formatter`), which may evolve.
+- This is a community project, not affiliated with OpenCode or the original
+  dev-framework team.
+- The completion gate is advisory because OpenCode does not expose a blocking
+  completion hook.
+- Some features rely on OpenCode native config (`permission`, `formatter`),
+  which may evolve.
