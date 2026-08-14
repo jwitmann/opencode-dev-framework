@@ -24,6 +24,22 @@ Findings from reading the installed plugin/SDK type definitions:
    `experimental.chat.system.transform` (append to `output.system`) or
    `chat.message` parts. To be spiked in Phase 6.
 
+## Phase 5 implementation decisions
+
+1. **The gate never throws on `session.idle`.** Failure visibility (error-level
+   structured log when `gate.block_on_failure`, warning otherwise) is the
+   enforcement mechanism. Throwing from an event handler could break OpenCode
+   and still could not undo the finished turn.
+2. **`{files}` expansion is shell-less.** Commands run via `spawn` without a
+   shell, so a standalone `{files}` token expands to multiple argv entries; an
+   embedded token (e.g. `--pattern={files}`) is replaced inline.
+3. **Changed files are tracked from `file.edited` events** (not
+   `tool.execute.after`) and cleared after each gate run. Tracking happens even
+   when `on_edit.lint` is disabled.
+4. **`devFramework_verify` custom tool skipped** (checklist 5.4 marks it
+   optional; this file already lists it as a follow-up). `/df-verify` ships as
+   a markdown slash command only.
+
 ## Open questions
 
 ### Can a plugin dynamically contribute permission/formatter/rules fragments?

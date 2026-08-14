@@ -112,22 +112,22 @@ Use this as the source of truth during implementation. Check items off as they a
 
 ## Phase 5 — Completion gate
 
-- [ ] 5.1 Implement changed-file tracking
+- [x] 5.1 Implement changed-file tracking
   - Track files edited during the session.
   - Provide `getChangedFiles()` and `clearChangedFiles()`.
-- [ ] 5.2 Implement `src/gate.ts`
+- [x] 5.2 Implement `src/gate.ts`
   - Run typecheck, test, and lint-changed commands.
   - Handle `scope: changed` by substituting `{files}`.
   - Apply `timeout`.
   - Aggregate results.
-- [ ] 5.3 Implement `session.idle` hook in `src/index.ts`
+- [x] 5.3 Implement `session.idle` hook in `src/index.ts`
   - Skip if `gate.skip_unchanged` and no changes.
   - Call gate.
   - On failure, emit loud structured log.
-- [ ] 5.4 Add `/df-verify` command
+- [x] 5.4 Add `/df-verify` command
   - Create `commands/df-verify.md`.
-  - Optionally expose a custom tool `devFramework_verify`.
-- [ ] 5.5 Unit tests for gate
+  - Optionally expose a custom tool `devFramework_verify`. (skipped — optional; see 08-notes.md)
+- [x] 5.5 Unit tests for gate
   - passes when all green
   - reports failure when test fails
   - skips when unchanged
