@@ -123,6 +123,30 @@ Release steps:
 3. Run `opencode` and check the plugin loads without errors.
 4. Check OpenCode logs for plugin initialization message.
 
+## Troubleshooting
+
+### `ENEEDAUTH` during `npm publish`
+
+```text
+npm error code ENEEDAUTH
+npm error need auth This command requires you to be logged in to https://registry.npmjs.org/
+```
+
+This means the `publish` job ran with an empty `NODE_AUTH_TOKEN`. Check:
+
+1. The repository secret `NPM_TOKEN` is set under **Settings → Secrets and
+   variables → Actions**. It must be an **Automation** or **Publish** token from
+   <https://www.npmjs.com/settings/tokens>.
+2. The secret name matches exactly. The workflow uses
+   `secrets.NPM_TOKEN`; `NPM-TOKEN`, `npm_token`, etc. will not work.
+3. If you created an **environment** secret instead of a repository secret, add
+   an `environment:` key to the `publish` job so it can access that secret.
+
+### Tag pushed but publish job did not run
+
+Make sure the tag name starts with `v` (for example, `v0.1.0`). The workflow
+`if: startsWith(github.ref, 'refs/tags/v')` only triggers on those tags.
+
 ## Documentation of known limitations
 
 The README and docs must clearly state:
