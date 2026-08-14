@@ -1,0 +1,193 @@
+# Implementation Checklist
+
+Use this as the source of truth during implementation. Check items off as they are completed.
+
+## Phase 1 — Project scaffold
+
+- [ ] 1.1 Initialize `package.json`
+  - name: `opencode-dev-framework`
+  - version: `0.0.1`
+  - license: `MIT`
+  - main: `dist/index.js`
+  - types: `dist/index.d.ts`
+  - files: `["dist", "commands", "rules"]`
+  - scripts: `build`, `lint`, `test`, `typecheck`
+- [ ] 1.2 Add `.gitignore` (node_modules, dist, .DS_Store, *.log)
+- [ ] 1.3 Add `tsconfig.json` (target ES2022, strict, outDir dist, declaration true)
+- [ ] 1.4 Add `LICENSE` (MIT)
+- [ ] 1.5 Install dev dependencies
+  - `typescript`
+  - `@opencode-ai/plugin`
+  - `@types/bun` or `bun-types` if needed
+  - `yaml`
+  - `zod`
+  - `minimatch` or `picomatch`
+  - test runner: `vitest` or `bun test`
+  - linter: `oxlint` or `eslint`
+- [ ] 1.6 Create directory structure
+  - `src/`
+  - `commands/`
+  - `rules/`
+  - `tests/`
+  - `examples/go-service/`
+- [ ] 1.7 Add GitHub Actions workflow `.github/workflows/ci.yml`
+  - run lint
+  - run tests
+  - run build
+  - publish to npm on tags starting with `v`
+- [ ] 1.8 Initial commit
+
+## Phase 2 — Core config
+
+- [ ] 2.1 Define shared types in `src/types.ts`
+  - `Profile`
+  - `Config`
+  - `ResolvedConfig`
+  - `CommandMap`
+  - `GateConfig`
+- [ ] 2.2 Implement `src/config.ts`
+  - Find config file using precedence list.
+  - Parse YAML or JSON.
+  - Validate with Zod.
+  - Implement `.dev-framework.yml` flat-key parser as fallback.
+  - Resolve profile defaults.
+  - Cache config per session.
+- [ ] 2.3 Unit tests for config loader
+  - native YAML loads correctly
+  - fallback `.dev-framework.yml` loads correctly
+  - profile defaults applied
+  - invalid config throws readable error
+- [ ] 2.4 Implement config-to-opencode generator in `src/config-to-opencode.ts`
+  - Translate `protect` globs into OpenCode `permission` object.
+  - Translate `commands.format` into OpenCode `formatter` object.
+  - Return fragments as plain objects.
+- [ ] 2.5 Unit tests for generator
+  - permission rules generated for protected paths
+  - formatter rules generated per extension
+  - `.dev-framework.yml` protect string split into array
+
+## Phase 3 — Guardrails
+
+- [ ] 3.1 Implement `src/protect.ts`
+  - Match tool name and args against protected paths.
+  - Support `edit`, `write`, `patch`, `bash` tools.
+  - Match globs with `minimatch`/`picomatch`.
+  - Return `"allow" | "warn" | "deny"`.
+- [ ] 3.2 Implement `tool.execute.before` hook in `src/index.ts`
+  - Use `protect.ts`.
+  - `advisory` profile: log warning, allow.
+  - `standard`/`strict`: throw clear error.
+  - `off`: no-op.
+- [ ] 3.3 Unit tests for guardrails
+  - edit to protected file denied in strict
+  - edit to protected file warned in advisory
+  - edit to allowed file passes
+  - `git push` bash command denied
+
+## Phase 4 — Edit-time lint
+
+- [ ] 4.1 Implement `src/lint.ts`
+  - Resolve linter command for file extension.
+  - Substitute `{file}`.
+  - Run command via host adapter with timeout.
+  - Return stdout, stderr, exit code.
+- [ ] 4.2 Implement `file.edited` hook in `src/index.ts`
+  - Skip if `on_edit.lint` is false.
+  - Skip if file matches `exclude`.
+  - Run linter and log result.
+  - In `strict`, throw on lint failure (configurable).
+- [ ] 4.3 Unit tests for lint
+  - linter runs for changed `.go` file
+  - no lint for excluded file
+  - timeout respected
+  - output captured
+
+## Phase 5 — Completion gate
+
+- [ ] 5.1 Implement changed-file tracking
+  - Track files edited during the session.
+  - Provide `getChangedFiles()` and `clearChangedFiles()`.
+- [ ] 5.2 Implement `src/gate.ts`
+  - Run typecheck, test, and lint-changed commands.
+  - Handle `scope: changed` by substituting `{files}`.
+  - Apply `timeout`.
+  - Aggregate results.
+- [ ] 5.3 Implement `session.idle` hook in `src/index.ts`
+  - Skip if `gate.skip_unchanged` and no changes.
+  - Call gate.
+  - On failure, emit loud structured log.
+- [ ] 5.4 Add `/df-verify` command
+  - Create `commands/df-verify.md`.
+  - Optionally expose a custom tool `devFramework_verify`.
+- [ ] 5.5 Unit tests for gate
+  - passes when all green
+  - reports failure when test fails
+  - skips when unchanged
+  - scopes to changed files
+
+## Phase 6 — Constitution injection
+
+- [ ] 6.1 Implement `src/rules.ts`
+  - Discover rules files from config or defaults.
+  - Read Markdown files.
+  - Concatenate into a single context block.
+- [ ] 6.2 Implement `session.created` hook
+  - If profile is not `off`, inject rules into session instructions.
+  - The exact injection API must be validated against `@opencode-ai/plugin`.
+- [ ] 6.3 Add default `rules/constitution.md`
+  - Quality bar summary.
+  - Test discipline.
+  - Parking-lot discipline.
+- [ ] 6.4 Unit tests for rules loading
+  - discovers default files
+  - respects explicit `rules` list
+  - returns empty when profile off
+
+## Phase 7 — Host adapter
+
+- [ ] 7.1 Implement `src/host.ts`
+  - Define `HostContext` interface.
+  - Implement `OpenCodeHost` adapter mapping `ctx` to `HostContext`.
+- [ ] 7.2 Unit tests with stub host
+  - Use a fake `HostContext` for all non-integration tests.
+
+## Phase 8 — Integration and entry point
+
+- [ ] 8.1 Implement `src/index.ts`
+  - Export single default plugin function.
+  - Wire all hooks based on resolved profile.
+- [ ] 8.2 Ensure `off` profile registers no hooks.
+- [ ] 8.3 Build passes without type errors.
+
+## Phase 9 — Documentation and examples
+
+- [ ] 9.1 Write `README.md`
+  - What it does.
+  - Install instructions.
+  - Config reference (link to `docs/plans/03-config-spec.md`).
+  - Limitations (advisory gate).
+  - Disclaimer.
+- [ ] 9.2 Create `examples/go-service/.opencode-dev-framework.yml`
+  - Go build/test/lint commands.
+  - Protected paths.
+  - Gate config.
+- [ ] 9.3 Create `examples/go-service/README.md`
+  - How to use the example.
+- [ ] 9.4 Update top-level `README.md` to be useful, not empty.
+
+## Phase 10 — CI and publish
+
+- [ ] 10.1 Verify CI passes on every checklist item.
+- [ ] 10.2 Add npm publish workflow secrets instructions to docs.
+- [ ] 10.3 Bump version to `0.1.0`.
+- [ ] 10.4 Tag `v0.1.0`.
+- [ ] 10.5 Push to GitHub.
+- [ ] 10.6 Verify npm publish workflow succeeds.
+- [ ] 10.7 Smoke test install in a real OpenCode session.
+
+## Notes for the implementer
+
+- Do all tests first; use the stub host.
+- Keep the plugin lightweight — avoid heavy runtime dependencies.
+- If an OpenCode API is unclear, spike a minimal TypeScript file and test inside a real OpenCode session before committing to a design.
+- Document any deviations from this plan in `docs/plans/08-notes.md`.
