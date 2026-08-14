@@ -5,9 +5,7 @@
  * - tool.execute.before -> protected-path / dangerous-command guardrails
  * - event (file.edited)  -> per-edit lint + changed-file tracking
  * - event (session.idle) -> completion gate (advisory: reports loudly, cannot block)
- *
- * Coming in later phases:
- * - session.created -> constitution injection (Phase 6)
+ * - experimental.chat.system.transform -> constitution injection
  */
 
 import type { Hooks, Plugin, PluginInput } from "@opencode-ai/plugin";
@@ -22,6 +20,7 @@ import { runCommand, type RunCommand } from "./host.js";
 import { isLintFailure, lintFile, summarizeLint } from "./lint.js";
 import { createLogger, type LogFn } from "./logger.js";
 import { checkToolCall } from "./protect.js";
+import { injectConstitution, loadConstitution } from "./rules.js";
 import type { ResolvedConfig } from "./types.js";
 
 /**
@@ -34,6 +33,7 @@ export function buildHooks(
   log: LogFn,
   run: RunCommand = runCommand,
   tracker: ChangedFileTracker = createChangedFileTracker(),
+  constitution: string | null = null,
 ): Hooks {
   const onFileEdited = async (filePath: string): Promise<void> => {
     tracker.add(filePath, ctx.directory);
@@ -95,6 +95,14 @@ export function buildHooks(
   };
 
   return {
+    "experimental.chat.system.transform": async (_input, output) => {
+      const next = injectConstitution(output.system, constitution);
+      if (next !== output.system) {
+        await log("info", "constitution injected into system prompt");
+        output.system = next;
+      }
+    },
+
     "tool.execute.before": async (input, output) => {
       const result = checkToolCall(config, input.tool, output.args, ctx.directory);
       if (result.decision === "allow") {
@@ -134,7 +142,13 @@ export const devFramework: Plugin = async (ctx) => {
     return {};
   }
 
-  return buildHooks(ctx, config, createLogger(ctx.client));
+  const log = createLogger(ctx.client);
+  const { constitution, warning } = await loadConstitution(config, ctx.directory);
+  if (warning) {
+    await log("warn", warning);
+  }
+
+  return buildHooks(ctx, config, log, runCommand, createChangedFileTracker(), constitution);
 };
 
 export default devFramework;

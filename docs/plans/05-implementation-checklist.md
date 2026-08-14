@@ -135,18 +135,20 @@ Use this as the source of truth during implementation. Check items off as they a
 
 ## Phase 6 — Constitution injection
 
-- [ ] 6.1 Implement `src/rules.ts`
+- [x] 6.1 Implement `src/rules.ts`
   - Discover rules files from config or defaults.
   - Read Markdown files.
   - Concatenate into a single context block.
-- [ ] 6.2 Implement `session.created` hook
+- [x] 6.2 Implement `session.created` hook
   - If profile is not `off`, inject rules into session instructions.
   - The exact injection API must be validated against `@opencode-ai/plugin`.
-- [ ] 6.3 Add default `rules/constitution.md`
+  - Implemented via `experimental.chat.system.transform` (no `session.created`
+    hook exists in the plugin API; see `docs/plans/08-notes.md`).
+- [x] 6.3 Add default `rules/constitution.md`
   - Quality bar summary.
   - Test discipline.
   - Parking-lot discipline.
-- [ ] 6.4 Unit tests for rules loading
+- [x] 6.4 Unit tests for rules loading
   - discovers default files
   - respects explicit `rules` list
   - returns empty when profile off

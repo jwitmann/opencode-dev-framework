@@ -67,6 +67,7 @@ const configSchema = z.object({
     })
     .optional(),
   exclude: z.array(z.string()).optional(),
+  constitution: z.string().optional(),
   rules: z.array(z.string()).optional(),
   style_guide: z.string().optional(),
 });
@@ -222,6 +223,9 @@ export function mapFlatConfig(flat: Record<string, unknown>): Config {
       case "exclude":
         config.exclude = splitGlobs(value);
         break;
+      case "constitution":
+        config.constitution = String(value);
+        break;
       case "rules":
         config.rules = splitGlobs(value);
         break;
@@ -299,6 +303,7 @@ export function resolveConfig(raw: Config, configPath?: string): ResolvedConfig 
       lint: raw.on_edit?.lint ?? defaults.on_edit_lint,
     },
     exclude: raw.exclude ?? [],
+    constitution: raw.constitution,
     rules: raw.rules,
     style_guide: raw.style_guide,
   };

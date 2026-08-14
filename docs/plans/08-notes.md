@@ -90,6 +90,12 @@ Rejected. Silent mutation of user config is surprising and error-prone. The plug
 
 Keep both. The custom tool lets the agent call verification explicitly; the slash command lets the user trigger it. The MVP should have the slash command; the custom tool is a follow-up.
 
+## Phase 6 implementation decisions
+
+- **Constitution injection uses `experimental.chat.system.transform`, not `session.created`.** The plugin API has no `session.created` hook (only the generic `event` hook, which is a notification and cannot mutate session instructions). `experimental.chat.system.transform` receives `output.system: string[]` and runs whenever the system prompt is assembled, which is the correct injection point. It also keeps the constitution present after session compaction, which a one-shot `session.created` injection would not.
+- **Configured `constitution` path falls back to the bundled constitution with a warning.** A typo in the config file should never silently disable the constitution; the plugin logs a warning via `client.app.log` and injects the bundled default instead.
+- **Injection is idempotent.** `injectConstitution` skips appending when the text is already present, so repeated transforms do not grow the system prompt.
+
 ## References
 
 - OpenCode plugin docs: <https://opencode.ai/docs/plugins>
