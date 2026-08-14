@@ -76,17 +76,17 @@ Use this as the source of truth during implementation. Check items off as they a
 
 ## Phase 3 — Guardrails
 
-- [ ] 3.1 Implement `src/protect.ts`
+- [x] 3.1 Implement `src/protect.ts`
   - Match tool name and args against protected paths.
   - Support `edit`, `write`, `patch`, `bash` tools.
   - Match globs with `minimatch`/`picomatch`.
   - Return `"allow" | "warn" | "deny"`.
-- [ ] 3.2 Implement `tool.execute.before` hook in `src/index.ts`
+- [x] 3.2 Implement `tool.execute.before` hook in `src/index.ts`
   - Use `protect.ts`.
   - `advisory` profile: log warning, allow.
   - `standard`/`strict`: throw clear error.
   - `off`: no-op.
-- [ ] 3.3 Unit tests for guardrails
+- [x] 3.3 Unit tests for guardrails
   - edit to protected file denied in strict
   - edit to protected file warned in advisory
   - edit to allowed file passes

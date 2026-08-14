@@ -2,6 +2,28 @@
 
 Use this file to capture anything that comes up during implementation that future sessions need to know.
 
+## Validated against `@opencode-ai/plugin` v1.18 (Phase 3)
+
+Findings from reading the installed plugin/SDK type definitions:
+
+1. **No named `session.created` / `session.idle` / `file.edited` hooks.** The
+   `Hooks` interface has a generic `event?: (input: { event: Event }) => Promise<void>`
+   hook. The SDK `Event` union includes `EventSessionCreated`
+   (`properties.info: Session`), `EventSessionIdle` (`properties.sessionID`), and
+   `EventFileEdited` (`properties.file`). Later phases must subscribe via `event`
+   and switch on `event.type`, not via named hooks as `02-architecture.md` assumed.
+2. **Plugins CAN mutate OpenCode config at runtime.** `Hooks.config?: (input: Config) => Promise<void>`
+   receives the effective config for mutation. This answers the open question
+   above: `config-to-opencode.ts` fragments (permission/formatter) can be
+   contributed via the `config` hook instead of rewriting `opencode.json`.
+3. **`tool.execute.before` signature:** input `{ tool, sessionID, callID }`,
+   output `{ args }`. Throwing blocks the tool call.
+4. **Logging:** `ctx.client.app.log({ body: { service, level, message, extra } })`.
+   `src/logger.ts` wraps this and swallows failures.
+5. **Instruction injection:** no obvious `client.instructions` API; candidates are
+   `experimental.chat.system.transform` (append to `output.system`) or
+   `chat.message` parts. To be spiked in Phase 6.
+
 ## Open questions
 
 ### Can a plugin dynamically contribute permission/formatter/rules fragments?
