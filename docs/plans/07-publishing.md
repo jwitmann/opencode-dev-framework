@@ -107,6 +107,31 @@ Requirements:
 - `--provenance` adds a Sigstore attestation via OIDC; it is independent of
   the publish token.
 
+## Local development and testing
+
+Point OpenCode at the local repository root in the project's `opencode.json`:
+
+```json
+{
+  "plugin": ["/home/jerome/opencode-dev-framework"]
+}
+```
+
+OpenCode loads `dist/index.js`, so run `npm run build` after every source
+change.
+
+Caveats:
+
+- `opencode plugin <module>` writes a `.opencode/opencode.json` file that
+  overrides the project-level `opencode.json`. Delete it or keep its plugin
+  list consistent with the project-level config.
+- Clear OpenCode's plugin cache after switching from a published version to a
+  local path:
+
+  ```bash
+  rm -rf ~/.cache/opencode/packages/opencode-dev-framework*
+  ```
+
 ## npm access token setup
 
 Because npm's OIDC trusted-publishing UI is unreliable, the workflow uses a

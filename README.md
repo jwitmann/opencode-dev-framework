@@ -43,6 +43,39 @@ Then add it to your project's `opencode.json`:
 }
 ```
 
+## Local development and testing
+
+To test the plugin from source without publishing to npm, point OpenCode at the
+local repository path in your project's `opencode.json`:
+
+```json
+{
+  "plugin": ["/home/jerome/opencode-dev-framework"]
+}
+```
+
+The path must be the **repository root** (where `package.json` lives). OpenCode
+loads `dist/index.js`, so rebuild after every source change:
+
+```bash
+npm run build
+```
+
+### Important caveats
+
+- The `opencode plugin <module>` command creates a `.opencode/opencode.json`
+  file in the project directory that takes precedence over the project-level
+  `opencode.json`. If you used that command while testing, either delete
+  `.opencode/opencode.json` or make sure it also points to the local path.
+- OpenCode caches downloaded plugins in
+  `~/.cache/opencode/packages/opencode-dev-framework*/`. If you previously
+  loaded a published version and then switch to a local source, clear that
+  cache so OpenCode does not reuse the old build:
+
+  ```bash
+  rm -rf ~/.cache/opencode/packages/opencode-dev-framework*
+  ```
+
 ## Configuration
 
 Create `.opencode-dev-framework.yml` in your project root:

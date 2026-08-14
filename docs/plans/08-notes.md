@@ -114,6 +114,21 @@ Keep both. The custom tool lets the agent call verification explicitly; the slas
   get verifiable provenance without requiring npm's tricky trusted-publisher
   linking. Note: npm is deprecating 2FA-bypass GAT direct publishing around
   January 2027, so OIDC should be revisited before then.
+- **Closure variables cannot survive OpenCode's async hook runtime.** Initial
+  wiring passed `config`, `log`, `run`, `tracker`, and `constitution` as
+  closure captures inside `buildHooks`. In production this caused
+  `TypeError: undefined is not an object (evaluating 'config.gate')` and
+  `log is not a function` because the Effect runtime strips those captures.
+  The fix stores hook state in a module-level `hookRegistry` keyed by project
+  directory and looks it up at call time. `activeDirectory` handles hooks that
+  do not receive a directory hint.
+- **Local source path is the best dev workflow.** Pointing
+  `opencode.json` at the repository root (e.g.
+  `"plugin": ["/home/jerome/opencode-dev-framework"]`) picks up source
+  changes immediately after `npm run build`, without an npm publish cycle.
+  Beware `.opencode/opencode.json` (created by `opencode plugin`) and
+  `~/.cache/opencode/packages/opencode-dev-framework*/`, both of which can
+  shadow the local source with a stale published build.
 
 ## References
 
