@@ -90,6 +90,11 @@ Rejected. Silent mutation of user config is surprising and error-prone. The plug
 
 Keep both. The custom tool lets the agent call verification explicitly; the slash command lets the user trigger it. The MVP should have the slash command; the custom tool is a follow-up.
 
+## Phases 7–8 implementation decisions
+
+- **No `HostContext` class.** The plan called for a `HostContext` interface with an `OpenCodeHost` adapter. In practice the plugin only needs three things from the host: the project directory (`ctx.directory`, used directly), command execution (the injectable `RunCommand` function in `src/host.ts`), and logging (the injectable `LogFn` from `src/logger.ts`, created via `createLogger(ctx.client)`). Function injection is simpler than a class adapter and gives the same testability — every unit test stubs these seams, and none shell out to real tools.
+- **`buildHooks` is the composition root.** `src/index.ts` exports `buildHooks(ctx, config, log, run, tracker, constitution)` so tests can build the full hook set with stubs. The default-exported plugin is a thin wrapper: load config, return `{}` when `off`, otherwise create real logger/runner and delegate to `buildHooks`.
+
 ## Phase 6 implementation decisions
 
 - **Constitution injection uses `experimental.chat.system.transform`, not `session.created`.** The plugin API has no `session.created` hook (only the generic `event` hook, which is a notification and cannot mutate session instructions). `experimental.chat.system.transform` receives `output.system: string[]` and runs whenever the system prompt is assembled, which is the correct injection point. It also keeps the constitution present after session compaction, which a one-shot `session.created` injection would not.

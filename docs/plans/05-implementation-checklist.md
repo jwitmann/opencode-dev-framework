@@ -155,19 +155,23 @@ Use this as the source of truth during implementation. Check items off as they a
 
 ## Phase 7 — Host adapter
 
-- [ ] 7.1 Implement `src/host.ts`
+- [x] 7.1 Implement `src/host.ts`
   - Define `HostContext` interface.
   - Implement `OpenCodeHost` adapter mapping `ctx` to `HostContext`.
-- [ ] 7.2 Unit tests with stub host
+  - Implemented as injectable seams instead of a HostContext class:
+    `RunCommand` (command execution) and `LogFn` (logging); `ctx.directory`
+    is used directly. See `docs/plans/08-notes.md`.
+- [x] 7.2 Unit tests with stub host
   - Use a fake `HostContext` for all non-integration tests.
+  - All lint/gate/entry tests inject stub runners and loggers.
 
 ## Phase 8 — Integration and entry point
 
-- [ ] 8.1 Implement `src/index.ts`
+- [x] 8.1 Implement `src/index.ts`
   - Export single default plugin function.
   - Wire all hooks based on resolved profile.
-- [ ] 8.2 Ensure `off` profile registers no hooks.
-- [ ] 8.3 Build passes without type errors.
+- [x] 8.2 Ensure `off` profile registers no hooks.
+- [x] 8.3 Build passes without type errors.
 
 ## Phase 9 — Documentation and examples
 
