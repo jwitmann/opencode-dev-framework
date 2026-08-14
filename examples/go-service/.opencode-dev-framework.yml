@@ -1,0 +1,36 @@
+# Example opencode-dev-framework configuration for a Go service.
+# Copy this file to your project root and adjust commands to your tooling.
+
+profile: standard
+
+commands:
+  typecheck: "go build ./..."
+  test: "go test ./..."
+  test_changed: "go test ./... -run Test -count=1"
+  lint:
+    ".go": "golangci-lint run {file}"
+  format:
+    ".go": "gofmt -w {file}"
+
+protect:
+  - ".env*"
+  - "**/.env*"
+  - "deploy/prod/**"
+  - "migrations/**"
+
+exclude:
+  - "**/*_test.go"
+  - "**/testdata/**"
+
+gate:
+  run_typecheck: true
+  run_tests: true
+  block_on_failure: true
+  skip_unchanged: true
+  scope: all
+  lint_changed: false
+  timeout: 300
+
+on_edit:
+  format: true
+  lint: true

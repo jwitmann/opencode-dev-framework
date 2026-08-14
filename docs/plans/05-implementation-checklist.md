@@ -179,19 +179,19 @@ Use this as the source of truth during implementation. Check items off as they a
   - Project purpose and conventions.
   - Build/test commands.
   - Important rules for agents working on this codebase.
-- [ ] 9.1 Write `README.md`
+- [x] 9.1 Write `README.md`
   - What it does.
   - Install instructions.
   - Config reference (link to `docs/plans/03-config-spec.md`).
   - Limitations (advisory gate).
   - Disclaimer.
-- [ ] 9.2 Create `examples/go-service/.opencode-dev-framework.yml`
+- [x] 9.2 Create `examples/go-service/.opencode-dev-framework.yml`
   - Go build/test/lint commands.
   - Protected paths.
   - Gate config.
-- [ ] 9.3 Create `examples/go-service/README.md`
+- [x] 9.3 Create `examples/go-service/README.md`
   - How to use the example.
-- [ ] 9.4 Update top-level `README.md` to be useful, not empty.
+- [x] 9.4 Update top-level `README.md` to be useful, not empty.
 
 ## Phase 10 — CI and publish
 
