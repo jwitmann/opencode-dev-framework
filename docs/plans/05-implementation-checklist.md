@@ -4,7 +4,7 @@ Use this as the source of truth during implementation. Check items off as they a
 
 ## Phase 1 — Project scaffold
 
-- [ ] 1.1 Initialize `package.json`
+- [x] 1.1 Initialize `package.json`
   - name: `opencode-dev-framework`
   - version: `0.0.1`
   - license: `MIT`
@@ -12,10 +12,10 @@ Use this as the source of truth during implementation. Check items off as they a
   - types: `dist/index.d.ts`
   - files: `["dist", "commands", "rules"]`
   - scripts: `build`, `typecheck`, `test`, `lint`, `lint:fix`, `format:check`, `format:fix`, `lint:md`
-- [ ] 1.2 Add `.gitignore` (node_modules, dist, .DS_Store, *.log)
-- [ ] 1.3 Add `tsconfig.json` (target ES2022, strict, outDir dist, declaration true)
-- [ ] 1.4 Add `LICENSE` (MIT)
-- [ ] 1.5 Install dev dependencies
+- [x] 1.2 Add `.gitignore` (node_modules, dist, .DS_Store, *.log)
+- [x] 1.3 Add `tsconfig.json` (target ES2022, strict, outDir dist, declaration true)
+- [x] 1.4 Add `LICENSE` (MIT)
+- [x] 1.5 Install dev dependencies
   - `typescript`
   - `@opencode-ai/plugin`
   - `yaml`
@@ -24,26 +24,26 @@ Use this as the source of truth during implementation. Check items off as they a
   - `vitest` (test runner)
   - `@biomejs/biome` (formatter + linter)
   - `markdownlint-cli2` (Markdown linter)
-- [ ] 1.6 Add `biome.json` config
+- [x] 1.6 Add `biome.json` config
   - Enable formatter and linter.
   - Include `src/**/*.ts`, `tests/**/*.ts`.
   - Set indent and line width conventions.
-- [ ] 1.7 Add Markdown lint config (`.markdownlint.json` or `.markdownlint-cli2.jsonc`)
+- [x] 1.7 Add Markdown lint config (`.markdownlint.json` or `.markdownlint-cli2.jsonc`)
   - Disable rules that conflict with Prettier/Biome if needed.
-- [ ] 1.8 Create directory structure
+- [x] 1.8 Create directory structure
   - `src/`
   - `commands/`
   - `rules/`
   - `tests/`
   - `examples/go-service/`
-- [ ] 1.9 Add GitHub Actions workflow `.github/workflows/ci.yml`
+- [x] 1.9 Add GitHub Actions workflow `.github/workflows/ci.yml`
   - Use Node.js v22 (not Bun) because Bun is not available in this environment.
   - run lint
   - run lint:md
   - run tests
   - run build
   - publish to npm on tags starting with `v`
-- [ ] 1.10 Initial commit
+- [x] 1.10 Initial commit
 
 ## Phase 2 — Core config
 

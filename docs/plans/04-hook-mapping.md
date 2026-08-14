@@ -23,6 +23,7 @@
 **Purpose:** Inject constitution and project context.
 
 **Actions:**
+
 1. Load resolved config.
 2. If profile is `off`, do nothing.
 3. Read `rules` files and any auto-discovered style guides.
@@ -41,10 +42,12 @@
 **Purpose:** Secondary guardrail and clear error messaging.
 
 **Block list:**
+
 - `edit`, `write`, `patch` tools targeting protected paths.
 - `bash` commands matching dangerous patterns (`git push`, destructive `rm`, etc.) when `protect_mode` is `deny`.
 
 **Behavior:**
+
 - `off` profile: do nothing.
 - `advisory` profile: log a warning but do not throw.
 - `standard`/`strict` profile: throw an error with a clear message to deny the tool call.
@@ -54,6 +57,7 @@
 **Purpose:** Run lint on the edited file.
 
 **Actions:**
+
 1. Determine the file path.
 2. Skip if file matches `exclude` globs.
 3. Resolve per-extension linter from `commands.lint.<ext>` or `commands.lint`.
@@ -66,6 +70,7 @@
 **Purpose:** Observe tool results and collect changed files for the gate.
 
 **Actions:**
+
 1. Track edited files in session state.
 2. If the tool was a formatter, note that formatting was applied.
 
@@ -74,6 +79,7 @@
 **Purpose:** Run the completion gate.
 
 **Actions:**
+
 1. Collect changed files.
 2. If `gate.skip_unchanged` and no changes, skip.
 3. Run typecheck (if `gate.run_typecheck`).

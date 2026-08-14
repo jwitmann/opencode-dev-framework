@@ -27,12 +27,14 @@ Teams or individuals who:
 
 - npm package: `opencode-dev-framework`
 - Users add it to their `opencode.json` plugin array:
+
   ```json
   {
     "$schema": "https://opencode.ai/config.json",
     "plugin": ["opencode-dev-framework"]
   }
   ```
+
 - OpenCode installs npm plugins automatically via Bun at startup.
 
 ## Success criteria
@@ -49,13 +51,17 @@ Teams or individuals who:
 ## High-level phases
 
 ### Phase 1 — Scaffold
+
 Initialize npm/TypeScript project, CI, directory structure, and basic build/test pipeline.
 
 ### Phase 2 — Core plugin
+
 Implement config loading, native OpenCode settings generation, guardrail hooks, per-edit lint hook, completion gate, and constitution injection.
 
 ### Phase 3 — Tests & docs
+
 Write unit tests, README, config reference, working example, and a `/df-verify` custom command.
 
 ### Phase 4 — Publish
+
 Bump version, tag, publish to npm, and verify end-to-end in a real OpenCode session.

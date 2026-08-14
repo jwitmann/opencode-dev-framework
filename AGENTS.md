@@ -103,7 +103,7 @@ OpenCode loads the plugin via Bun at runtime, but all development and CI on this
 
 ## Project layout
 
-```
+```text
 opencode-dev-framework/
 ├── src/                    # Plugin source code
 │   ├── index.ts            # Plugin entry point

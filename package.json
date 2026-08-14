@@ -1,0 +1,44 @@
+{
+  "name": "opencode-dev-framework",
+  "version": "0.0.1",
+  "description": "OpenCode plugin that enforces project-specific quality gates during AI coding sessions",
+  "license": "MIT",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist",
+    "commands",
+    "rules"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run",
+    "lint": "biome lint .",
+    "lint:fix": "biome lint --write .",
+    "format:check": "biome format .",
+    "format:fix": "biome format --write .",
+    "lint:md": "markdownlint-cli2 \"**/*.md\""
+  },
+  "keywords": [
+    "opencode",
+    "plugin",
+    "ai",
+    "quality-gates",
+    "guardrails"
+  ],
+  "dependencies": {
+    "picomatch": "^4.0.5",
+    "yaml": "^2.9.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.5.8",
+    "@opencode-ai/plugin": "^1.18.18",
+    "@types/node": "^26.2.0",
+    "markdownlint-cli2": "^0.23.2",
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.10"
+  }
+}

@@ -70,7 +70,7 @@ The OpenCode-specific adapter maps OpenCode's `ctx` (`project`, `directory`, `wo
 
 ## Configuration flow
 
-```
+```text
 opencode session starts
   -> plugin loaded
     -> load config (native -> fallback)
@@ -116,6 +116,7 @@ Prefer the markdown command file because it requires no code and is easy to main
 `npm run build` compiles TypeScript to `dist/`.
 
 `package.json`:
+
 ```json
 {
   "main": "dist/index.js",

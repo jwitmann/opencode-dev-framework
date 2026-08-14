@@ -15,7 +15,7 @@ Recommendation: `vitest` because it has excellent TypeScript support and runs in
 
 ## Test layout
 
-```
+```text
 tests/
 ├── config.test.ts
 ├── config-to-opencode.test.ts

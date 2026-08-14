@@ -1,0 +1,11 @@
+{
+  // Disable rules that conflict with Biome/formatter conventions.
+  "config": {
+    "MD013": false, // line length
+    "MD041": false, // first line in file should be a top-level heading (handled per file)
+    // MD060 demands padded table pipes; plan docs intentionally use compact tables.
+    "MD060": false
+  },
+  "globs": ["**/*.md"],
+  "ignores": ["node_modules/**", "dist/**"]
+}

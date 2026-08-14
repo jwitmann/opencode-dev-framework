@@ -12,11 +12,13 @@
 
 1. Create the GitHub repository `opencode-dev-framework`.
 2. Push the local repo:
+
    ```bash
    git remote add origin git@github.com:<user>/opencode-dev-framework.git
    git branch -M main
    git push -u origin main
    ```
+
 3. Add the npm token as a repository secret:
    - Go to **Settings → Secrets and variables → Actions**.
    - Click **New repository secret**.
@@ -104,12 +106,14 @@ Release steps:
 
 1. Visit <https://www.npmjs.com/package/opencode-dev-framework> and confirm the version is live.
 2. In a scratch directory, create:
+
    ```json
    {
      "$schema": "https://opencode.ai/config.json",
      "plugin": ["opencode-dev-framework"]
    }
    ```
+
 3. Run `opencode` and check the plugin loads without errors.
 4. Check OpenCode logs for plugin initialization message.
 
