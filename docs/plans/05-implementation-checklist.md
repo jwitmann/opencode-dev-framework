@@ -47,29 +47,29 @@ Use this as the source of truth during implementation. Check items off as they a
 
 ## Phase 2 — Core config
 
-- [ ] 2.1 Define shared types in `src/types.ts`
+- [x] 2.1 Define shared types in `src/types.ts`
   - `Profile`
   - `Config`
   - `ResolvedConfig`
   - `CommandMap`
   - `GateConfig`
-- [ ] 2.2 Implement `src/config.ts`
+- [x] 2.2 Implement `src/config.ts`
   - Find config file using precedence list.
   - Parse YAML or JSON.
   - Validate with Zod.
   - Implement `.dev-framework.yml` flat-key parser as fallback.
   - Resolve profile defaults.
   - Cache config per session.
-- [ ] 2.3 Unit tests for config loader
+- [x] 2.3 Unit tests for config loader
   - native YAML loads correctly
   - fallback `.dev-framework.yml` loads correctly
   - profile defaults applied
   - invalid config throws readable error
-- [ ] 2.4 Implement config-to-opencode generator in `src/config-to-opencode.ts`
+- [x] 2.4 Implement config-to-opencode generator in `src/config-to-opencode.ts`
   - Translate `protect` globs into OpenCode `permission` object.
   - Translate `commands.format` into OpenCode `formatter` object.
   - Return fragments as plain objects.
-- [ ] 2.5 Unit tests for generator
+- [x] 2.5 Unit tests for generator
   - permission rules generated for protected paths
   - formatter rules generated per extension
   - `.dev-framework.yml` protect string split into array
