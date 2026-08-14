@@ -37,12 +37,12 @@ export function buildHooks(
 ): Hooks {
   const onFileEdited = async (filePath: string): Promise<void> => {
     tracker.add(filePath, ctx.directory);
-    if (!config.on_edit.lint) {
+    if (!config?.on_edit?.lint) {
       return;
     }
     const outcome = await lintFile(run, config, filePath, {
       cwd: ctx.directory,
-      timeout: config.gate.timeout,
+      timeout: config.gate?.timeout,
     });
     if (outcome.skipped) {
       await log("debug", summarizeLint(outcome), { filePath, reason: outcome.reason });
@@ -68,6 +68,17 @@ export function buildHooks(
   };
 
   const onSessionIdle = async (): Promise<void> => {
+    if (!config?.gate) {
+      await log(
+        "warn",
+        "plugin config is incomplete (missing gate section), skipping completion gate",
+        {
+          directory: ctx.directory,
+          configType: typeof config,
+        },
+      );
+      return;
+    }
     const changedFiles = tracker.getChangedFiles();
     const report = await runGate(run, config, changedFiles, { cwd: ctx.directory });
     tracker.clearChangedFiles();

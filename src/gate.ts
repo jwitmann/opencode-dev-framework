@@ -90,6 +90,15 @@ export async function runGate(
   changedFiles: string[],
   options?: { cwd?: string },
 ): Promise<GateReport> {
+  if (!config.gate) {
+    return {
+      ran: false,
+      reason: "incomplete plugin config: gate section missing",
+      ok: true,
+      steps: [],
+      failedSteps: [],
+    };
+  }
   if (config.gate.skip_unchanged && changedFiles.length === 0) {
     return { ran: false, reason: "no changed files", steps: [], ok: true, failedSteps: [] };
   }
