@@ -129,6 +129,12 @@ Keep both. The custom tool lets the agent call verification explicitly; the slas
   Beware `.opencode/opencode.json` (created by `opencode plugin`) and
   `~/.cache/opencode/packages/opencode-dev-framework*/`, both of which can
   shadow the local source with a stale published build.
+- **Plugin markdown commands are not auto-loaded.** OpenCode only reads custom
+  slash commands from `.opencode/commands/` (project) or
+  `~/.config/opencode/commands/` (global). The `commands/df-verify.md` file in
+  the plugin package is a template that must be copied to one of those
+  directories; it will not appear as `/df-verify` just because the plugin is
+  loaded.
 
 ## References
 

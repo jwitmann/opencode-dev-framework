@@ -17,8 +17,11 @@ reimplemented as an OpenCode-native plugin.
   and reports failures loudly.
 - **Completion gate.** When the session goes idle, runs typecheck, tests, and
   (optionally) lint on changed files, then reports the result.
-- **`/df-verify` command.** Lets the agent (or you) re-run the verification
-  suite on demand.
+- **`/df-verify` slash-command template.** The plugin ships a
+  `commands/df-verify.md` file that you can copy into your project's
+  `.opencode/commands/` directory. Once copied, typing `/df-verify` in a session
+  prompts the agent to re-run the verification suite on demand. (OpenCode does
+  not load slash commands from plugin packages automatically.)
 
 ## Profiles
 
@@ -109,6 +112,18 @@ compatibility, but the native format above is preferred. See
 [`docs/plans/03-config-spec.md`](docs/plans/03-config-spec.md) for the full
 config reference and [`examples/go-service/`](examples/go-service/) for a
 complete example.
+
+## Slash command
+
+To add the `/df-verify` command to a project, copy the bundled template into
+`.opencode/commands/`:
+
+```bash
+cp /home/jerome/opencode-dev-framework/commands/df-verify.md .opencode/commands/df-verify.md
+```
+
+Then, inside an OpenCode session, type `/df-verify` to ask the agent to run
+the configured verification suite manually.
 
 ## Limitations
 
