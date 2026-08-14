@@ -11,32 +11,35 @@ Use this as the source of truth during implementation. Check items off as they a
   - main: `dist/index.js`
   - types: `dist/index.d.ts`
   - files: `["dist", "commands", "rules"]`
-  - scripts: `build`, `lint`, `test`, `typecheck`
+  - scripts: `build`, `typecheck`, `test`, `lint`, `lint:fix`, `format:check`, `format:fix`
 - [ ] 1.2 Add `.gitignore` (node_modules, dist, .DS_Store, *.log)
 - [ ] 1.3 Add `tsconfig.json` (target ES2022, strict, outDir dist, declaration true)
 - [ ] 1.4 Add `LICENSE` (MIT)
 - [ ] 1.5 Install dev dependencies
   - `typescript`
   - `@opencode-ai/plugin`
-  - `@types/bun` or `bun-types` if needed
   - `yaml`
   - `zod`
   - `minimatch` or `picomatch`
-  - test runner: `vitest` or `bun test`
-  - linter: `oxlint` or `eslint`
-- [ ] 1.6 Create directory structure
+  - `vitest` (test runner)
+  - `@biomejs/biome` (formatter + linter)
+- [ ] 1.6 Add `biome.json` config
+  - Enable formatter and linter.
+  - Include `src/**/*.ts`, `tests/**/*.ts`.
+  - Set indent and line width conventions.
+- [ ] 1.7 Create directory structure
   - `src/`
   - `commands/`
   - `rules/`
   - `tests/`
   - `examples/go-service/`
-- [ ] 1.7 Add GitHub Actions workflow `.github/workflows/ci.yml`
+- [ ] 1.8 Add GitHub Actions workflow `.github/workflows/ci.yml`
   - Use Node.js v22 (not Bun) because Bun is not available in this environment.
   - run lint
   - run tests
   - run build
   - publish to npm on tags starting with `v`
-- [ ] 1.8 Initial commit
+- [ ] 1.9 Initial commit
 
 ## Phase 2 — Core config
 

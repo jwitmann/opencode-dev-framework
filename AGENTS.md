@@ -23,8 +23,7 @@ Because OpenCode has no `agentStop` hook, the completion gate is **advisory/loud
 - **Package manager:** npm for development; npm publishing
 - **Build output:** `dist/`
 - **Test runner:** vitest
-- **Formatter:** prettier (dev dependency)
-- **Linter:** eslint (already installed globally; also listed as dev dependency)
+- **Formatter & Linter:** Biome (dev dependency)
 - **Plugin API:** `@opencode-ai/plugin`
 
 ## Linting and formatting
@@ -50,9 +49,9 @@ Before finishing any change:
 1. Run `npm run format:check`. If it fails, run `npm run format:fix`.
 2. Run `npm run lint`. If it fails, fix the issues or run `npm run lint:fix` for auto-fixable issues.
 3. Re-run `npm run lint` to confirm everything is clean.
-4. Do not suppress lint warnings with `// eslint-disable` without a comment explaining why.
+4. Do not suppress lint warnings without a comment explaining why.
 
-If you add a new file, make sure it is covered by the formatter/linter config.
+If you add a new file, make sure it is covered by the `biome.json` `files.include` glob.
 
 ## Build / test / validate
 
@@ -67,7 +66,7 @@ npm run test
 npm run build
 ```
 
-OpenCode loads the plugin via Bun at runtime, but all development and CI on this box use npm/Node. Keep the code Bun-compatible: avoid Node-only APIs like `fs` sync methods where async equivalents exist, and prefer standard ESM imports.
+OpenCode loads the plugin via Bun at runtime, but all development and CI on this box use npm/Node. Keep the code Bun-compatible: avoid Node-only APIs and prefer standard ESM imports.
 
 ## Conventions
 
@@ -81,8 +80,8 @@ OpenCode loads the plugin via Bun at runtime, but all development and CI on this
 
 ### Do
 
-- Run `bun run test` after any code change.
-- Run `bun run build` and verify `dist/` is produced.
+- Run `npm run test` after any code change.
+- Run `npm run build` and verify `dist/` is produced.
 - Update tests when adding or changing behavior.
 - Update `docs/plans/05-implementation-checklist.md` when a task is done.
 - Keep `README.md` accurate with install/config instructions.
@@ -157,4 +156,4 @@ If you are resuming work:
 1. Read `docs/plans/00-restart-brief.md`.
 2. Read `docs/plans/05-implementation-checklist.md` to see what is done.
 3. Pick the next unchecked item.
-4. Run `bun run test` frequently.
+4. Run `npm run test` frequently.
