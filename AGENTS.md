@@ -24,6 +24,7 @@ Because OpenCode has no `agentStop` hook, the completion gate is **advisory/loud
 - **Build output:** `dist/`
 - **Test runner:** vitest
 - **Formatter & Linter:** Biome (dev dependency)
+- **Markdown linter:** markdownlint-cli2
 - **Plugin API:** `@opencode-ai/plugin`
 
 ## Linting and formatting
@@ -37,19 +38,23 @@ npm run format:check
 # Fix formatting
 npm run format:fix
 
-# Check lint
+# Check TypeScript lint
 npm run lint
 
-# Fix lint where auto-fixable
+# Fix TypeScript lint where auto-fixable
 npm run lint:fix
+
+# Check Markdown lint
+npm run lint:md
 ```
 
 Before finishing any change:
 
 1. Run `npm run format:check`. If it fails, run `npm run format:fix`.
 2. Run `npm run lint`. If it fails, fix the issues or run `npm run lint:fix` for auto-fixable issues.
-3. Re-run `npm run lint` to confirm everything is clean.
-4. Do not suppress lint warnings without a comment explaining why.
+3. Run `npm run lint:md` on any Markdown files you changed.
+4. Re-run `npm run lint` and `npm run lint:md` to confirm everything is clean.
+5. Do not suppress lint warnings without a comment explaining why.
 
 If you add a new file, make sure it is covered by the `biome.json` `files.include` glob.
 
@@ -61,6 +66,7 @@ Run these before finishing any change:
 npm install
 npm run format:check
 npm run lint
+npm run lint:md
 npm run typecheck
 npm run test
 npm run build

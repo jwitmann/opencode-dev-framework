@@ -11,7 +11,7 @@ Use this as the source of truth during implementation. Check items off as they a
   - main: `dist/index.js`
   - types: `dist/index.d.ts`
   - files: `["dist", "commands", "rules"]`
-  - scripts: `build`, `typecheck`, `test`, `lint`, `lint:fix`, `format:check`, `format:fix`
+  - scripts: `build`, `typecheck`, `test`, `lint`, `lint:fix`, `format:check`, `format:fix`, `lint:md`
 - [ ] 1.2 Add `.gitignore` (node_modules, dist, .DS_Store, *.log)
 - [ ] 1.3 Add `tsconfig.json` (target ES2022, strict, outDir dist, declaration true)
 - [ ] 1.4 Add `LICENSE` (MIT)
@@ -23,23 +23,27 @@ Use this as the source of truth during implementation. Check items off as they a
   - `minimatch` or `picomatch`
   - `vitest` (test runner)
   - `@biomejs/biome` (formatter + linter)
+  - `markdownlint-cli2` (Markdown linter)
 - [ ] 1.6 Add `biome.json` config
   - Enable formatter and linter.
   - Include `src/**/*.ts`, `tests/**/*.ts`.
   - Set indent and line width conventions.
-- [ ] 1.7 Create directory structure
+- [ ] 1.7 Add Markdown lint config (`.markdownlint.json` or `.markdownlint-cli2.jsonc`)
+  - Disable rules that conflict with Prettier/Biome if needed.
+- [ ] 1.8 Create directory structure
   - `src/`
   - `commands/`
   - `rules/`
   - `tests/`
   - `examples/go-service/`
-- [ ] 1.8 Add GitHub Actions workflow `.github/workflows/ci.yml`
+- [ ] 1.9 Add GitHub Actions workflow `.github/workflows/ci.yml`
   - Use Node.js v22 (not Bun) because Bun is not available in this environment.
   - run lint
+  - run lint:md
   - run tests
   - run build
   - publish to npm on tags starting with `v`
-- [ ] 1.9 Initial commit
+- [ ] 1.10 Initial commit
 
 ## Phase 2 — Core config
 
