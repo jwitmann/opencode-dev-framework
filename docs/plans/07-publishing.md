@@ -27,11 +27,13 @@ access token and publish manually:
 4. Back in your terminal:
 
    ```bash
-   npm logout
-   export NPM_TOKEN=<paste-token-here>
-   NODE_AUTH_TOKEN=$NPM_TOKEN npm publish --access public
-   unset NPM_TOKEN
+   npm config set //registry.npmjs.org/:_authToken "$NPM_TOKEN"
+   npm publish --access public
+   npm config delete //registry.npmjs.org/:_authToken
    ```
+
+   This writes the token to your user `~/.npmrc`, publishes, and then removes
+   it. Do **not** commit an `.npmrc` containing a token.
 
 5. Revoke the token on npmjs.com once the package exists.
 
