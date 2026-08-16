@@ -9,8 +9,9 @@ reimplemented as an OpenCode-native plugin.
 
 - **Constitution injection.** Adds a project constitution (quality bar, test
   discipline, focus rules) to the system prompt at session start. Ships with a
-  bundled default split into numbered rule files; point `constitution` at your
-  own Markdown file to override.
+  bundled default split into numbered rule files. Override it by dropping files
+  in `.opencode/opencode-dev-framework/rules/`, by setting explicit `rules`, or
+  by setting `style_guide` for project-specific conventions.
 - **Guardrails.** Blocks or warns on edits to protected paths (`.env` files,
   `node_modules`, vendored code, your own globs) and on dangerous shell
   commands (`git push`, `rm -rf`, `git reset --hard`, ...).
@@ -100,7 +101,9 @@ npm run build
 
 ## Configuration
 
-Create `.opencode-dev-framework.yml` in your project root:
+Create `.opencode-dev-framework.yml` in your project root. The easiest way to
+override the bundled constitution is to run `df init` and then add Markdown
+files to `.opencode/opencode-dev-framework/rules/`.
 
 ```yaml
 profile: standard
@@ -123,7 +126,12 @@ gate:
 on_edit:
   lint: true
 
-constitution: "TEAM_RULES.md" # optional; bundled default if omitted
+# Optional: explicit rule files (replace bundled; use mode: append to extend)
+# rules:
+#   - docs/team-rules.md
+
+# Optional: project style guide appended to the constitution
+# style_guide: STYLE.md
 ```
 
 The legacy `.dev-framework.yml` flat-key format is read as a fallback for

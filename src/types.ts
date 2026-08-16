@@ -66,9 +66,8 @@ export interface Config {
   gate?: Partial<GateConfig>;
   on_edit?: Partial<OnEditConfig>;
   exclude?: string[];
-  /** Path to a custom constitution file (absolute or relative to project root). */
-  constitution?: string;
   rules?: string[] | RulesConfig;
+  /** Path to a project style guide (absolute or relative to project root). */
   style_guide?: string;
 }
 
@@ -87,7 +86,6 @@ export interface ResolvedConfig {
   gate: GateConfig;
   on_edit: OnEditConfig;
   exclude: string[];
-  constitution?: string;
   rules?: RulesConfig;
   style_guide?: string;
 }

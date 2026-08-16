@@ -1,4 +1,4 @@
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Hooks, PluginInput } from "@opencode-ai/plugin";
@@ -7,9 +7,9 @@ import { buildHooks } from "../src/index";
 import type { LogFn } from "../src/logger";
 import {
   BUNDLED_CONSTITUTION_DIR,
-  BUNDLED_CONSTITUTION_PATH,
   injectConstitution,
   loadConstitution,
+  LOCAL_RULES_DIR,
 } from "../src/rules";
 import type { Config, ResolvedConfig } from "../src/types";
 import { resolveConfig } from "../src/config";
@@ -33,7 +33,6 @@ describe("bundled constitution", () => {
     expect(result.constitution).toContain("Match Existing Patterns");
     expect(result.constitution).toContain("Testing Discipline");
     expect(result.constitution).toContain("Delegation");
-    expect(BUNDLED_CONSTITUTION_PATH).toMatch(/rules\/constitution\.md$/);
     expect(BUNDLED_CONSTITUTION_DIR).toMatch(/rules$/);
   });
 });
@@ -63,48 +62,7 @@ describe("loadConstitution", () => {
     expect(result.warning).toBeUndefined();
   });
 
-  it("loads a configured custom constitution (relative path)", async () => {
-    await writeFile(join(dir, "TEAM.md"), "# Team Rules\nDo the thing.");
-    const result = await loadConstitution(
-      resolve({ profile: "standard", constitution: "TEAM.md" }),
-      dir,
-    );
-    expect(result.source).toBe("custom");
-    expect(result.constitution).toContain("Team Rules");
-  });
-
-  it("loads a configured custom constitution (absolute path)", async () => {
-    const customPath = join(dir, "abs.md");
-    await writeFile(customPath, "absolute rules");
-    const result = await loadConstitution(
-      resolve({ profile: "standard", constitution: customPath }),
-      dir,
-    );
-    expect(result.source).toBe("custom");
-    expect(result.constitution).toBe("absolute rules");
-  });
-
-  it("falls back to the bundled constitution with a warning when the custom file is missing", async () => {
-    const result = await loadConstitution(
-      resolve({ profile: "standard", constitution: "does-not-exist.md" }),
-      dir,
-    );
-    expect(result.source).toBe("bundled");
-    expect(result.constitution).toBeTruthy();
-    expect(result.warning).toContain("does-not-exist.md");
-  });
-
-  it("falls back with a warning when the custom file is empty", async () => {
-    await writeFile(join(dir, "empty.md"), "   \n");
-    const result = await loadConstitution(
-      resolve({ profile: "standard", constitution: "empty.md" }),
-      dir,
-    );
-    expect(result.source).toBe("bundled");
-    expect(result.warning).toContain("empty.md");
-  });
-
-  it("replaces the bundled constitution with configured rules files (default mode)", async () => {
+  it("replaces the bundled constitution with explicit rules files", async () => {
     await writeFile(join(dir, "TEAM.md"), "# Team Rules\nDo the thing.");
     const result = await loadConstitution(
       resolve({ profile: "standard", rules: ["TEAM.md"] }),
@@ -115,7 +73,7 @@ describe("loadConstitution", () => {
     expect(result.constitution).not.toContain("Quality Bar");
   });
 
-  it("appends configured rules files to the bundled constitution when mode is append", async () => {
+  it("appends explicit rules files to the bundled constitution when mode is append", async () => {
     await writeFile(join(dir, "TEAM.md"), "# Team Rules\nDo the thing.");
     const result = await loadConstitution(
       resolve({ profile: "standard", rules: { mode: "append", files: ["TEAM.md"] } }),
@@ -129,19 +87,24 @@ describe("loadConstitution", () => {
     );
   });
 
-  it("ignores rules when a custom constitution is configured", async () => {
-    await writeFile(join(dir, "TEAM.md"), "# Team Rules");
-    await writeFile(join(dir, "EXTRA.md"), "# Extra Rules");
-    const result = await loadConstitution(
-      resolve({ profile: "standard", constitution: "TEAM.md", rules: ["EXTRA.md"] }),
-      dir,
-    );
+  it("discovers local .opencode/opencode-dev-framework/rules/*.md overrides", async () => {
+    const localDir = join(dir, LOCAL_RULES_DIR);
+    await mkdir(localDir, { recursive: true });
+    await writeFile(join(localDir, "99-local.md"), "# Local Rule");
+    const result = await loadConstitution(resolve({ profile: "standard" }), dir);
     expect(result.source).toBe("custom");
-    expect(result.constitution).toContain("Team Rules");
-    expect(result.constitution).not.toContain("Extra Rules");
+    expect(result.constitution).toContain("Local Rule");
+    expect(result.constitution).not.toContain("Quality Bar");
   });
 
-  it("warns and skips missing rules files", async () => {
+  it("falls back to bundled rules when the local override directory is empty", async () => {
+    await mkdir(join(dir, LOCAL_RULES_DIR), { recursive: true });
+    const result = await loadConstitution(resolve({ profile: "standard" }), dir);
+    expect(result.source).toBe("bundled");
+    expect(result.constitution).toContain("Quality Bar");
+  });
+
+  it("warns and skips missing explicit rules files", async () => {
     const result = await loadConstitution(
       resolve({ profile: "standard", rules: ["missing.md"] }),
       dir,
@@ -149,6 +112,26 @@ describe("loadConstitution", () => {
     expect(result.source).toBeNull();
     expect(result.constitution).toBeNull();
     expect(result.warning).toContain("missing.md");
+  });
+
+  it("injects the configured style guide", async () => {
+    await writeFile(join(dir, "STYLE.md"), "Use 2 spaces.");
+    const result = await loadConstitution(
+      resolve({ profile: "standard", style_guide: "STYLE.md" }),
+      dir,
+    );
+    expect(result.constitution).toContain("Quality Bar");
+    expect(result.constitution).toContain("Style Guide");
+    expect(result.constitution).toContain("Use 2 spaces.");
+  });
+
+  it("warns when the configured style guide is missing", async () => {
+    const result = await loadConstitution(
+      resolve({ profile: "standard", style_guide: "missing.md" }),
+      dir,
+    );
+    expect(result.warning).toContain("missing.md");
+    expect(result.constitution).toContain("Quality Bar");
   });
 });
 

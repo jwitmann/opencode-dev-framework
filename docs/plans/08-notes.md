@@ -166,14 +166,27 @@ Keep both. The custom tool lets the agent call verification explicitly; the slas
   the project by `df init` or the `dev_framework_init` tool; they do not appear
   just because the plugin is loaded.
 
+## v0.1.11 release decisions
+
+- **`constitution` config key removed.** The original `dev-framework` has no
+  `constitution` config key; it calls the injected content the constitution but
+  sources it from `rules/*.md`. To stay faithful and avoid config-key collision
+  with other tools, the plugin now:
+  1. Loads explicit `rules` (array = replace; object with `mode`/`files`).
+  2. Auto-discovers `.opencode/opencode-dev-framework/rules/*.md` in the project
+     (replace bundled when no explicit config).
+  3. Falls back to the bundled `rules/*.md`.
+  4. Appends `style_guide` content if configured.
+- **`style_guide` is now injected.** It matches the original `dev-framework`
+  behavior: a project-specific style guide file is appended to the constitution.
+
 ## v0.1.10 release decisions
 
 - **`config.rules` semantics changed from append to explicit replace/append.**
   The original `dev-framework` has no `rules` key; the plugin invented it. The
   previous "append after bundled" behavior was confusing. As of v0.1.10,
   `rules` can be an array (replace the bundled constitution) or an object with
-  `mode: "replace" | "append"` and `files`. `constitution` still wins over
-  everything when set.
+  `mode: "replace" | "append"` and `files`.
 
 ## v0.1.8 release decisions
 

@@ -250,6 +250,19 @@ Use this as the source of truth during implementation. Check items off as they a
 - [ ] 13.3 Update `03-config-spec.md`, `08-notes.md`, and this checklist.
 - [ ] 13.4 Bump version to `0.1.10` and tag.
 
+## Phase 14 — Constitution/rules redesign (v0.1.11)
+
+- [ ] 14.1 Remove `constitution` config key from types/schema/loader.
+- [ ] 14.2 Auto-discover project `.opencode/opencode-dev-framework/rules/*.md`
+  as a local override.
+- [ ] 14.3 Keep explicit `rules` config (`replace`/`append`).
+- [ ] 14.4 Implement `style_guide` injection.
+- [ ] 14.5 Add local rules directory to `templates/`.
+- [ ] 14.6 Update tests for local override and style guide.
+- [ ] 14.7 Update README, `03-config-spec.md`, `08-notes.md`, and this
+  checklist.
+- [ ] 14.8 Bump version to `0.1.11`, tag.
+
 ## Notes for the implementer
 
 - Do all tests first; use the stub host.

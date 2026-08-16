@@ -6,8 +6,7 @@ import type { ResolvedConfig } from "./types.js";
 /**
  * Directory containing the constitution bundled with the plugin package.
  * Built code lives in `dist/`, so `../rules` resolves to the package root at
- * runtime; during tests (ts source) it resolves the same way relative to
- * `src/`.
+ * runtime; during tests (ts source) it resolves the same way relative to `src/`.
  */
 export const BUNDLED_CONSTITUTION_DIR = join(
   dirname(fileURLToPath(import.meta.url)),
@@ -15,21 +14,18 @@ export const BUNDLED_CONSTITUTION_DIR = join(
   "rules",
 );
 
-/**
- * Kept for backward compatibility with tests and docs. The bundled
- * constitution is now loaded from all `.md` files in `BUNDLED_CONSTITUTION_DIR`.
- */
-export const BUNDLED_CONSTITUTION_PATH = join(BUNDLED_CONSTITUTION_DIR, "constitution.md");
+/** Namespaced directory inside the project for local rule overrides. */
+export const LOCAL_RULES_DIR = ".opencode/opencode-dev-framework/rules";
 
 export interface ConstitutionResult {
   /** Constitution text to inject, or null when nothing should be injected. */
   constitution: string | null;
   source: "custom" | "bundled" | null;
-  /** Human-readable warning when a configured constitution could not be read. */
+  /** Human-readable warning when a configured rule file could not be read. */
   warning?: string;
 }
 
-async function readConstitution(path: string): Promise<string | null> {
+async function readRuleFile(path: string): Promise<string | null> {
   try {
     const content = await readFile(path, "utf8");
     return content.trim() === "" ? null : content;
@@ -43,7 +39,7 @@ async function readConstitution(path: string): Promise<string | null> {
  * separated by blank lines. Returns null when the directory is missing or
  * contains no non-empty markdown files.
  */
-async function readConstitutionDir(dir: string): Promise<string | null> {
+async function readRuleDir(dir: string): Promise<string | null> {
   try {
     const entries = await readdir(dir, { withFileTypes: true });
     const files = entries
@@ -74,7 +70,7 @@ async function readRulesFiles(
   const warnings: string[] = [];
   for (const rawPath of paths) {
     const path = isAbsolute(rawPath) ? rawPath : resolve(directory, rawPath);
-    const content = await readConstitution(path);
+    const content = await readRuleFile(path);
     if (content !== null) {
       parts.push(content);
     } else {
@@ -88,18 +84,17 @@ async function readRulesFiles(
  * Loads the constitution to inject for a session.
  *
  * - `off` profile never injects anything.
- * - A configured `constitution` path wins and replaces everything else (bundled
- *   rules and `rules` are ignored).
- * - Without `constitution`:
- *   - `rules` with `mode: replace` (the default) loads only those rule files.
- *   - `rules` with `mode: append` loads the bundled constitution first, then
- *     the listed rule files.
- *   - If neither `constitution` nor `rules` is set, the bundled constitution is
- *     used.
+ * - Explicit `rules` config wins:
+ *   - `rules` as an array (or `mode: replace`) loads only those rule files.
+ *   - `rules: { mode: append, files: [...] }` loads the bundled/local rules
+ *     first, then the listed files.
+ * - If no explicit `rules` config is set, the plugin auto-discovers
+ *   `.opencode/opencode-dev-framework/rules/*.md` in the project root. If that
+ *   directory exists and contains markdown files, it replaces the bundled
+ *   rules.
+ * - If no local override exists, the bundled `rules/*.md` files are used.
  * - Missing rule files produce warnings but do not stop other files from
  *   loading.
- * - When the bundled constitution directory itself cannot be read and no
- *   custom source is available, nothing is injected and a warning is returned.
  */
 export async function loadConstitution(
   config: ResolvedConfig,
@@ -109,48 +104,50 @@ export async function loadConstitution(
     return { constitution: null, source: null };
   }
 
+  const cwd = directory ?? process.cwd();
   const warnings: string[] = [];
   const parts: string[] = [];
   let source: ConstitutionResult["source"] = null;
 
-  if (config.constitution) {
-    const customPath = isAbsolute(config.constitution)
-      ? config.constitution
-      : resolve(directory ?? process.cwd(), config.constitution);
-    const custom = await readConstitution(customPath);
-    if (custom !== null) {
-      parts.push(custom);
-      source = "custom";
-    } else {
-      const bundled = await readConstitutionDir(BUNDLED_CONSTITUTION_DIR);
-      if (bundled !== null) {
-        parts.push(bundled);
-        source = "bundled";
-      }
-      warnings.push(
-        `Could not read configured constitution at ${customPath}; using bundled constitution.`,
-      );
-    }
-  } else if (config.rules && config.rules.files.length > 0) {
-    const rulesResult = await readRulesFiles(config.rules.files, directory ?? process.cwd());
+  if (config.rules && config.rules.files.length > 0) {
+    const rulesResult = await readRulesFiles(config.rules.files, cwd);
     if (rulesResult.content !== null) {
       parts.push(rulesResult.content);
       source = "custom";
     }
     warnings.push(...rulesResult.warnings);
     if (config.rules.mode === "append") {
-      const bundled = await readConstitutionDir(BUNDLED_CONSTITUTION_DIR);
-      if (bundled !== null) {
-        // Prepend bundled content so the explicit rules come last.
-        parts.unshift(bundled);
-        source = "bundled";
+      const local = await readRuleDir(resolve(cwd, LOCAL_RULES_DIR));
+      const bundled = await readRuleDir(BUNDLED_CONSTITUTION_DIR);
+      const base = local ?? bundled;
+      if (base !== null) {
+        parts.unshift(base);
+        source = local !== null ? "custom" : "bundled";
       }
     }
   } else {
-    const bundled = await readConstitutionDir(BUNDLED_CONSTITUTION_DIR);
-    if (bundled !== null) {
-      parts.push(bundled);
-      source = "bundled";
+    const local = await readRuleDir(resolve(cwd, LOCAL_RULES_DIR));
+    if (local !== null) {
+      parts.push(local);
+      source = "custom";
+    } else {
+      const bundled = await readRuleDir(BUNDLED_CONSTITUTION_DIR);
+      if (bundled !== null) {
+        parts.push(bundled);
+        source = "bundled";
+      }
+    }
+  }
+
+  if (config.style_guide) {
+    const stylePath = isAbsolute(config.style_guide)
+      ? config.style_guide
+      : resolve(cwd, config.style_guide);
+    const style = await readRuleFile(stylePath);
+    if (style !== null) {
+      parts.push(`# Style Guide\n\n${style}`);
+    } else {
+      warnings.push(`Could not read style guide at ${stylePath}; skipping.`);
     }
   }
 

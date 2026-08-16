@@ -132,22 +132,17 @@ on_edit:
 
 Globs to skip for format/lint.
 
-### `constitution`
-
-- Type: `string`
-- Default: none (bundled rules are used)
-
-Path to a custom Markdown constitution file (absolute or relative to the
-project root). When set, it **replaces** the bundled constitution and any
-`rules` config is ignored. If the file cannot be read, the plugin logs a
-warning and falls back to the bundled rules.
-
 ### `rules`
 
 - Type: `string[] | { mode: "replace" | "append"; files: string[] }`
-- Default: none (bundled rules are used)
+- Default: auto-discover `.opencode/opencode-dev-framework/rules/*.md`, otherwise bundled
 
-Explicit Markdown rule files to load instead of the bundled constitution.
+Markdown rule files that form the injected constitution.
+
+**Auto-discovery:** if the project contains
+`.opencode/opencode-dev-framework/rules/*.md`, those files replace the bundled
+rules. This is the recommended way to add project-specific rules without
+editing config.
 
 **Array form (default mode is `replace`):**
 
@@ -157,7 +152,7 @@ rules:
   - CONTRIBUTING.md
 ```
 
-Only those files are injected; the bundled `rules/*.md` files are ignored.
+Only those files are injected; auto-discovered and bundled rules are ignored.
 
 **Object form:**
 
@@ -168,18 +163,17 @@ rules:
     - docs/team-rules.md
 ```
 
-`mode: replace` behaves like the array form. `mode: append` loads the bundled
-constitution first, then the listed files. Missing files produce warnings but
-do not stop other files from loading.
-
-If `constitution` is also set, `rules` is ignored.
+`mode: replace` behaves like the array form. `mode: append` loads the
+bundled/local rules first, then the listed files. Missing files produce warnings
+but do not stop other files from loading.
 
 ### `style_guide`
 
 - Type: `string`
 - Default: auto-detect
 
-Path to a project style guide to inject into context.
+Path to a project style guide to inject into context, appended after the
+constitution. If the file cannot be read, a warning is logged.
 
 ## Profile default overrides
 
