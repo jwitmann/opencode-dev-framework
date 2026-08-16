@@ -5,7 +5,7 @@ import type { Hooks, PluginInput } from "@opencode-ai/plugin";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildHooks } from "../src/index";
 import type { LogFn } from "../src/logger";
-import { BUNDLED_CONSTITUTION_PATH, injectConstitution, loadConstitution } from "../src/rules";
+import { BUNDLED_CONSTITUTION_DIR, BUNDLED_CONSTITUTION_PATH, injectConstitution, loadConstitution } from "../src/rules";
 import type { Config, ResolvedConfig } from "../src/types";
 import { resolveConfig } from "../src/config";
 
@@ -19,12 +19,17 @@ async function makeTempDir(): Promise<string> {
   return mkdtemp(join(tmpdir(), "odf-rules-"));
 }
 
-describe("BUNDLED_CONSTITUTION_PATH", () => {
-  it("points at an existing, non-empty constitution file", async () => {
+describe("bundled constitution", () => {
+  it("loads all numbered rule files from the bundled rules directory", async () => {
     const result = await loadConstitution(resolve({ profile: "standard" }));
     expect(result.source).toBe("bundled");
-    expect(result.constitution).toContain("Project Constitution");
+    expect(result.constitution).toContain("Activation Gate");
+    expect(result.constitution).toContain("Quality Bar");
+    expect(result.constitution).toContain("Match Existing Patterns");
+    expect(result.constitution).toContain("Testing Discipline");
+    expect(result.constitution).toContain("Delegation");
     expect(BUNDLED_CONSTITUTION_PATH).toMatch(/rules\/constitution\.md$/);
+    expect(BUNDLED_CONSTITUTION_DIR).toMatch(/rules$/);
   });
 });
 
