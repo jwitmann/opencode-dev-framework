@@ -138,18 +138,41 @@ Globs to skip for format/lint.
 - Default: none (bundled rules are used)
 
 Path to a custom Markdown constitution file (absolute or relative to the
-project root). When set, it **replaces** the bundled constitution. If the file
-cannot be read, the plugin logs a warning and falls back to the bundled rules.
+project root). When set, it **replaces** the bundled constitution and any
+`rules` config is ignored. If the file cannot be read, the plugin logs a
+warning and falls back to the bundled rules.
 
 ### `rules`
 
-- Type: `string[]`
-- Default: `[]`
+- Type: `string[] | { mode: "replace" | "append"; files: string[] }`
+- Default: none (bundled rules are used)
 
-Paths to additional Markdown rule files to **append** to the injected
-constitution, after the bundled (or custom `constitution`) content. The bundled
-constitution is the set of numbered files in the plugin's `rules/` directory,
-loaded in sorted filename order.
+Explicit Markdown rule files to load instead of the bundled constitution.
+
+**Array form (default mode is `replace`):**
+
+```yaml
+rules:
+  - docs/team-rules.md
+  - CONTRIBUTING.md
+```
+
+Only those files are injected; the bundled `rules/*.md` files are ignored.
+
+**Object form:**
+
+```yaml
+rules:
+  mode: append
+  files:
+    - docs/team-rules.md
+```
+
+`mode: replace` behaves like the array form. `mode: append` loads the bundled
+constitution first, then the listed files. Missing files produce warnings but
+do not stop other files from loading.
+
+If `constitution` is also set, `rules` is ignored.
 
 ### `style_guide`
 

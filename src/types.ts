@@ -46,6 +46,13 @@ export interface OnEditConfig {
   lint: boolean;
 }
 
+export interface RulesConfig {
+  /** Default is `replace` for the bundled constitution. */
+  mode: "replace" | "append";
+  /** Paths to Markdown rule files (absolute or relative to project root). */
+  files: string[];
+}
+
 /**
  * Raw config as parsed from a config file. Every field is optional; defaults
  * are applied during resolution (see resolveConfig in config.ts).
@@ -61,7 +68,7 @@ export interface Config {
   exclude?: string[];
   /** Path to a custom constitution file (absolute or relative to project root). */
   constitution?: string;
-  rules?: string[];
+  rules?: string[] | RulesConfig;
   style_guide?: string;
 }
 
@@ -81,6 +88,6 @@ export interface ResolvedConfig {
   on_edit: OnEditConfig;
   exclude: string[];
   constitution?: string;
-  rules?: string[];
+  rules?: RulesConfig;
   style_guide?: string;
 }

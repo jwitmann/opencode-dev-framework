@@ -68,7 +68,15 @@ const configSchema = z.object({
     .optional(),
   exclude: z.array(z.string()).optional(),
   constitution: z.string().optional(),
-  rules: z.array(z.string()).optional(),
+  rules: z
+    .union([
+      z.array(z.string()),
+      z.object({
+        mode: z.enum(["replace", "append"]),
+        files: z.array(z.string()),
+      }),
+    ])
+    .optional(),
   style_guide: z.string().optional(),
 });
 
@@ -227,7 +235,7 @@ export function mapFlatConfig(flat: Record<string, unknown>): Config {
         config.constitution = String(value);
         break;
       case "rules":
-        config.rules = splitGlobs(value);
+        config.rules = { mode: "replace", files: splitGlobs(value) };
         break;
       case "style_guide":
         config.style_guide = String(value);
@@ -304,7 +312,7 @@ export function resolveConfig(raw: Config, configPath?: string): ResolvedConfig 
     },
     exclude: raw.exclude ?? [],
     constitution: raw.constitution,
-    rules: raw.rules,
+    rules: Array.isArray(raw.rules) ? { mode: "replace", files: raw.rules } : raw.rules,
     style_guide: raw.style_guide,
   };
 }

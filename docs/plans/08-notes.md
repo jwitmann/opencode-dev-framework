@@ -166,6 +166,15 @@ Keep both. The custom tool lets the agent call verification explicitly; the slas
   the project by `df init` or the `dev_framework_init` tool; they do not appear
   just because the plugin is loaded.
 
+## v0.1.10 release decisions
+
+- **`config.rules` semantics changed from append to explicit replace/append.**
+  The original `dev-framework` has no `rules` key; the plugin invented it. The
+  previous "append after bundled" behavior was confusing. As of v0.1.10,
+  `rules` can be an array (replace the bundled constitution) or an object with
+  `mode: "replace" | "append"` and `files`. `constitution` still wins over
+  everything when set.
+
 ## v0.1.8 release decisions
 
 - **Logging must never throw, but total swallow is dangerous.** During

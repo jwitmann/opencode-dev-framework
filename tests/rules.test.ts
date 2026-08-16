@@ -104,10 +104,21 @@ describe("loadConstitution", () => {
     expect(result.warning).toContain("empty.md");
   });
 
-  it("appends configured rules files to the bundled constitution", async () => {
+  it("replaces the bundled constitution with configured rules files (default mode)", async () => {
     await writeFile(join(dir, "TEAM.md"), "# Team Rules\nDo the thing.");
     const result = await loadConstitution(
       resolve({ profile: "standard", rules: ["TEAM.md"] }),
+      dir,
+    );
+    expect(result.source).toBe("custom");
+    expect(result.constitution).toContain("Team Rules");
+    expect(result.constitution).not.toContain("Quality Bar");
+  });
+
+  it("appends configured rules files to the bundled constitution when mode is append", async () => {
+    await writeFile(join(dir, "TEAM.md"), "# Team Rules\nDo the thing.");
+    const result = await loadConstitution(
+      resolve({ profile: "standard", rules: { mode: "append", files: ["TEAM.md"] } }),
       dir,
     );
     expect(result.source).toBe("bundled");
@@ -118,7 +129,7 @@ describe("loadConstitution", () => {
     );
   });
 
-  it("appends configured rules files to a custom constitution", async () => {
+  it("ignores rules when a custom constitution is configured", async () => {
     await writeFile(join(dir, "TEAM.md"), "# Team Rules");
     await writeFile(join(dir, "EXTRA.md"), "# Extra Rules");
     const result = await loadConstitution(
@@ -127,7 +138,7 @@ describe("loadConstitution", () => {
     );
     expect(result.source).toBe("custom");
     expect(result.constitution).toContain("Team Rules");
-    expect(result.constitution).toContain("Extra Rules");
+    expect(result.constitution).not.toContain("Extra Rules");
   });
 
   it("warns and skips missing rules files", async () => {
@@ -135,9 +146,9 @@ describe("loadConstitution", () => {
       resolve({ profile: "standard", rules: ["missing.md"] }),
       dir,
     );
-    expect(result.source).toBe("bundled");
+    expect(result.source).toBeNull();
+    expect(result.constitution).toBeNull();
     expect(result.warning).toContain("missing.md");
-    expect(result.constitution).toBeTruthy();
   });
 });
 

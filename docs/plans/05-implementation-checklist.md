@@ -214,7 +214,8 @@ Use this as the source of truth during implementation. Check items off as they a
 
 - [x] 11.1 Split bundled constitution into numbered rule files
   (`rules/00-activation.md` … `40-delegation.md`), loaded sorted.
-- [x] 11.2 `constitution` config key overrides bundled rules; `rules` appends.
+- [x] 11.2 `constitution` config key overrides bundled rules; `rules` replaces
+  them by default or appends when given `mode: append`.
 - [x] 11.3 Project templates in `templates/` (default config, `/df-verify` +
   `/df-profile` commands, agents: test-grounder / pattern-guardian /
   style-enforcer, skills: peer-review / ground-in-tests / match-patterns).
@@ -239,6 +240,15 @@ Use this as the source of truth during implementation. Check items off as they a
 - [x] 12.4 Correct README / architecture docs: plugin does not automatically
   inject formatter/permission fragments into OpenCode config.
 - [x] 12.5 Bump version to `0.1.9`, tag `v0.1.9`.
+
+## Phase 13 — `config.rules` explicit replace/append (v0.1.10)
+
+- [ ] 13.1 Change `rules` from implicit append to explicit replace/append:
+  array form = replace; object form = `{ mode: "replace" | "append"; files: string[] }`.
+- [ ] 13.2 Update `src/types.ts`, `src/config.ts` schema/flat mapping/resolve,
+  `src/rules.ts` loader, and tests.
+- [ ] 13.3 Update `03-config-spec.md`, `08-notes.md`, and this checklist.
+- [ ] 13.4 Bump version to `0.1.10` and tag.
 
 ## Notes for the implementer
 
