@@ -31,10 +31,14 @@ reimplemented as an OpenCode-native plugin.
   with sensible commands; `df profile <name>` changes the profile from the
   shell; `df status` / `df version` report template state and the version.
 - **Slash commands.** `/df-status`, `/df-verify`, `/df-profile`, and `/df-help`
-  are registered by the plugin. `/df-status` and `/df-help` are handled by a
-  dedicated TUI plugin module and open an instant modal dialog, so they never
-  reach the LLM. `/df-profile` and `/df-verify` still run on the server side
-  because they mutate state or execute commands.
+  are registered by the plugin as TUI commands (via the bundled `./tui` companion
+  module). All four open an instant modal dialog and are never fed to the LLM:
+  - `/df-status` — shows the budget/guardrails/gate state in a modal.
+  - `/df-help` — lists the available dev-framework commands in a modal.
+  - `/df-profile <profile>` — opens a picker to switch the active profile.
+  - `/df-verify` — runs the completion gate and shows the result in a modal.
+  (The `dev_framework_init` and `dev_framework_set_profile` custom *tools* are
+  still available for in-agent use.)
 
 ## Profiles
 
@@ -175,23 +179,23 @@ complete example.
 
 ## Slash commands
 
-The plugin registers slash commands directly (no template files required). The
-status and help commands are handled by a separate TUI plugin module that
-OpenCode loads automatically alongside the main plugin, so they open instantly in
-a modal dialog and are never fed back to the LLM:
+All dev-framework slash commands are registered by the bundled `./tui` companion
+module (see *Local development* above for the `tui.json` requirement). They open
+instantly in a modal dialog and are **never** fed back to the LLM:
 
 - `/df-status` — shows the current profile, guardrails, completion gate, and
   configured commands in a modal dialog.
 - `/df-help` — lists the available dev-framework commands in a modal dialog.
-
-Server-side slash commands (no TUI module required):
-
-- `/df-verify` — runs the configured verification suite manually.
-- `/df-profile <profile>` — changes the active profile and applies it
-  immediately.
+- `/df-profile <profile>` — opens a picker to change the active profile; the
+  change is written to the config file and applied immediately.
+- `/df-verify` — runs the configured verification suite (the completion gate)
+  manually and shows a pass/fail summary in a modal.
 
 You can still run `df init` to install the bundled agents, skills, and default
-config; the commands themselves are provided by the plugin.
+config; the commands themselves are provided by the plugin. The
+`dev_framework_init` and `dev_framework_set_profile` custom *tools* remain
+available for in-agent use (e.g. when the model wants to change the profile
+itself).
 
 ## Limitations
 

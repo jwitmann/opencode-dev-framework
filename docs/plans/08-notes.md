@@ -364,6 +364,44 @@ Keep both. The custom tool lets the agent call verification explicitly; the slas
   single `opencode.json` entry on 1.18.18+.
 - **Validation:** 165 tests pass; format/lint/lint:md/typecheck/build all green.
 
+## v0.1.24 release decisions
+
+- **`/df-profile` and `/df-verify` moved from prompt commands to TUI commands.**
+  Previously they were registered in the server `config` hook
+  (`typedConfig.command["df-profile"] = { template: "" }`). OpenCode expands
+  prompt commands and feeds the argument to the model as a user turn, so
+  `/df-profile standard` leaked "standard" into the LLM. The fix removes them
+  from the server `config` hook entirely and registers **all four** `/df-*`
+  commands (`df-status`, `df-help`, `df-profile`, `df-verify`) in the TUI module
+  via `api.keymap.registerLayer`. The server `command.execute.before` hook now
+  only returns a hint for unknown `/df-*` commands. No dev-framework slash
+  command is ever a model turn.
+- **Shared command logic extracted to `src/commands.ts`.** Added
+  `changeProfile(directory, profile)` (writes the profile line via
+  `setProfileInFile`, returns a message) and `verifyGate(run, directory, config?,
+  changedFiles=[])` (runs `runGate`, returns `{ report, summary }`). The TUI
+  module (`tui.tsx`) imports these from `./dist/commands.js` and reuses them for
+  the `DialogSelect`/`DialogAlert` flows; the server `dev_framework_set_profile`
+  tool now calls `changeProfile` too, so both paths share one implementation.
+- **Out-of-process config edits now reload automatically.** The TUI `/df-profile`
+  writes the config file directly (outside the server process), so the server's
+  in-memory config would go stale. Added `HookState.configMtime` (set initially
+  via `stat` in `devFramework`) and a `reloadConfigIfChanged(state)` helper in
+  `src/index.ts` that stats the config file and, on mtime change, reloads config
+  constitution via `loadConfig`/`loadConstitution`. Wired into every
+  enforcement hook (`tool.execute.before`, `event`, `experimental.session.stopping`,
+  `experimental.chat.system.transform`). This removes the need for a plugin
+  restart after a `/df-profile` change.
+- **`package.json` gained a `pretest` script (`npm run build`).** `tui.tsx`
+  imports from `./dist/*.js` (gitignored), and CI runs `test` before `build`, so
+  `pretest` guarantees the dist exists for the TUI tests.
+- **Tests rewritten.** `tests/commands.test.ts` covers `changeProfile` (edit +
+  create) and `verifyGate` (pass + fail), asserts the `config` hook registers NO
+  `df-*` prompt commands, and checks the unknown-`/df-*` hint.
+  `tests/tui.test.ts` expects 4 commands and asserts modal-open behavior for
+  `df-status`/`df-profile`/`df-verify`.
+- **Validation:** 165 tests pass; format/lint/lint:md/typecheck/build all green.
+
 ## References
 
 - OpenCode plugin docs: <https://opencode.ai/docs/plugins>

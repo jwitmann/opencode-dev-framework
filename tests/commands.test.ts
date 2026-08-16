@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { PluginInput } from "@opencode-ai/plugin";
@@ -6,7 +6,10 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildHooks } from "../src/index";
 import { resolveConfig } from "../src/config";
 import { getHookState } from "../src/registry";
+import { changeProfile, verifyGate } from "../src/commands";
+import { clearConfigCache } from "../src/config";
 import type { LogFn } from "../src/logger";
+import type { RunCommand } from "../src/host";
 
 let dir: string;
 
@@ -28,36 +31,13 @@ function makeConfig(raw = {}) {
   return resolveConfig({ profile: "standard", ...raw }, join(dir, ".opencode-dev-framework.yml"));
 }
 
-type Toast = { message: string; variant?: string };
-
-function buildWithToast(
-  raw = {},
-  extra?: Partial<{ run: Parameters<typeof buildHooks>[4] }>,
-): {
-  hooks: ReturnType<typeof buildHooks>;
-  toasts: Toast[];
-} {
-  const toasts: Toast[] = [];
-  const showToast = (message: string, variant?: "info" | "success" | "warning" | "error") => {
-    toasts.push({ message, variant });
-  };
-  const ctx = makeCtx(dir);
-  // Inject the toast capture by monkeypatching the registry after build.
-  const hooks = buildHooks(ctx, makeConfig(raw), noopLog, extra?.run);
-  const state = getHookState(dir);
-  if (state) {
-    state.showToast = showToast;
-  }
-  return { hooks, toasts };
-}
-
 describe("config hook", () => {
-  it("registers df-profile and df-verify slash commands", async () => {
+  it("registers no prompt commands (df-* are TUI commands in tui.tsx)", async () => {
     const hooks = buildHooks(makeCtx(dir), makeConfig(), noopLog);
     const config: { command?: Record<string, { template?: string; description?: string }> } = {};
     await hooks.config?.(config as never);
-    expect(config.command?.["df-profile"]).toBeDefined();
-    expect(config.command?.["df-verify"]).toBeDefined();
+    expect(config.command?.["df-profile"]).toBeUndefined();
+    expect(config.command?.["df-verify"]).toBeUndefined();
     expect(config.command?.["df-status"]).toBeUndefined();
     expect(config.command?.["df-help"]).toBeUndefined();
   });
@@ -73,43 +53,13 @@ describe("config hook", () => {
 });
 
 describe("command.execute.before hook", () => {
-  it("df-profile changes the profile in config and state", async () => {
-    const { hooks, toasts } = buildWithToast();
-    await hooks["command.execute.before"]?.({
-      command: "df-profile",
-      sessionID: "s1",
-      arguments: "strict",
-    } as never);
-    expect(toasts[0].message).toContain('profile set to "strict"');
-    expect(toasts[0].variant).toBe("success");
-    expect(getHookState(dir)?.config.profile).toBe("strict");
-  });
-
-  it("df-profile rejects invalid profiles", async () => {
-    const { hooks, toasts } = buildWithToast();
-    await hooks["command.execute.before"]?.({
-      command: "df-profile",
-      sessionID: "s1",
-      arguments: "nope",
-    } as never);
-    expect(toasts[0].message).toContain("Invalid profile");
-    expect(toasts[0].variant).toBe("warning");
-    expect(getHookState(dir)?.config.profile).toBe("standard");
-  });
-
-  it("df-verify runs the completion gate and reports the result", async () => {
-    const run = async () => ({ stdout: "", stderr: "", exitCode: 0, timedOut: false });
-    const { hooks, toasts } = buildWithToast({ commands: { test: "echo ok" } }, { run });
-    await hooks["command.execute.before"]?.({
-      command: "df-verify",
-      sessionID: "s1",
-      arguments: "",
-    } as never);
-    expect(toasts[0].message).toContain("completion gate");
-  });
-
-  it("unknown df-* command returns a helpful message", async () => {
-    const { hooks, toasts } = buildWithToast();
+  it("unknown df-* command returns a helpful hint", async () => {
+    const toasts: { message: string }[] = [];
+    const hooks = buildHooks(makeCtx(dir), makeConfig(), noopLog);
+    const state = getHookState(dir);
+    if (state) {
+      state.showToast = (message) => toasts.push({ message });
+    }
     await hooks["command.execute.before"]?.({
       command: "df-foobar",
       sessionID: "s1",
@@ -117,6 +67,56 @@ describe("command.execute.before hook", () => {
     } as never);
     expect(toasts[0].message).toContain("Unknown command");
     expect(toasts[0].message).toContain("/df-help");
-    expect(toasts[0].variant).toBe("warning");
+  });
+});
+
+describe("changeProfile helper", () => {
+  it("edits the profile key in the config file", async () => {
+    await writeFile(
+      join(dir, ".opencode-dev-framework.yml"),
+      "profile: standard\n\nprotect:\n  - .env\n",
+    );
+    clearConfigCache();
+    const message = await changeProfile(dir, "strict");
+    expect(message).toContain('profile set to "strict"');
+    const content = await readFile(join(dir, ".opencode-dev-framework.yml"), "utf8");
+    expect(content).toContain("profile: strict");
+    // Original content preserved (text edit, not re-serialize).
+    expect(content).toContain("protect:");
+  });
+
+  it("creates the config file when missing", async () => {
+    const message = await changeProfile(dir, "advisory");
+    expect(message).toContain('profile set to "advisory"');
+    const content = await readFile(join(dir, ".opencode-dev-framework.yml"), "utf8");
+    expect(content).toContain("profile: advisory");
+  });
+});
+
+describe("verifyGate helper", () => {
+  it("runs the gate and reports success", async () => {
+    const config = resolveConfig(
+      { profile: "standard", commands: { test: "echo ok" } },
+      join(dir, ".opencode-dev-framework.yml"),
+    );
+    const run: RunCommand = async () => ({ stdout: "", stderr: "", exitCode: 0, timedOut: false });
+    const { report, summary } = await verifyGate(run, dir, config);
+    expect(report.ok).toBe(true);
+    expect(summary).toContain("completion gate");
+  });
+
+  it("reports failure when a command exits non-zero", async () => {
+    const config = resolveConfig(
+      { profile: "standard", commands: { test: "exit 1" }, gate: { skip_unchanged: false } },
+      join(dir, ".opencode-dev-framework.yml"),
+    );
+    const run: RunCommand = async () => ({
+      stdout: "",
+      stderr: "boom",
+      exitCode: 1,
+      timedOut: false,
+    });
+    const { report } = await verifyGate(run, dir, config);
+    expect(report.ok).toBe(false);
   });
 });

@@ -12,6 +12,7 @@
  */
 
 import type { Hooks, Plugin, PluginInput } from "@opencode-ai/plugin";
+import { stat } from "node:fs/promises";
 import { join } from "node:path";
 import { clearConfigCache, loadConfig } from "./config.js";
 import {
@@ -31,14 +32,12 @@ import {
   setBaseDirectory,
   setHookState,
   setSessionDirectory,
-  updateHookState,
   type HookState,
   type HostPermission,
 } from "./registry.js";
 import { injectConstitution, loadConstitution } from "./rules.js";
-import { setProfileInFile } from "./installer.js";
 import { buildTools } from "./tools.js";
-import type { Profile, ResolvedConfig } from "./types.js";
+import type { ResolvedConfig } from "./types.js";
 
 /**
  * The `experimental.session.stopping` hook was added in OpenCode PR #41811
@@ -54,6 +53,30 @@ export interface HooksWithStopping extends Hooks {
 }
 
 /**
+ * Reload the in-memory config if the config file on disk changed since we last
+ * loaded it. This makes out-of-process edits (e.g. a `/df-profile` change made
+ * from the TUI module, which writes the file directly) take effect on the next
+ * enforcement hook without restarting OpenCode.
+ */
+async function reloadConfigIfChanged(state: HookState): Promise<void> {
+  const configPath = join(state.directory, ".opencode-dev-framework.yml");
+  try {
+    const stats = await stat(configPath);
+    if (state.configMtime !== undefined && state.configMtime === stats.mtimeMs) {
+      return;
+    }
+    clearConfigCache();
+    const next = loadConfig(state.directory);
+    const { constitution } = await loadConstitution(next, state.directory);
+    state.config = next;
+    state.constitution = constitution;
+    state.configMtime = stats.mtimeMs;
+  } catch {
+    // Config file missing/unreadable — keep the current state.
+  }
+}
+
+/**
  * Build the plugin's hooks and custom tools. Exported (rather than inlined in
  * the plugin) so tests can inject a stubbed command runner and tracker.
  */
@@ -64,6 +87,7 @@ export function buildHooks(
   run: RunCommand = runCommand,
   tracker: ChangedFileTracker = createChangedFileTracker(),
   constitution: string | null = null,
+  configMtime?: number,
 ): HooksWithStopping {
   // All hook state — including the project directory — lives in the registry
   // and is looked up at call time. OpenCode's Effect runtime stripped closure
@@ -96,6 +120,7 @@ export function buildHooks(
     constitution,
     blockCounts: new Map(),
     showToast,
+    configMtime,
   });
 
   return {
@@ -112,83 +137,34 @@ export function buildHooks(
         state.hostPermissions = typedConfig.permission ?? [];
       }
 
-      if (!typedConfig.command) {
-        typedConfig.command = {};
-      }
-      typedConfig.command["df-profile"] = {
-        template: "",
-        description: "Change the dev-framework profile (off, advisory, standard, strict)",
-      };
-      typedConfig.command["df-verify"] = {
-        template: "",
-        description: "Run the dev-framework completion gate manually",
-      };
+      // NOTE: `/df-profile` and `/df-verify` are intentionally NOT registered
+      // here. Registering a command in the OpenCode config makes it a *prompt*
+      // command, which feeds its argument to the model as a user turn. To keep
+      // them out of the model context they are registered as TUI commands in
+      // `tui.tsx` (keymap.registerLayer) instead.
     },
 
     "command.execute.before": async (input) => {
+      // `/df-profile` and `/df-verify` are TUI commands (see tui.tsx), so they
+      // never reach this server-side handler. This handler only exists to give
+      // a helpful hint for mistyped `/df-*` commands that OpenCode still routes
+      // here as prompt commands.
+      if (!input.command.startsWith("df-")) {
+        return;
+      }
       const state = getStateForSession(input.sessionID);
       if (!state) {
-        // The plugin never initialized for this session — surface it without
-        // touching the chat (a synthetic part would be fed back to the model).
         getHookState()?.showToast?.(
           "[opencode-dev-framework] plugin state is not available for this session.",
           "error",
         );
         return;
       }
-
-      const directory = state.directory;
-      const reply = (text: string, variant: "info" | "success" | "warning" | "error" = "info") => {
-        state.showToast?.(text, variant);
-      };
-
-      if (input.command === "df-profile") {
-        const profile = input.arguments.trim().toLowerCase();
-        const validProfiles: Profile[] = ["off", "advisory", "standard", "strict"];
-        if (!validProfiles.includes(profile as Profile)) {
-          reply(
-            `Invalid profile "${profile}". Valid values: ${validProfiles.join(", ")}.`,
-            "warning",
-          );
-          return;
-        }
-
-        const configPath = join(state.directory, ".opencode-dev-framework.yml");
-        await setProfileInFile(configPath, profile as Profile);
-        clearConfigCache();
-        const nextConfig = loadConfig(state.directory);
-        const { constitution } = await loadConstitution(nextConfig, state.directory);
-        updateHookState(state.directory, { config: nextConfig, constitution });
-
-        reply(
-          `opencode-dev-framework profile set to "${profile}". Change applied immediately.`,
-          "success",
-        );
-        await state.log("info", "df-profile command executed", { directory, profile });
-        return;
-      }
-
-      if (input.command === "df-verify") {
-        const changedFiles = state.tracker.getChangedFiles();
-        const report = await runGate(state.run, state.config, changedFiles, {
-          cwd: state.directory,
-        });
-        const summary = summarizeGate(report);
-        reply(summary, report.ok ? "success" : "error");
-        const level = report.ok ? "info" : "error";
-        await state.log(level, "df-verify command executed", {
-          directory,
-          ok: report.ok,
-          ran: report.ran,
-        });
-        return;
-      }
-
-      // Unknown /df-* command — give a helpful response.
-      if (input.command.startsWith("df-")) {
-        reply(`Unknown command /${input.command}. Try /df-help.`, "warning");
-        await state.log("warn", "unknown df command", { directory, command: input.command });
-      }
+      state.showToast?.(`Unknown command /${input.command}. Try /df-help.`, "warning");
+      await state.log("warn", "unknown df command", {
+        directory: state.directory,
+        command: input.command,
+      });
     },
 
     "experimental.chat.system.transform": async (input, output) => {
@@ -196,6 +172,7 @@ export function buildHooks(
       if (!state) {
         return;
       }
+      await reloadConfigIfChanged(state);
       if (input.sessionID) {
         setSessionDirectory(input.sessionID, state.directory);
       }
@@ -213,6 +190,7 @@ export function buildHooks(
           "[opencode-dev-framework] plugin state is not available; guardrail cannot evaluate this tool call",
         );
       }
+      await reloadConfigIfChanged(state);
       const result = checkToolCall(
         state.config,
         input.tool,
@@ -239,7 +217,11 @@ export function buildHooks(
 
     "experimental.session.stopping": async (input, output) => {
       const state = getStateForSession(input.sessionID);
-      if (!state?.config.gate || state.config.profile === "off") {
+      if (!state) {
+        return;
+      }
+      await reloadConfigIfChanged(state);
+      if (!state.config.gate || state.config.profile === "off") {
         return;
       }
 
@@ -294,6 +276,7 @@ export function buildHooks(
       if (!state) {
         return;
       }
+      await reloadConfigIfChanged(state);
       if (event.type === "file.edited") {
         const filePath = event.properties.file;
         state.tracker.add(filePath, state.directory);
@@ -411,7 +394,22 @@ export const devFramework: Plugin = async (ctx) => {
     await log("warn", warning);
   }
 
-  return buildHooks(ctx, config, log, runCommand, createChangedFileTracker(), constitution);
+  let configMtime: number | undefined;
+  try {
+    configMtime = (await stat(join(ctx.directory, ".opencode-dev-framework.yml"))).mtimeMs;
+  } catch {
+    // Config file may not exist yet; reloadConfigIfChanged will pick it up.
+  }
+
+  return buildHooks(
+    ctx,
+    config,
+    log,
+    runCommand,
+    createChangedFileTracker(),
+    constitution,
+    configMtime,
+  );
 };
 
 export default devFramework;

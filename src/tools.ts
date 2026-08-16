@@ -1,10 +1,10 @@
-import { join } from "node:path";
 import { tool } from "@opencode-ai/plugin";
 import { loadConfig, clearConfigCache } from "./config.js";
-import { installTemplates, setProfileInFile, writeDetectedConfig } from "./installer.js";
+import { installTemplates, writeDetectedConfig } from "./installer.js";
 import { getHookState, updateHookState } from "./registry.js";
 import { loadConstitution } from "./rules.js";
 import { renderStatus } from "./format-status.js";
+import { changeProfile } from "./commands.js";
 import type { Profile } from "./types.js";
 
 const PROFILES: Profile[] = ["off", "advisory", "standard", "strict"];
@@ -76,8 +76,7 @@ export function buildTools(_ctx: {
           return `Invalid profile "${args.profile}". Valid values: ${PROFILES.join(", ")}.`;
         }
 
-        const configPath = join(targetDir, ".opencode-dev-framework.yml");
-        await setProfileInFile(configPath, profile);
+        const message = await changeProfile(targetDir, profile);
 
         // Reload config and constitution so the change takes effect immediately.
         clearConfigCache();
@@ -89,7 +88,7 @@ export function buildTools(_ctx: {
           updateHookState(targetDir, { config, constitution });
         }
 
-        return `opencode-dev-framework profile set to "${profile}" in ${configPath}. Change applied immediately.`;
+        return `${message} Change applied immediately.`;
       },
     }),
 

@@ -26,6 +26,9 @@ export interface HookState {
   hostPermissions?: HostPermission[];
   /** Show a non-chat TUI toast (used for slash-command results). */
   showToast?: (message: string, variant?: "info" | "success" | "warning" | "error") => void;
+  /** mtime (ms) of the config file at last load; used to detect out-of-process
+   * edits (e.g. a `/df-profile` change made from the TUI module). */
+  configMtime?: number;
 }
 
 /**

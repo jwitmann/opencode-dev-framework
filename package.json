@@ -1,6 +1,6 @@
 {
   "name": "opencode-dev-framework",
-  "version": "0.1.23",
+  "version": "0.1.24",
   "description": "OpenCode plugin that enforces project-specific quality gates during AI coding sessions",
   "license": "MIT",
   "type": "module",
@@ -32,9 +32,11 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
+    "pretypecheck": "npm run build",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.tui.json",
     "typecheck:tui": "tsc --noEmit -p tsconfig.tui.json",
     "test": "vitest run",
+    "pretest": "npm run build",
     "lint": "biome lint .",
     "lint:fix": "biome lint --write .",
     "format:check": "biome format .",

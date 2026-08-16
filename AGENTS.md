@@ -126,7 +126,8 @@ opencode-dev-framework/
 │   ├── rules.ts            # Constitution injection
 │   ├── registry.ts         # Per-project hook state registry
 │   ├── tools.ts            # Custom tools (dev_framework_init / set_profile / status)
-│   ├── format-status.ts    # Shared status renderer for tool + slash command
+│   ├── commands.ts         # Shared slash-command logic (changeProfile / verifyGate)
+│   ├── format-status.ts    # Shared status renderer for tool + slash command TUI
 │   ├── installer.ts        # Template copy + config generation for the df CLI
 │   ├── host.ts             # Host abstraction
 │   ├── logger.ts           # Structured logging
