@@ -127,10 +127,17 @@ config: async (opencodeConfig) => {
 
 The `command.execute.before` hook looks up the session's hook state (falling
 back to the project `baseDirectory` when the session has not been mapped yet)
-and returns the result as a text part. `/df-verify` runs `runGate` directly;
-`/df-profile` edits the config file, clears the cache, reloads the config, and
-updates the in-memory hook state; `/df-status` renders the live state. Unknown
-`/df-*` commands return a hint to use `/df-help`.
+and posts the result as an ignored chat message via
+`src/messenger.ts` so it appears in the UI but is **not** fed back to the model
+as a user turn. If the messenger API is unavailable, the hook falls back to a
+text part on `output.parts`. `/df-verify` runs `runGate` directly; `/df-profile`
+edits the config file, clears the cache, reloads the config, and updates the
+in-memory hook state; `/df-status` renders the live state. Unknown `/df-*`
+commands return a hint to use `/df-help`.
+
+**Update (v0.1.16):** slash-command responses use `client.session.prompt` with
+`noReply: true` and `ignored: true` so they are displayed without being processed
+as user input.
 
 **Update (v0.1.15):** migrated from markdown command templates (under
 `templates/.opencode/commands/`) to plugin-registered, handler-backed slash

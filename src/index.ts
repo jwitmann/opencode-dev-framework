@@ -24,6 +24,7 @@ import { renderStatus } from "./format-status.js";
 import { runCommand, type RunCommand } from "./host.js";
 import { detectPreCommitAvailability, isLintFailure, lintFile, summarizeLint } from "./lint.js";
 import { createLogger, type LogFn } from "./logger.js";
+import { createMessenger, type SendMessageFn } from "./messenger.js";
 import { checkToolCall } from "./protect.js";
 import {
   clearSessionDirectory,
@@ -64,6 +65,7 @@ export function buildHooks(
   run: RunCommand = runCommand,
   tracker: ChangedFileTracker = createChangedFileTracker(),
   constitution: string | null = null,
+  sendMessage: SendMessageFn | null = createMessenger(ctx.client),
 ): HooksWithStopping {
   // All hook state — including the project directory — lives in the registry
   // and is looked up at call time. OpenCode's Effect runtime stripped closure
@@ -77,6 +79,7 @@ export function buildHooks(
     tracker,
     constitution,
     blockCounts: new Map(),
+    sendMessage,
   });
 
   return {
@@ -108,27 +111,34 @@ export function buildHooks(
         template: "",
         description: "Run the dev-framework completion gate manually",
       };
+      typedConfig.command["df-help"] = {
+        template: "",
+        description: "List the available dev-framework slash commands",
+      };
     },
 
     "command.execute.before": async (input, output) => {
       const state = getStateForSession(input.sessionID);
       if (!state) {
+        const fallback = "[opencode-dev-framework] plugin state is not available for this session.";
         output.parts.length = 0;
-        output.parts.push({
-          type: "text",
-          text: "[opencode-dev-framework] plugin state is not available for this session.",
-        } as never);
+        output.parts.push({ type: "text", text: fallback } as never);
         return;
       }
 
       const directory = state.directory;
-      const pushText = (text: string) => {
-        output.parts.length = 0;
-        output.parts.push({ type: "text", text } as never);
+      const reply = async (text: string) => {
+        if (state.sendMessage) {
+          output.parts.length = 0;
+          await state.sendMessage(input.sessionID, text);
+        } else {
+          output.parts.length = 0;
+          output.parts.push({ type: "text", text } as never);
+        }
       };
 
       if (input.command === "df-help" || input.command === "df") {
-        pushText(`df — opencode-dev-framework commands
+        await reply(`df — opencode-dev-framework commands
 
 /df-status    Show the current dev-framework state
 /df-profile   Change the profile to off, advisory, standard, or strict
@@ -139,7 +149,7 @@ export function buildHooks(
       }
 
       if (input.command === "df-status") {
-        pushText(renderStatus(state.config, state));
+        await reply(renderStatus(state.config, state));
         await state.log("info", "df-status command executed", { directory });
         return;
       }
@@ -148,7 +158,7 @@ export function buildHooks(
         const profile = input.arguments.trim().toLowerCase();
         const validProfiles: Profile[] = ["off", "advisory", "standard", "strict"];
         if (!validProfiles.includes(profile as Profile)) {
-          pushText(`Invalid profile "${profile}". Valid values: ${validProfiles.join(", ")}.`);
+          await reply(`Invalid profile "${profile}". Valid values: ${validProfiles.join(", ")}.`);
           return;
         }
 
@@ -159,7 +169,9 @@ export function buildHooks(
         const { constitution } = await loadConstitution(nextConfig, state.directory);
         updateHookState(state.directory, { config: nextConfig, constitution });
 
-        pushText(`opencode-dev-framework profile set to "${profile}". Change applied immediately.`);
+        await reply(
+          `opencode-dev-framework profile set to "${profile}". Change applied immediately.`,
+        );
         await state.log("info", "df-profile command executed", { directory, profile });
         return;
       }
@@ -170,7 +182,7 @@ export function buildHooks(
           cwd: state.directory,
         });
         const summary = summarizeGate(report);
-        pushText(summary);
+        await reply(summary);
         const level = report.ok ? "info" : "error";
         await state.log(level, "df-verify command executed", {
           directory,
@@ -182,7 +194,7 @@ export function buildHooks(
 
       // Unknown /df-* command — give a helpful response.
       if (input.command.startsWith("df-")) {
-        pushText(`Unknown command /${input.command}. Try /df-help.`);
+        await reply(`Unknown command /${input.command}. Try /df-help.`);
         await state.log("warn", "unknown df command", { directory, command: input.command });
       }
     },

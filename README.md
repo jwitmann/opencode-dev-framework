@@ -30,10 +30,12 @@ reimplemented as an OpenCode-native plugin.
 - **CLI installer.** `df init` auto-detects your language and writes a config
   with sensible commands; `df profile <name>` changes the profile from the
   shell; `df status` / `df version` report template state and the version.
-- **Slash commands.** `/df-status`, `/df-verify`, and `/df-profile` are
-  registered directly by the plugin so they work without template files.
+- **Slash commands.** `/df-status`, `/df-verify`, `/df-profile`, and `/df-help`
+  are registered directly by the plugin so they work without template files.
   `/df-status` and `/df-verify` read live in-memory state; `/df-profile`
-  updates the config and applies the change immediately.
+  updates the config and applies the change immediately; `/df-help` lists
+  the commands. Responses are posted as ignored messages so they do not get
+  re-processed as user input.
 
 ## Profiles
 

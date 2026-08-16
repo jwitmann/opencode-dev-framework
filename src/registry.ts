@@ -1,6 +1,7 @@
 import type { ChangedFileTracker } from "./gate.js";
 import type { RunCommand } from "./host.js";
 import type { LogFn } from "./logger.js";
+import type { SendMessageFn } from "./messenger.js";
 import type { ResolvedConfig } from "./types.js";
 
 export interface HostPermission {
@@ -24,6 +25,8 @@ export interface HookState {
   precommitAvailable?: boolean;
   /** Snapshot of host permissions from OpenCode's effective config. */
   hostPermissions?: HostPermission[];
+  /** Messenger for posting ignored chat messages from slash commands. */
+  sendMessage?: SendMessageFn | null;
 }
 
 /**

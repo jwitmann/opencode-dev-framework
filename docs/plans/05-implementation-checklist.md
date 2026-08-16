@@ -315,7 +315,9 @@ Use this as the source of truth during implementation. Check items off as they a
 - [x] 18.8 Add `/df-help` slash command and unknown `/df-*` command response.
 - [x] 18.9 Validate config on load; show TUI toast on parse error; add optional
   `OPENCODE_DEV_FRAMEWORK_LOG_FILE` debug logging.
-- [ ] 18.10 Run full validation suite, bump to `v0.1.16`, commit, tag.
+- [x] 18.10 Post slash-command responses as ignored chat messages via
+  `src/messenger.ts` so they are not re-processed as user input.
+- [ ] 18.11 Run full validation suite, amend `v0.1.16`.
 
 ## Notes for the implementer
 

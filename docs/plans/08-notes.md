@@ -156,6 +156,12 @@ Keep both. The custom tool lets the agent call verification explicitly; the slas
 - **Optional file logging.** Setting `OPENCODE_DEV_FRAMEWORK_LOG_FILE` appends a
   JSON line for every log call, which helps debug production runs where
   `client.app.log` may not be visible.
+- **Slash-command responses are posted as ignored messages.** As of v0.1.16,
+  `/df-status`, `/df-profile`, `/df-verify`, and `/df-help` use
+  `client.session.prompt` with `noReply: true` and `ignored: true` so the result
+  is shown in the chat but is not fed back to the model as a user turn. Before
+  this fix, writing to `output.parts` caused the status output to be processed
+  as user input on the next turn.
 
 ## Phase 10 release decisions
 

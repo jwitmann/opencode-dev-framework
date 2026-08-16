@@ -7,6 +7,7 @@ import { buildHooks } from "../src/index";
 import { resolveConfig } from "../src/config";
 import { getHookState } from "../src/registry";
 import type { LogFn } from "../src/logger";
+import type { SendMessageFn } from "../src/messenger";
 
 let dir: string;
 
@@ -32,14 +33,39 @@ function makePartsOutput(): { parts: { type: string; text: string }[] } {
   return { parts: [] };
 }
 
+function buildWithMessenger(
+  raw = {},
+  extra?: Partial<{ run: Parameters<typeof buildHooks>[4]; sendMessage: SendMessageFn }>,
+): {
+  hooks: ReturnType<typeof buildHooks>;
+  messages: { sessionID: string; text: string }[];
+  output: { parts: { type: string; text: string }[] };
+} {
+  const messages: { sessionID: string; text: string }[] = [];
+  const sendMessage: SendMessageFn = async (sessionID, text) => {
+    messages.push({ sessionID, text });
+  };
+  const hooks = buildHooks(
+    makeCtx(dir),
+    makeConfig(raw),
+    noopLog,
+    extra?.run,
+    undefined,
+    undefined,
+    sendMessage,
+  );
+  return { hooks, messages, output: makePartsOutput() };
+}
+
 describe("config hook", () => {
-  it("registers df-status, df-profile, and df-verify slash commands", async () => {
+  it("registers df-status, df-profile, df-verify, and df-help slash commands", async () => {
     const hooks = buildHooks(makeCtx(dir), makeConfig(), noopLog);
     const config: { command?: Record<string, { template?: string; description?: string }> } = {};
     await hooks.config?.(config as never);
     expect(config.command?.["df-status"]).toBeDefined();
     expect(config.command?.["df-profile"]).toBeDefined();
     expect(config.command?.["df-verify"]).toBeDefined();
+    expect(config.command?.["df-help"]).toBeDefined();
   });
 
   it("captures host permissions into hook state", async () => {
@@ -54,72 +80,91 @@ describe("config hook", () => {
 
 describe("command.execute.before hook", () => {
   it("df-status returns the current plugin state", async () => {
-    const hooks = buildHooks(makeCtx(dir), makeConfig(), noopLog);
-    const output = makePartsOutput();
+    const { hooks, messages, output } = buildWithMessenger();
     await hooks["command.execute.before"]?.(
       { command: "df-status", sessionID: "s1", arguments: "" },
       output as never,
     );
-    expect(output.parts).toHaveLength(1);
-    expect(output.parts[0].text).toContain("Profile: standard");
-    expect(output.parts[0].text).toContain("Changed files tracked: 0");
+    expect(output.parts).toHaveLength(0);
+    expect(messages).toHaveLength(1);
+    expect(messages[0].text).toContain("Profile: standard");
+    expect(messages[0].text).toContain("Changed files tracked: 0");
   });
 
   it("df-profile changes the profile in config and state", async () => {
-    const hooks = buildHooks(makeCtx(dir), makeConfig(), noopLog);
-    const output = makePartsOutput();
+    const { hooks, messages, output } = buildWithMessenger();
     await hooks["command.execute.before"]?.(
       { command: "df-profile", sessionID: "s1", arguments: "strict" },
       output as never,
     );
-    expect(output.parts[0].text).toContain('profile set to "strict"');
+    expect(output.parts).toHaveLength(0);
+    expect(messages[0].text).toContain('profile set to "strict"');
     expect(getHookState(dir)?.config.profile).toBe("strict");
   });
 
   it("df-profile rejects invalid profiles", async () => {
-    const hooks = buildHooks(makeCtx(dir), makeConfig(), noopLog);
-    const output = makePartsOutput();
+    const { hooks, messages, output } = buildWithMessenger();
     await hooks["command.execute.before"]?.(
       { command: "df-profile", sessionID: "s1", arguments: "nope" },
       output as never,
     );
-    expect(output.parts[0].text).toContain("Invalid profile");
+    expect(messages[0].text).toContain("Invalid profile");
     expect(getHookState(dir)?.config.profile).toBe("standard");
   });
 
   it("df-verify runs the completion gate and reports the result", async () => {
     const run = async () => ({ stdout: "", stderr: "", exitCode: 0, timedOut: false });
-    const config = makeConfig({ commands: { test: "echo ok" } });
-    const hooks = buildHooks(makeCtx(dir), config, noopLog, run);
-    const output = makePartsOutput();
+    const { hooks, messages, output } = buildWithMessenger(
+      { commands: { test: "echo ok" } },
+      { run },
+    );
     await hooks["command.execute.before"]?.(
       { command: "df-verify", sessionID: "s1", arguments: "" },
       output as never,
     );
-    expect(output.parts).toHaveLength(1);
-    expect(output.parts[0].text).toContain("completion gate");
+    expect(output.parts).toHaveLength(0);
+    expect(messages[0].text).toContain("completion gate");
   });
 
   it("df-help returns the command list", async () => {
-    const hooks = buildHooks(makeCtx(dir), makeConfig(), noopLog);
+    const { hooks, messages, output } = buildWithMessenger();
+    await hooks["command.execute.before"]?.(
+      { command: "df-help", sessionID: "s1", arguments: "" },
+      output as never,
+    );
+    expect(output.parts).toHaveLength(0);
+    expect(messages[0].text).toContain("/df-status");
+    expect(messages[0].text).toContain("/df-profile");
+    expect(messages[0].text).toContain("/df-verify");
+  });
+
+  it("unknown df-* command returns a helpful message", async () => {
+    const { hooks, messages, output } = buildWithMessenger();
+    await hooks["command.execute.before"]?.(
+      { command: "df-foobar", sessionID: "s1", arguments: "" },
+      output as never,
+    );
+    expect(output.parts).toHaveLength(0);
+    expect(messages[0].text).toContain("Unknown command");
+    expect(messages[0].text).toContain("/df-help");
+  });
+
+  it("falls back to output.parts when no messenger is available", async () => {
+    const hooks = buildHooks(
+      makeCtx(dir),
+      makeConfig(),
+      noopLog,
+      undefined,
+      undefined,
+      undefined,
+      null,
+    );
     const output = makePartsOutput();
     await hooks["command.execute.before"]?.(
       { command: "df-help", sessionID: "s1", arguments: "" },
       output as never,
     );
+    expect(output.parts).toHaveLength(1);
     expect(output.parts[0].text).toContain("/df-status");
-    expect(output.parts[0].text).toContain("/df-profile");
-    expect(output.parts[0].text).toContain("/df-verify");
-  });
-
-  it("unknown df-* command returns a helpful message", async () => {
-    const hooks = buildHooks(makeCtx(dir), makeConfig(), noopLog);
-    const output = makePartsOutput();
-    await hooks["command.execute.before"]?.(
-      { command: "df-foobar", sessionID: "s1", arguments: "" },
-      output as never,
-    );
-    expect(output.parts[0].text).toContain("Unknown command");
-    expect(output.parts[0].text).toContain("/df-help");
   });
 });
