@@ -32,17 +32,19 @@ function makeConfig(raw = {}) {
 }
 
 describe("config hook", () => {
-  it("does not register any df-* as prompt commands (recognition is via TUI keymap)", async () => {
+  it("registers df-profile and df-verify as prompt commands (server-side, with args)", async () => {
     const hooks = buildHooks(makeCtx(dir), makeConfig(), noopLog);
     const config: { command?: Record<string, { template?: string; description?: string }> } = {};
     await hooks.config?.(config as never);
-    // All four commands are recognized through the TUI module's keymap
-    // registration (with slashName), not via the server command config. This is
-    // what keeps the argument-bearing commands (/df-profile standard) from
-    // leaking into the model.
-    for (const name of ["df-status", "df-help", "df-profile", "df-verify"]) {
-      expect(config.command?.[name]).toBeUndefined();
-    }
+    // df-profile / df-verify are recognized as prompt commands so OpenCode routes
+    // `/df-profile standard` to `command.execute.before` with `input.arguments`.
+    // The empty template means nothing is expanded; the handler clears parts.
+    expect(config.command?.["df-profile"]?.template).toBe("");
+    expect(config.command?.["df-profile"]?.description).toContain("profile");
+    expect(config.command?.["df-verify"]?.template).toBe("");
+    // df-status / df-help stay as TUI modals (registered in tui.tsx), not here.
+    expect(config.command?.["df-status"]).toBeUndefined();
+    expect(config.command?.["df-help"]).toBeUndefined();
   });
 
   it("captures host permissions into hook state", async () => {
@@ -78,7 +80,7 @@ describe("command.execute.before hook", () => {
     return { hooks, toasts };
   }
 
-  it("df-profile with no argument leaves the turn for the TUI picker (no action, no toast)", async () => {
+  it("df-profile with no argument shows usage and suppresses output (no leak)", async () => {
     const { hooks, toasts } = setup();
     await writeFile(join(dir, ".opencode-dev-framework.yml"), "profile: standard\n");
     clearConfigCache();
@@ -91,8 +93,9 @@ describe("command.execute.before hook", () => {
       } as never,
       output as never,
     );
-    expect(toasts).toHaveLength(0);
-    expect(output.parts).toHaveLength(1);
+    expect(toasts[0].message).toContain("Usage");
+    expect(toasts[0].variant).toBe("warning");
+    expect(output.parts).toHaveLength(0);
     const content = await readFile(join(dir, ".opencode-dev-framework.yml"), "utf8");
     expect(content).toContain("profile: standard");
   });

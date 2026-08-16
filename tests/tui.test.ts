@@ -35,11 +35,11 @@ async function registeredCommands(api: TuiApi) {
 }
 
 describe("TUI plugin module", () => {
-  it("registers all four /df-* commands via api.keymap.registerLayer with slashName", async () => {
+  it("registers df-status and df-help as TUI modal commands via keymap", async () => {
     const commands = await registeredCommands(makeApi());
-    expect(commands).toHaveLength(4);
+    expect(commands).toHaveLength(2);
     const names = commands.map((c) => c.name).sort();
-    expect(names).toEqual(["df-help", "df-profile", "df-status", "df-verify"]);
+    expect(names).toEqual(["df-help", "df-status"]);
     for (const command of commands) {
       expect(command.slashName).toBe(command.name);
       expect(command.run).toBeTypeOf("function");
@@ -58,7 +58,7 @@ describe("TUI plugin module", () => {
     await expect(tuiModule.tui(api, undefined, { id: "test" } as never)).resolves.toBeUndefined();
     expect(registered).not.toBeNull();
     expect(Array.isArray(registered)).toBe(true);
-    expect((registered as Array<{ slash?: { name: string } }>).length).toBe(4);
+    expect((registered as Array<{ slash?: { name: string } }>).length).toBe(2);
   });
 
   it("is a no-op (and does not throw) when neither keymap nor api.command is available", async () => {
@@ -89,52 +89,9 @@ describe("TUI plugin module", () => {
     expect(replaceCalls).toHaveLength(1);
   });
 
-  it("opens a profile picker when /df-profile runs", async () => {
-    const replaceCalls: Array<() => unknown> = [];
-    const commands = await registeredCommands(
-      makeApi({
-        ui: {
-          DialogAlert: ((props: { title: string; message: string; onConfirm?: () => void }) =>
-            props) as unknown as TuiApi["ui"]["DialogAlert"],
-          DialogSelect: ((props: { title: string; options: unknown[]; onSelect?: () => void }) =>
-            props) as unknown as TuiApi["ui"]["DialogSelect"],
-          dialog: {
-            replace: (render: () => unknown) => {
-              replaceCalls.push(render);
-            },
-            clear: () => {},
-          },
-        },
-      }),
-    );
-    const runProfile = commands.find((c) => c.name === "df-profile")?.run;
-    runProfile?.();
-    expect(replaceCalls).toHaveLength(1);
-    const rendered = replaceCalls[0]?.() as { title: string; options: unknown[] };
-    expect(rendered.title).toContain("profile");
-    expect(rendered.options).toHaveLength(4);
-  });
-
-  it("runs the gate when /df-verify runs (no throw)", async () => {
-    const replaceCalls: Array<() => unknown> = [];
-    const commands = await registeredCommands(
-      makeApi({
-        ui: {
-          DialogAlert: ((props: { title: string; message: string; onConfirm?: () => void }) =>
-            props) as unknown as TuiApi["ui"]["DialogAlert"],
-          DialogSelect: ((props: { title: string; options: unknown[]; onSelect?: () => void }) =>
-            props) as unknown as TuiApi["ui"]["DialogSelect"],
-          dialog: {
-            replace: (render: () => unknown) => {
-              replaceCalls.push(render);
-            },
-            clear: () => {},
-          },
-        },
-      }),
-    );
-    const runVerify = commands.find((c) => c.name === "df-verify")?.run;
-    await runVerify?.();
-    expect(replaceCalls).toHaveLength(1);
+  it("does not register df-profile or df-verify as TUI commands", async () => {
+    const commands = await registeredCommands(makeApi());
+    expect(commands.find((c) => c.name === "df-profile")).toBeUndefined();
+    expect(commands.find((c) => c.name === "df-verify")).toBeUndefined();
   });
 });

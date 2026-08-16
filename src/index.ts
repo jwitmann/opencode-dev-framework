@@ -138,27 +138,26 @@ export function buildHooks(
         state.hostPermissions = typedConfig.permission ?? [];
       }
 
-      // Slash-command recognition is handled by the TUI module (tui.tsx), which
-      // registers `/df-*` via `keymap.registerLayer` with a `slashName`. For
-      // argument-bearing commands (`/df-profile standard`, `/df-verify`),
-      // OpenCode routes the trailing text to this `command.execute.before` hook
-      // with `input.arguments`; the handler performs the action and clears
-      // `output.parts` so the argument is never echoed to the model. The
-      // no-argument case (`/df-profile`, `/df-verify`) is handled by the TUI
-      // module's `run` callback (a picker / direct gate run), which never
-      // inserts text into the chat stream.
+      // `df-profile` and `df-verify` are registered as prompt commands here so
+      // OpenCode always recognizes them — including with arguments like
+      // `/df-profile standard` — and routes them to `command.execute.before`
+      // with `input.arguments`. The empty `template` means nothing is expanded
+      // into the user message; the handler performs the action and clears
+      // `output.parts` so the argument is never echoed to the model.
+      // (`df-status` / `df-help` stay as TUI modals registered in `tui.tsx`.)
+      typedConfig.command ??= {};
+      typedConfig.command["df-profile"] = {
+        template: "",
+        description: "Change the active dev-framework profile",
+      };
+      typedConfig.command["df-verify"] = {
+        template: "",
+        description: "Run the dev-framework completion gate",
+      };
     },
 
     "command.execute.before": async (input, output) => {
       if (!input.command.startsWith("df-")) {
-        return;
-      }
-      // No arguments: the TUI module's `run` callback handles the no-argument
-      // case (picker for /df-profile, direct gate run for /df-verify). Those
-      // render in the TUI and never insert text into the chat stream, so we
-      // leave the (already empty) user turn alone.
-      const arg = (input.arguments ?? "").trim();
-      if (!arg) {
         return;
       }
       const state = getStateForSession(input.sessionID);
@@ -173,6 +172,7 @@ export function buildHooks(
 
       if (input.command === "df-profile") {
         const profiles: Profile[] = ["off", "advisory", "standard", "strict"];
+        const arg = (input.arguments ?? "").trim();
         if (!profiles.includes(arg as Profile)) {
           state.showToast?.(`Usage: /df-profile <${profiles.join("|")}>`, "warning");
         } else {
@@ -195,8 +195,7 @@ export function buildHooks(
         return;
       }
 
-      // Unknown /df-* command with arguments — suppress the raw text so it is
-      // not fed to the model.
+      // Unknown /df-* command — suppress the raw text so it is not fed to the model.
       state.showToast?.(`Unknown command /${input.command}. Try /df-help.`, "warning");
       await state.log("warn", "unknown df command", {
         directory: state.directory,
