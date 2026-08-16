@@ -98,19 +98,19 @@ gate:
   scope: all          # all | changed
   lint_changed: false
   timeout: 300        # seconds per command
-  max_blocks: 3       # not yet meaningful in OpenCode advisory mode
+  max_blocks: 3       # max times session.stopping may keep the loop running
 ```
 
 | Key | Type | Default | Description |
 |---|---|---|---|
 | `run_typecheck` | `boolean` | `true` | Run `commands.typecheck` at the gate. |
 | `run_tests` | `boolean` | `true` | Run `commands.test` at the gate. |
-| `block_on_failure` | `boolean` | profile-based | If true, emit failure loudly. (OpenCode cannot physically block.) |
+| `block_on_failure` | `boolean` | profile-based | If true, emit failure loudly and (with PR #41811) keep the session running. |
 | `skip_unchanged` | `boolean` | `true` | Skip gate if no files changed. |
 | `scope` | `string` | `all` | `all` runs `commands.test`; `changed` runs `commands.test_changed`. |
 | `lint_changed` | `boolean` | `true` in `strict` | Lint each changed file at the gate. |
 | `timeout` | `number` | — | Per-command timeout in seconds. |
-| `max_blocks` | `number` | `3` | Future use; advisory mode currently ignores this. |
+| `max_blocks` | `number` | `3` | Max synthetic keep-alive turns via `experimental.session.stopping` before the gate stands down. Ignored on older OpenCode versions (advisory `session.idle` only). |
 
 ### `on_edit`
 
@@ -132,18 +132,24 @@ on_edit:
 
 Globs to skip for format/lint.
 
+### `constitution`
+
+- Type: `string`
+- Default: none (bundled rules are used)
+
+Path to a custom Markdown constitution file (absolute or relative to the
+project root). When set, it **replaces** the bundled constitution. If the file
+cannot be read, the plugin logs a warning and falls back to the bundled rules.
+
 ### `rules`
 
 - Type: `string[]`
-- Default: auto-discover common files
+- Default: `[]`
 
-Paths to Markdown rule/constitution files to inject into session context. If omitted, the plugin auto-discovers:
-
-- `RULES.md`
-- `rules/*.md`
-- `AGENTS.md`
-- `STYLE.md`
-- `CONTRIBUTING.md`
+Paths to additional Markdown rule files to **append** to the injected
+constitution, after the bundled (or custom `constitution`) content. The bundled
+constitution is the set of numbered files in the plugin's `rules/` directory,
+loaded in sorted filename order.
 
 ### `style_guide`
 

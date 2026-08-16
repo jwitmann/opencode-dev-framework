@@ -96,7 +96,10 @@ OpenCode loads the plugin via Bun at runtime, but all development and CI on this
 ### Don't
 
 - Don't rewrite `opencode.json` automatically from the plugin.
-- Don't claim the completion gate can physically block OpenCode from finishing — it cannot.
+- Don't claim the completion gate can hard-block OpenCode from finishing. The
+  `experimental.session.stopping` hook (OpenCode PR #41811) can keep the session
+  running up to `gate.max_blocks` times, but it is opt-in and bounded — not an
+  unconditional block.
 - Don't add heavy dependencies without discussing.
 - Don't commit `dist/`, `node_modules/`, or lockfiles unless intentionally releasing.
 - **Never push to remote.** Commit changes locally only. Pushing releases or changes is a deliberate user action, not an agent action.
@@ -113,13 +116,23 @@ opencode-dev-framework/
 │   ├── lint.ts             # Per-edit lint runner
 │   ├── gate.ts             # Completion gate
 │   ├── rules.ts            # Constitution injection
+│   ├── registry.ts         # Per-project hook state registry
+│   ├── tools.ts            # Custom tools (dev_framework_init / set_profile)
+│   ├── installer.ts        # Template copy logic for the df CLI
 │   ├── host.ts             # Host abstraction
 │   ├── logger.ts           # Structured logging
 │   └── types.ts            # Shared types
-├── commands/               # Custom OpenCode slash commands
-│   └── df-verify.md        # /df-verify command
-├── rules/                  # Default constitution/rules
-│   └── constitution.md
+├── bin/
+│   └── df                  # df init / status / version CLI
+├── templates/              # Project scaffolding templates
+│   ├── .opencode-dev-framework.yml
+│   └── .opencode/          # commands, agents, skills
+├── rules/                  # Bundled constitution (numbered, loaded sorted)
+│   ├── 00-activation.md
+│   ├── 10-quality-bar.md
+│   ├── 20-match-existing-patterns.md
+│   ├── 30-testing-discipline.md
+│   └── 40-delegation.md
 ├── tests/                  # Unit tests
 ├── examples/               # Example project configs
 │   └── go-service/

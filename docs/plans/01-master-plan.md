@@ -11,8 +11,12 @@ Build and publish `opencode-dev-framework`, an OpenCode plugin that brings dev-f
 
 ## Non-goals
 
-- Do not implement a hard "agent cannot finish" block. OpenCode does not expose an `agentStop` hook, so this is impossible.
-- Do not build a CLI launcher like `bin/df`. OpenCode plugins are loaded automatically from `opencode.json`.
+- Do not implement an unconditional "agent cannot finish" block. OpenCode has no
+  `agentStop` hook; the `experimental.session.stopping` hook (PR #41811) can
+  keep a session running up to `gate.max_blocks` times, then stands down.
+- ~~Do not build a CLI launcher like `bin/df`.~~ **Superseded in v0.1.7:** the
+  user explicitly requested a `df` CLI for scaffolding; it ships as `bin/df` and
+  only copies templates — it does not load or launch the plugin itself.
 - Do not support Copilot/Claude/Codex in the MVP. Keep the internal design host-agnostic enough that future hosts could be added, but ship only OpenCode support now.
 
 ## Target users

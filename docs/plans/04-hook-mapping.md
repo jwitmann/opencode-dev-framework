@@ -89,11 +89,20 @@
 
 **Limitation:** By the time `session.idle` fires, the agent has already finished its turn. We cannot force it to continue. The best we can do is make the failure impossible to miss.
 
+**Update (v0.1.7):** PR #41811 adds `experimental.session.stopping`, which fires
+after the assistant turn is persisted but before the session goes idle. The
+plugin registers this hook (via a local `HooksWithStopping` interface) and, on
+gate failure in `standard`/`strict`, pushes a concise synthetic user message up
+to `gate.max_blocks` times before standing down. `session.idle` remains the
+fallback on older OpenCode versions.
+
 ### `/df-verify` custom command
 
 **Purpose:** Let the user run the gate on demand.
 
-**Definition:** `commands/df-verify.md`
+**Definition:** `templates/.opencode/commands/df-verify.md` (copied into the
+project by `df init` / `dev_framework_init`; OpenCode does not load slash
+commands from plugin packages)
 
 ```markdown
 ---
@@ -103,6 +112,10 @@ Run the completion gate for this project. Report test, type-check, and lint resu
 ```
 
 The command body can invoke the plugin's custom tool (if we expose one) or simply prompt the agent to run the configured commands.
+
+**Update (v0.1.7):** `templates/.opencode/commands/df-profile.md` provides
+`/df-profile <profile>` as a prompt-based alternative to the
+`dev_framework_set_profile` custom tool.
 
 ## Anti-patterns to avoid
 

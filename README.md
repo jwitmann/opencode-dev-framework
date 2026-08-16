@@ -52,14 +52,18 @@ Then add it to your project's `opencode.json`:
 ```
 
 Finally, scaffold the project-level files (agents, skills, commands, default
-config) into your repo:
+config) into your repo with the bundled `df` CLI:
 
 ```bash
+npx df init          # if installed locally as a project dependency
+# or, after npm i -g opencode-dev-framework:
 df init
 ```
 
 `df init` is interactive by default: it asks before overwriting existing files.
 Use `--skip-existing` or `--overwrite-existing` for non-interactive runs.
+`df status` shows what is and isn't scaffolded; `df version` prints the plugin
+version.
 
 ## Local development and testing
 

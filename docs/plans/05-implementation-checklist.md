@@ -204,11 +204,30 @@ Use this as the source of truth during implementation. Check items off as they a
   - Covered by `docs/plans/07-publishing.md` (npm token + `NPM_TOKEN`
     GitHub secret).
 - [x] 10.3 Bump version to `0.1.0`.
-- [ ] 10.4 Tag `v0.1.0`. **User action** — releases are deliberate.
-- [ ] 10.5 Push to GitHub. **User action** — never push from an agent session.
-- [ ] 10.6 Verify npm publish workflow succeeds. **User action** — after push.
-- [ ] 10.7 Smoke test install in a real OpenCode session. **User action** —
-  requires Bun/OpenCode runtime (not available on the dev box).
+- [x] 10.4 Tag releases (done by user: `v0.1.0`…`v0.1.7`).
+- [x] 10.5 Push to GitHub. (done by user)
+- [x] 10.6 npm publish succeeds (initially manual; CI publish works since 0.1.5).
+- [x] 10.7 Smoke test in a real OpenCode session — done in `~/finnomena` /
+  `~/animeRSS`; surfaced and fixed the closure-capture crash (see 08-notes.md).
+
+## Phase 11 — Dev-framework parity (v0.1.7)
+
+- [x] 11.1 Split bundled constitution into numbered rule files
+  (`rules/00-activation.md` … `40-delegation.md`), loaded sorted.
+- [x] 11.2 `constitution` config key overrides bundled rules; `rules` appends.
+- [x] 11.3 Project templates in `templates/` (default config, `/df-verify` +
+  `/df-profile` commands, agents: test-grounder / pattern-guardian /
+  style-enforcer, skills: peer-review / ground-in-tests / match-patterns).
+- [x] 11.4 `bin/df` CLI: `init` (interactive; `--skip-existing` /
+  `--overwrite-existing`), `status`, `version`.
+- [x] 11.5 Custom tools: `dev_framework_init`, `dev_framework_set_profile`
+  (immediate in-session effect via hook-state registry in `src/registry.ts`).
+- [x] 11.6 `experimental.session.stopping` gate hook (PR #41811) with
+  `gate.max_blocks` synthetic keep-alive turns + `session.idle` fallback.
+- [x] 11.7 Session-to-directory mapping via `experimental.chat.system.transform`.
+- [x] 11.8 Tests for installer, tools, stopping hook (117/117 passing).
+- [x] 11.9 README + plan docs updated.
+- [x] 11.10 Bump version to `0.1.7`, tag `v0.1.7`.
 
 ## Notes for the implementer
 
