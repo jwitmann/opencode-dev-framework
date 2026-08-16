@@ -109,20 +109,24 @@ fallback on older OpenCode versions.
 **Purpose:** Let the user run the gate on demand, switch profile, inspect
 plugin state, or list commands.
 
-**Definition (v0.1.25 final — all four are TUI commands):** every `/df-*` command
-is a **TUI command** registered by the companion module (`tui.tsx`, exported as
-`opencode-dev-framework/tui`) via `api.keymap.registerLayer` with a `slashName`
-(and a legacy `api.command?.register` fallback, like DCP). TUI commands are
-UI-only — they never insert text into the chat stream, so **none** feed text to
-the LLM. Their `run(ctx)` callbacks do all the work:
+**Definition (v0.1.25 final — all four are TUI commands, dual dispatch):** every
+`/df-*` command is a **TUI command** registered by the companion module
+(`tui.tsx`, exported as `opencode-dev-framework/tui`) via
+`api.keymap.registerLayer` with a `slashName` (and a legacy
+`api.command?.register` fallback, like DCP). TUI commands are UI-only — they
+never insert text into the chat stream. They use **two dispatch paths**, exactly
+like DCP's `/dcp`:
 
-- `/df-status` / `/df-help` → open a `DialogAlert` modal (status / help text).
-- `/df-profile` → `run(ctx)` reads the trailing text from `ctx.input`:
-  - empty → opens a `DialogSelect` picker (off / advisory / standard / strict);
-    selecting one calls `changeProfile` + toast.
-  - a valid profile (e.g. `/df-profile standard`) → calls `changeProfile` + toast.
-  - invalid → usage toast.
-- `/df-verify` → `run(ctx)` calls `verifyGate` and shows a `DialogAlert` + toast.
+- **Bare form** (`/df-profile`, `/df-verify`) → the TUI command `run(ctx)` fires.
+  `df-profile` opens a `DialogSelect` picker (off / advisory / standard /
+  strict); selecting one calls `changeProfile` + toast. `df-verify` runs the gate
+  and shows a `DialogAlert` + toast. No model turn.
+- **Argument form** (`/df-profile standard`) → OpenCode routes it to the server
+  `command.execute.before` hook with `input.arguments` (exactly how DCP's
+  `/dcp <sub>` is handled). Because the command has no prompt template to
+  execute, the handler does the work and **clears `output.parts`**
+  (`output.parts.length = 0`) → no model turn. The bare form is left untouched by
+  the hook so the picker still opens.
 
 ```typescript
 // tui.tsx — all four registered as keymap commands with slashName
@@ -135,12 +139,12 @@ keymap.registerLayer({
   ].map((c) => ({ namespace: "palette", ...c, title: c.name, desc: c.name, category: "dev-framework" })),
 });
 
-// handleProfile: ctx.input carries the slash argument (e.g. "standard")
-function handleProfile(api, dir, input) {
-  const arg = (input ?? "").trim();
-  if (arg && PROFILES.includes(arg)) { changeProfile(dir, arg).then((m) => api.ui.toast?.({ message: m, variant: "success" })); return; }
-  if (arg) { api.ui.toast?.({ message: `Usage: /df-profile <${PROFILES.join("|")}>`, variant: "warning" }); return; }
-  showProfileDialog(api, dir); // bare → picker
+// server plugin — command.execute.before (fires for the ARGUMENT form)
+if (input.command === "df-profile" && (input.arguments ?? "").trim()) {
+  const profile = (input.arguments ?? "").trim();
+  if (PROFILES.includes(profile)) await changeProfile(state.directory, profile);
+  else state.showToast?.(`Usage: /df-profile <${PROFILES.join("|")}>`, "warning");
+  output.parts.length = 0; // no model turn
 }
 ```
 

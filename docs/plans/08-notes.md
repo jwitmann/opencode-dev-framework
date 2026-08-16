@@ -372,27 +372,29 @@ Keep both. The custom tool lets the agent call verification explicitly; the slas
   the legacy `api.command?.register` fallback, mirroring DCP). TUI commands are
   UI-only: they never insert text into the chat stream, so they **cannot** leak
   into a model turn — exactly why `df-status`/`df-help` already worked.
-- **The slash argument reaches `run` via `ctx.input`.** OpenCode invokes a slash
-  command's `run` with a keymap `CommandContext`; the trailing text (e.g.
-  `standard` in `/df-profile standard`) is on `ctx.input`. So `df-profile`'s
-  `run(ctx)` reads `ctx.input`: empty → opens a `DialogSelect` picker; a valid
-  profile → calls `changeProfile` + toast; invalid → usage toast. `df-verify`'s
-  `run` calls `verifyGate` and shows a `DialogAlert` + toast. No model turn in any
-  path.
+- **Two dispatch paths, matching DCP's `/dcp` design:**
+  - **Bare form** (`/df-profile`, `/df-verify`) → the TUI command `run(ctx)`
+    callback fires. `df-profile` opens a `DialogSelect` picker (or applies directly
+    if `ctx.input` already carries a valid profile); `df-verify` runs the gate and
+    shows a `DialogAlert`. No model turn.
+  - **Argument form** (`/df-profile standard`) → OpenCode routes it to the server
+    `command.execute.before` hook with `input.arguments` (exactly how DCP's
+    `/dcp <sub>` is handled). Because these are TUI commands (no prompt template
+    to execute), the handler does the work and **clears `output.parts`**
+    (`output.parts.length = 0`) — producing **no** model turn. The bare form is
+    intentionally left untouched by the hook so the TUI picker still opens.
 - **Server prompt commands were tried and REJECTED.** Registering `df-profile`/
   `df-verify` as `config.command` prompt commands (empty template) made OpenCode
   recognize the argument form, but a prompt command **always executes as a model
   turn** — clearing `output.parts` in `command.execute.before` does NOT suppress
   it. DCP's `/dcp-compress` only "works" because it *wants* the model to run
   compression; it pushes a replacement prompt rather than suppressing. Our
-  commands need no model involvement, so prompt commands are wrong for them. The
-  `command.execute.before` df-* handler was therefore removed entirely.
+  commands need no model involvement, so prompt commands are wrong for them.
 - **Why v0.1.24 leaked.** The four commands were `keymap` entries *without*
   `slashName`, so OpenCode only matched them without arguments. `/df-profile`
   (bare) opened the picker, but `/df-profile standard` was treated as plain chat
   and `standard` leaked to the model. Adding `slashName` makes OpenCode recognize
-  the command *with* arguments and pass the trailing text to `run` via
-  `ctx.input`.
+  the command *with* arguments and route it to `command.execute.before`.
 - **Why earlier attempts leaked / regressed.** v0.1.24 registered the four
   commands as `keymap` entries *without* `slashName`, so OpenCode only matched
   them without arguments (the bare `/df-profile` opened the picker, but

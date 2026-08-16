@@ -134,7 +134,10 @@ function showHelpDialog(api: TuiApi): void {
 
 /** Bare `/df-profile` opens a picker; `/df-profile <name>` applies directly. */
 function handleProfile(api: TuiApi, directory: string, input?: string): void {
-  const arg = (input ?? "").trim();
+  // OpenCode passes the command name itself as `ctx.input` for a bare invocation
+  // (e.g. "df-profile"), not an empty string. Normalize that back to "bare".
+  const raw = (input ?? "").trim();
+  const arg = raw === "df-profile" ? "" : raw;
   if (arg && PROFILES.includes(arg as Profile)) {
     void changeProfile(directory, arg as Profile).then((message) => {
       api.ui.toast?.({ message, variant: "success" });
