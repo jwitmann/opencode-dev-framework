@@ -364,36 +364,52 @@ Keep both. The custom tool lets the agent call verification explicitly; the slas
   single `opencode.json` entry on 1.18.18+.
 - **Validation:** 165 tests pass; format/lint/lint:md/typecheck/build all green.
 
-## v0.1.25 release decisions
+## v0.1.25 release decisions (corrected — DCP `keymap` + `slashName` pattern)
 
-- **`/df-profile` and `/df-verify` use server-side prompt commands with an empty
-  template; `/df-status` and `/df-help` remain TUI modal commands.** The v0.1.24
-  attempt moved `df-profile`/`df-verify` to TUI `keymap` commands, but OpenCode
-  only recognizes keymap commands *without* arguments — so `/df-profile standard`
-  was treated as a plain chat line and leaked `standard` into the model. The fix
-  registers them in the server `config` hook with an **empty** template
-  (`typedConfig.command["df-profile"] = { template: "" }`). An empty prompt
-  template makes OpenCode route `/df-profile <arg>` to `command.execute.before`
-  (carrying `input.arguments`) while expanding nothing into the user message. The
-  handler validates the argument, shows a toast, and clears `output.parts`
-  (`output.parts.length = 0`) so the model never sees the argument. This mirrors
-  how DCP handles `/dcp <sub>`. `/df-status` and `/df-help` stay as TUI modals
-  (keymap.registerLayer → DialogAlert). No dev-framework slash command feeds text
-  to the LLM.
+- **All four `/df-*` commands register via the TUI `keymap.registerLayer` with a
+  `slashName` field** (`tui.tsx`, the `opencode-dev-framework/tui` module). The
+  `slashName` is the key: it makes OpenCode recognize `/df-profile <arg>` *with*
+  an argument and route the trailing text to the server `command.execute.before`
+  hook carrying `input.arguments` — exactly how DCP registers `/dcp`. No command
+  feeds text to the model:
+  - `df-status` / `df-help` → `run` opens a `DialogAlert` modal (state / help).
+  - `df-profile` → `run` opens a `DialogSelect` picker (off / advisory /
+    standard / strict); picking an option calls `changeProfile` + toast.
+  - `df-verify` → `run` calls `verifyGate` and shows a `DialogAlert` + toast.
+  - The **no-argument** case is fully handled inside the TUI `run` callbacks, so
+    no chat text is produced.
+  - The **with-argument** case (`/df-profile standard`) is intercepted by the
+    server `command.execute.before` hook, which validates/handles the argument,
+    shows a toast, and **clears `output.parts`** (`output.parts.length = 0`) so
+    the argument never reaches the model. This mirrors DCP's
+    `command.execute.before`, which clears the parts when handling `/dcp <sub>`.
+- **The server plugin does NOT register these commands in the `config` hook.**
+  Registering them as prompt commands there does NOT make OpenCode recognize them
+  with arguments (the v0.1.25 first-cut attempt did this and it was worse: no
+  picker on the bare command and the model fired on `/df-verify`). Recognition is
+  purely via the TUI `keymap.registerLayer` `slashName` field.
+- **Why v0.1.24 leaked the argument.** v0.1.24 registered the four commands as
+  `keymap` entries *without* `slashName`, so OpenCode only matched them without
+  arguments. `/df-profile` (no arg) opened the picker correctly, but
+  `/df-profile standard` was treated as a plain chat line and `standard` leaked
+  to the model. Adding `slashName` to every entry fixes recognition for both the
+  bare and argument forms.
 - **Shared command logic extracted to `src/commands.ts`.** Added
   `changeProfile(directory, profile)` (writes the profile line via
   `setProfileInFile`, returns a message) and `verifyGate(run, directory, config?,
-  changedFiles=[])` (runs `runGate`, returns `{ report, summary }`). The server
-  `command.execute.before` handler and the `dev_framework_set_profile` tool both
-  call them, so all paths share one implementation. `tui.tsx` no longer imports
-  from `./dist/commands.js`.
-- **Out-of-process config edits now reload automatically.** `/df-profile` (server
-  command or TUI picker) writes the config file directly (outside the server
+  changedFiles=[])` (runs `runGate`, returns `{ report, summary }`). The TUI
+  `run` callbacks, the server `command.execute.before` handler, and the
+  `dev_framework_set_profile` tool all call them, so every path shares one
+  implementation. `tui.tsx` imports `changeProfile`/`verifyGate` from
+  `./dist/commands.js`, `runCommand` from `./dist/host.js`, `loadConfig` from
+  `./dist/config.js`, and `Profile` from `./dist/types.js`.
+- **Out-of-process config edits now reload automatically.** `/df-profile` (TUI
+  picker or server arg) writes the config file directly (outside the server
   process), so the server's in-memory config would go stale. Added
   `HookState.configMtime` (set initially via `stat` in `devFramework`) and a
   `reloadConfigIfChanged(state)` helper in `src/index.ts` that stats the config
-  file and, on mtime change, reloads config + constitution (after clearing the
-  config cache) via `loadConfig`/`loadConstitution`. Wired into every enforcement
+  file and, on mtime change, clears the config cache and reloads config +
+  constitution via `loadConfig`/`loadConstitution`. Wired into every enforcement
   hook (`tool.execute.before`, `event`, `experimental.session.stopping`,
   `experimental.chat.system.transform`). This removes the need for a plugin
   restart after a `/df-profile` change.
@@ -401,12 +417,13 @@ Keep both. The custom tool lets the agent call verification explicitly; the slas
   `tui.tsx` imports from `./dist/*.js` (gitignored) and CI runs `typecheck` and
   `test` before `build`, so the pre-scripts guarantee the dist exists.
 - **Tests updated.** `tests/commands.test.ts` asserts the `config` hook registers
-  `df-profile`/`df-verify` (empty template) and NOT `df-status`/`df-help`, and
-  covers `changeProfile`/`verifyGate` plus the `command.execute.before` handling
-  (unknown hint, valid/invalid `df-profile` arg, `df-verify`) with `output.parts`
-  cleared. `tests/tui.test.ts` now expects only 2 commands (`df-status`,
-  `df-help`).
-- **Validation:** 169 tests pass; format/lint/lint:md/typecheck/build all green.
+  **NO** `df-*` prompt commands, and covers `changeProfile`/`verifyGate` plus the
+  `command.execute.before` handling (no-arg early-return leaves parts untouched;
+  valid/invalid `df-profile` arg applies/suppresses; `df-verify` with a non-empty
+  arg runs the gate and suppresses output). `tests/tui.test.ts` now expects 4
+  commands and exercises the `run` callbacks (status dialog, profile picker with
+  4 options, verify runs without throwing).
+- **Validation:** 171 tests pass; format/lint/lint:md/typecheck/build all green.
 
 ## References
 

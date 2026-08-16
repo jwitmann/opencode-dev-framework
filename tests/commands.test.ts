@@ -32,17 +32,17 @@ function makeConfig(raw = {}) {
 }
 
 describe("config hook", () => {
-  it("registers df-profile and df-verify as prompt commands (empty template)", async () => {
+  it("does not register any df-* as prompt commands (recognition is via TUI keymap)", async () => {
     const hooks = buildHooks(makeCtx(dir), makeConfig(), noopLog);
     const config: { command?: Record<string, { template?: string; description?: string }> } = {};
     await hooks.config?.(config as never);
-    // df-profile / df-verify are server prompt commands so arguments are routed
-    // to command.execute.before and the argument is kept out of the model.
-    expect(config.command?.["df-profile"]?.template).toBe("");
-    expect(config.command?.["df-verify"]?.template).toBe("");
-    // df-status / df-help remain TUI commands (modals) and are NOT prompt commands.
-    expect(config.command?.["df-status"]).toBeUndefined();
-    expect(config.command?.["df-help"]).toBeUndefined();
+    // All four commands are recognized through the TUI module's keymap
+    // registration (with slashName), not via the server command config. This is
+    // what keeps the argument-bearing commands (/df-profile standard) from
+    // leaking into the model.
+    for (const name of ["df-status", "df-help", "df-profile", "df-verify"]) {
+      expect(config.command?.[name]).toBeUndefined();
+    }
   });
 
   it("captures host permissions into hook state", async () => {
@@ -78,20 +78,23 @@ describe("command.execute.before hook", () => {
     return { hooks, toasts };
   }
 
-  it("unknown df-* command returns a helpful hint and suppresses output", async () => {
+  it("df-profile with no argument leaves the turn for the TUI picker (no action, no toast)", async () => {
     const { hooks, toasts } = setup();
-    const output: { parts: unknown[] } = { parts: [{ type: "text", text: "/df-foobar" }] };
+    await writeFile(join(dir, ".opencode-dev-framework.yml"), "profile: standard\n");
+    clearConfigCache();
+    const output: { parts: unknown[] } = { parts: [{ type: "text", text: "/df-profile" }] };
     await hooks["command.execute.before"]?.(
       {
-        command: "df-foobar",
+        command: "df-profile",
         sessionID: "s1",
         arguments: "",
       } as never,
       output as never,
     );
-    expect(toasts[0].message).toContain("Unknown command");
-    expect(toasts[0].message).toContain("/df-help");
-    expect(output.parts).toHaveLength(0);
+    expect(toasts).toHaveLength(0);
+    expect(output.parts).toHaveLength(1);
+    const content = await readFile(join(dir, ".opencode-dev-framework.yml"), "utf8");
+    expect(content).toContain("profile: standard");
   });
 
   it("df-profile with a valid argument applies the profile and suppresses output", async () => {
@@ -134,7 +137,7 @@ describe("command.execute.before hook", () => {
     expect(content).toContain("profile: standard");
   });
 
-  it("df-verify runs the gate and suppresses output", async () => {
+  it("df-verify with an argument runs the gate and suppresses output", async () => {
     const { hooks, toasts } = setup(async () => ({
       stdout: "",
       stderr: "",
@@ -146,7 +149,7 @@ describe("command.execute.before hook", () => {
       {
         command: "df-verify",
         sessionID: "s1",
-        arguments: "",
+        arguments: "run",
       } as never,
       output as never,
     );

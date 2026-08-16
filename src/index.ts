@@ -138,27 +138,27 @@ export function buildHooks(
         state.hostPermissions = typedConfig.permission ?? [];
       }
 
-      // Register `/df-profile` and `/df-verify` as *prompt* commands so that
-      // OpenCode recognizes them **with arguments** (`/df-profile standard`)
-      // and routes them to `command.execute.before` with the trailing text in
-      // `input.arguments`. The handler performs the action and clears
-      // `output.parts` so the argument is never echoed to the model. The empty
-      // `template` means nothing is expanded into the user message.
-      // `/df-status` and `/df-help` remain TUI commands (tui.tsx) — they take
-      // no arguments and render in a modal.
-      typedConfig.command ??= {};
-      typedConfig.command["df-profile"] = {
-        template: "",
-        description: "Change the dev-framework profile (off|advisory|standard|strict)",
-      };
-      typedConfig.command["df-verify"] = {
-        template: "",
-        description: "Run the dev-framework completion gate manually",
-      };
+      // Slash-command recognition is handled by the TUI module (tui.tsx), which
+      // registers `/df-*` via `keymap.registerLayer` with a `slashName`. For
+      // argument-bearing commands (`/df-profile standard`, `/df-verify`),
+      // OpenCode routes the trailing text to this `command.execute.before` hook
+      // with `input.arguments`; the handler performs the action and clears
+      // `output.parts` so the argument is never echoed to the model. The
+      // no-argument case (`/df-profile`, `/df-verify`) is handled by the TUI
+      // module's `run` callback (a picker / direct gate run), which never
+      // inserts text into the chat stream.
     },
 
     "command.execute.before": async (input, output) => {
       if (!input.command.startsWith("df-")) {
+        return;
+      }
+      // No arguments: the TUI module's `run` callback handles the no-argument
+      // case (picker for /df-profile, direct gate run for /df-verify). Those
+      // render in the TUI and never insert text into the chat stream, so we
+      // leave the (already empty) user turn alone.
+      const arg = (input.arguments ?? "").trim();
+      if (!arg) {
         return;
       }
       const state = getStateForSession(input.sessionID);
@@ -172,9 +172,8 @@ export function buildHooks(
       await reloadConfigIfChanged(state);
 
       if (input.command === "df-profile") {
-        const arg = (input.arguments ?? "").trim();
         const profiles: Profile[] = ["off", "advisory", "standard", "strict"];
-        if (!arg || !profiles.includes(arg as Profile)) {
+        if (!profiles.includes(arg as Profile)) {
           state.showToast?.(`Usage: /df-profile <${profiles.join("|")}>`, "warning");
         } else {
           const message = await changeProfile(state.directory, arg as Profile);
@@ -196,8 +195,8 @@ export function buildHooks(
         return;
       }
 
-      // Unknown /df-* command — point the user at /df-help and suppress the
-      // raw text so it is not fed to the model.
+      // Unknown /df-* command with arguments — suppress the raw text so it is
+      // not fed to the model.
       state.showToast?.(`Unknown command /${input.command}. Try /df-help.`, "warning");
       await state.log("warn", "unknown df command", {
         directory: state.directory,
