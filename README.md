@@ -180,24 +180,19 @@ complete example.
 
 ## Slash commands
 
-The slash commands use two different mechanisms, but **none** feed text back to
-the LLM:
+All four slash commands are **TUI commands** registered by the bundled `./tui`
+companion module (see *Local development* above for the `tui.json` requirement).
+They open instantly and **never** feed text back to the LLM:
 
-- **`/df-status` and `/df-help`** are TUI commands registered by the bundled
-  `./tui` companion module (see *Local development* above for the `tui.json`
-  requirement). They open instantly in a modal dialog.
-  - `/df-status` — shows the current profile, guardrails, completion gate, and
-    configured commands in a modal dialog.
-  - `/df-help` — lists the available dev-framework commands in a modal dialog.
-- **`/df-profile <profile>` and `/df-verify`** are server-side commands. They are
-  registered with an empty prompt template so OpenCode routes the argument to the
-  plugin instead of expanding it into a model turn. The plugin handles the
-  argument, shows a toast, and suppresses the user turn entirely.
-  - `/df-profile <profile>` — switches the active profile (`off`, `advisory`,
-    `standard`, `strict`); the change is written to the config file and applied
-    immediately.
-  - `/df-verify` — runs the configured verification suite (the completion gate)
-    manually and shows a pass/fail summary as a toast.
+- `/df-status` — shows the current profile, guardrails, completion gate, and
+  configured commands in a modal dialog.
+- `/df-help` — lists the available dev-framework commands in a modal dialog.
+- `/df-profile <profile>` — switches the active profile (`off`, `advisory`,
+  `standard`, `strict`). Bare `/df-profile` opens a picker; with an argument it
+  applies immediately. The change is written to the config file and applied
+  immediately.
+- `/df-verify` — runs the configured verification suite (the completion gate)
+  manually and shows a pass/fail summary as a toast.
 
 You can still run `df init` to install the bundled agents, skills, and default
 config; the commands themselves are provided by the plugin. The

@@ -14,7 +14,6 @@
 import type { Hooks, Plugin, PluginInput } from "@opencode-ai/plugin";
 import { stat } from "node:fs/promises";
 import { join } from "node:path";
-import { changeProfile, verifyGate } from "./commands.js";
 import { clearConfigCache, loadConfig } from "./config.js";
 import {
   type ChangedFileTracker,
@@ -38,7 +37,7 @@ import {
 } from "./registry.js";
 import { injectConstitution, loadConstitution } from "./rules.js";
 import { buildTools } from "./tools.js";
-import type { Profile, ResolvedConfig } from "./types.js";
+import type { ResolvedConfig } from "./types.js";
 
 /**
  * The `experimental.session.stopping` hook was added in OpenCode PR #41811
@@ -138,70 +137,11 @@ export function buildHooks(
         state.hostPermissions = typedConfig.permission ?? [];
       }
 
-      // `df-profile` and `df-verify` are registered as prompt commands here so
-      // OpenCode always recognizes them — including with arguments like
-      // `/df-profile standard` — and routes them to `command.execute.before`
-      // with `input.arguments`. The empty `template` means nothing is expanded
-      // into the user message; the handler performs the action and clears
-      // `output.parts` so the argument is never echoed to the model.
-      // (`df-status` / `df-help` stay as TUI modals registered in `tui.tsx`.)
-      typedConfig.command ??= {};
-      typedConfig.command["df-profile"] = {
-        template: "",
-        description: "Change the active dev-framework profile",
-      };
-      typedConfig.command["df-verify"] = {
-        template: "",
-        description: "Run the dev-framework completion gate",
-      };
-    },
-
-    "command.execute.before": async (input, output) => {
-      if (!input.command.startsWith("df-")) {
-        return;
-      }
-      const state = getStateForSession(input.sessionID);
-      if (!state) {
-        getHookState()?.showToast?.(
-          "[opencode-dev-framework] plugin state is not available for this session.",
-          "error",
-        );
-        return;
-      }
-      await reloadConfigIfChanged(state);
-
-      if (input.command === "df-profile") {
-        const profiles: Profile[] = ["off", "advisory", "standard", "strict"];
-        const arg = (input.arguments ?? "").trim();
-        if (!profiles.includes(arg as Profile)) {
-          state.showToast?.(`Usage: /df-profile <${profiles.join("|")}>`, "warning");
-        } else {
-          const message = await changeProfile(state.directory, arg as Profile);
-          state.showToast?.(message, "success");
-        }
-        output.parts.length = 0;
-        return;
-      }
-
-      if (input.command === "df-verify") {
-        const { report, summary } = await verifyGate(
-          state.run,
-          state.directory,
-          state.config,
-          state.tracker.getChangedFiles(),
-        );
-        state.showToast?.(summary, report.ok ? "success" : "error");
-        output.parts.length = 0;
-        return;
-      }
-
-      // Unknown /df-* command — suppress the raw text so it is not fed to the model.
-      state.showToast?.(`Unknown command /${input.command}. Try /df-help.`, "warning");
-      await state.log("warn", "unknown df command", {
-        directory: state.directory,
-        command: input.command,
-      });
-      output.parts.length = 0;
+      // `df-profile`, `df-verify`, `df-status`, and `df-help` are all registered
+      // as TUI commands (keymap layer with `slashName`) in `tui.tsx`. TUI
+      // commands never insert text into the chat stream, so they cannot leak
+      // into a model turn. No server prompt command is registered here — such
+      // commands always produce a model turn, which is exactly what we avoid.
     },
 
     "experimental.chat.system.transform": async (input, output) => {

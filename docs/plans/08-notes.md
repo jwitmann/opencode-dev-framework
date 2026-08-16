@@ -364,55 +364,51 @@ Keep both. The custom tool lets the agent call verification explicitly; the slas
   single `opencode.json` entry on 1.18.18+.
 - **Validation:** 165 tests pass; format/lint/lint:md/typecheck/build all green.
 
-## v0.1.25 release decisions (final — hybrid server prompt commands + TUI modals)
+## v0.1.25 release decisions (final — all four `/df-*` are TUI commands, no model turn)
 
-- **The reliable fix for the `/df-profile <arg>` leak:** `df-profile` and
-  `df-verify` are registered as **server prompt commands** in the plugin's
-  `config` hook (`typedConfig.command["df-profile"] = { template: "" }`, same for
-  `df-verify`). The empty template means OpenCode recognizes `/df-profile
-  standard` *with an argument* and routes it to the `command.execute.before` hook
-  carrying `input.arguments`; the handler performs the action and **clears
-  `output.parts`** (`output.parts.length = 0`) so the argument never reaches the
-  model. This is the only approach that GUARANTEES `command.execute.before` fires
-  for the argument form.
-- **Why the earlier keymap-only attempts leaked.** Registering all four via the
-  TUI `keymap.registerLayer` (`slashName`) made OpenCode recognize the commands
-  *without* arguments (the no-arg palette `run` fired the picker/modal), but the
-  **with-argument** form did not route to `command.execute.before` — it fell
-  through to the model as plain chat. Confirmed by reading the OpenCode binary's
-  slash parser (`let[x,...A]=P.slice(1).split(/\s+/)...{name:x,args:A.join("
-  ").trim()}`): a recognized command must be in the command registry that the
-  command pipeline consults, which for the argument form is the server
-  `config.command` map (not merely a keymap layer).
-- **`df-status` / `df-help` remain TUI modals** registered in `tui.tsx` via
-  `keymap.registerLayer` (with the legacy `api.command?.register` fallback). They
-  open a `DialogAlert` and never insert text into the chat stream. They are NOT
-  registered as server prompt commands.
-- **`command.execute.before` now fully handles both arg and no-arg forms:**
-  - `df-profile` (any arg): valid profile → `changeProfile` + success toast;
-    missing/invalid arg → usage toast (`/df-profile <off|advisory|standard|
-    strict>`). Then clears `output.parts`.
-  - `df-verify` (any arg): runs `verifyGate` + toast, clears `output.parts`.
-  - unknown `/df-*` → hint toast, clears `output.parts`.
-  - All paths call `reloadConfigIfChanged(state)` first (out-of-process config
-    edits reload automatically).
+- **The reliable fix for the `/df-profile <arg>` leak:** all four `/df-*` commands
+  (`df-status`, `df-help`, `df-profile`, `df-verify`) are registered as **TUI
+  commands** in `tui.tsx` via `api.keymap.registerLayer` with a `slashName` (plus
+  the legacy `api.command?.register` fallback, mirroring DCP). TUI commands are
+  UI-only: they never insert text into the chat stream, so they **cannot** leak
+  into a model turn — exactly why `df-status`/`df-help` already worked.
+- **The slash argument reaches `run` via `ctx.input`.** OpenCode invokes a slash
+  command's `run` with a keymap `CommandContext`; the trailing text (e.g.
+  `standard` in `/df-profile standard`) is on `ctx.input`. So `df-profile`'s
+  `run(ctx)` reads `ctx.input`: empty → opens a `DialogSelect` picker; a valid
+  profile → calls `changeProfile` + toast; invalid → usage toast. `df-verify`'s
+  `run` calls `verifyGate` and shows a `DialogAlert` + toast. No model turn in any
+  path.
+- **Server prompt commands were tried and REJECTED.** Registering `df-profile`/
+  `df-verify` as `config.command` prompt commands (empty template) made OpenCode
+  recognize the argument form, but a prompt command **always executes as a model
+  turn** — clearing `output.parts` in `command.execute.before` does NOT suppress
+  it. DCP's `/dcp-compress` only "works" because it *wants* the model to run
+  compression; it pushes a replacement prompt rather than suppressing. Our
+  commands need no model involvement, so prompt commands are wrong for them. The
+  `command.execute.before` df-* handler was therefore removed entirely.
+- **Why v0.1.24 leaked.** The four commands were `keymap` entries *without*
+  `slashName`, so OpenCode only matched them without arguments. `/df-profile`
+  (bare) opened the picker, but `/df-profile standard` was treated as plain chat
+  and `standard` leaked to the model. Adding `slashName` makes OpenCode recognize
+  the command *with* arguments and pass the trailing text to `run` via
+  `ctx.input`.
 - **Why earlier attempts leaked / regressed.** v0.1.24 registered the four
   commands as `keymap` entries *without* `slashName`, so OpenCode only matched
   them without arguments (the bare `/df-profile` opened the picker, but
   `/df-profile standard` leaked `standard` to the model). Adding `slashName`
   fixed bare-form recognition but the **with-argument** form still did not route
-  to `command.execute.before` (keymap layers are not consulted by the command
+  to   `command.execute.before` (keymap layers are not consulted by the command
   pipeline for the argument form). The v0.1.25 first-cut registered them as
-  server prompt commands but *removed* the keymap entries and had a handler bug,
-  so the bare command lost its picker and `/df-verify` still fired the model.
-  The final fix keeps the server prompt-command registration (reliable arg
-  routing) AND keeps `df-status`/`df-help` as TUI modals.
+  server prompt commands, which always produced a model turn (leak) and lost the
+  picker. The final fix keeps all four as TUI commands whose `run(ctx)` reads the
+  argument from `ctx.input`.
 - **Shared command logic extracted to `src/commands.ts`.** Added
   `changeProfile(directory, profile)` (writes the profile line via
   `setProfileInFile`, returns a message) and `verifyGate(run, directory, config?,
-  changedFiles=[])` (runs `runGate`, returns `{ report, summary }`). The server
-  `command.execute.before` handler and the `dev_framework_set_profile` tool both
-  call them, so every path shares one implementation.
+  changedFiles=[])` (runs `runGate`, returns `{ report, summary }`). The TUI
+  command `run` callbacks and the `dev_framework_set_profile` tool both call
+  them, so every path shares one implementation.
 - **Out-of-process config edits now reload automatically.** `/df-profile` (TUI
   picker or server arg) writes the config file directly (outside the server
   process), so the server's in-memory config would go stale. Added
@@ -427,18 +423,15 @@ Keep both. The custom tool lets the agent call verification explicitly; the slas
   `tui.tsx` imports from `./dist/*.js` (gitignored) and CI runs `typecheck` and
   `test` before `build`, so the pre-scripts guarantee the dist exists.
 - **Tests updated.** `tests/commands.test.ts` asserts the `config` hook registers
-  `df-profile`/`df-verify` as prompt commands (template `""`) and **NOT**
-  `df-status`/`df-help`, and covers `changeProfile`/`verifyGate` plus the
-  `command.execute.before` handling (no-arg df-profile shows usage + suppresses;
-  valid/invalid `df-profile` arg applies/suppresses; `df-verify` runs the gate and
-  suppresses output). `tests/tui.test.ts` now expects 2 TUI commands (`df-status`,
-  `df-help`) and exercises the status/help dialogs.
-- **Validation:** 171 tests pass; format/lint/lint:md/typecheck/build all green.
-- **Testing caveat (earlier leak report).** The user reported `/df-profile
-  standard` still reached the model after the keymap+`slashName` attempt. Root
-  cause was that keymap layers are not consulted by the command pipeline for the
-  argument form; the final server-prompt-command fix resolves it. To verify,
-  rebuild, clear the OpenCode plugin cache
+  **no** `df-*` prompt commands (all four are TUI commands) and still covers the
+  `changeProfile`/`verifyGate` helpers. `tests/tui.test.ts` now expects 4 TUI
+  commands and exercises the status dialog and the `df-profile` picker.
+- **Validation:** 167 tests pass; format/lint/lint:md/typecheck/build all green.
+- **Testing caveat (earlier leak reports).** Two earlier attempts leaked:
+  (a) v0.1.24 without `slashName` (arg form treated as chat), and (b) the
+  v0.1.25 server-prompt-command cut (prompt commands always run as a model turn).
+  The final TUI-only approach with `ctx.input` resolves both. To verify, rebuild,
+  clear the OpenCode plugin cache
   (`~/.cache/opencode/packages/opencode-dev-framework*`), restart OpenCode, and
   test `/df-status` (modal) before `/df-profile standard` (should apply with no
   model turn).
