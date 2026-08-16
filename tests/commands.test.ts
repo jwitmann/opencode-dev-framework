@@ -7,7 +7,6 @@ import { buildHooks } from "../src/index";
 import { resolveConfig } from "../src/config";
 import { getHookState } from "../src/registry";
 import type { LogFn } from "../src/logger";
-import type { SendMessageFn } from "../src/messenger";
 
 let dir: string;
 
@@ -29,27 +28,27 @@ function makeConfig(raw = {}) {
   return resolveConfig({ profile: "standard", ...raw }, join(dir, ".opencode-dev-framework.yml"));
 }
 
-function buildWithMessenger(
+type Toast = { message: string; variant?: string };
+
+function buildWithToast(
   raw = {},
-  extra?: Partial<{ run: Parameters<typeof buildHooks>[4]; sendMessage: SendMessageFn }>,
+  extra?: Partial<{ run: Parameters<typeof buildHooks>[4] }>,
 ): {
   hooks: ReturnType<typeof buildHooks>;
-  messages: { sessionID: string; text: string }[];
+  toasts: Toast[];
 } {
-  const messages: { sessionID: string; text: string }[] = [];
-  const sendMessage: SendMessageFn = async (sessionID, text) => {
-    messages.push({ sessionID, text });
+  const toasts: Toast[] = [];
+  const showToast = (message: string, variant?: "info" | "success" | "warning" | "error") => {
+    toasts.push({ message, variant });
   };
-  const hooks = buildHooks(
-    makeCtx(dir),
-    makeConfig(raw),
-    noopLog,
-    extra?.run,
-    undefined,
-    undefined,
-    sendMessage,
-  );
-  return { hooks, messages };
+  const ctx = makeCtx(dir);
+  // Inject the toast capture by monkeypatching the registry after build.
+  const hooks = buildHooks(ctx, makeConfig(raw), noopLog, extra?.run);
+  const state = getHookState(dir);
+  if (state) {
+    state.showToast = showToast;
+  }
+  return { hooks, toasts };
 }
 
 describe("config hook", () => {
@@ -75,49 +74,49 @@ describe("config hook", () => {
 
 describe("command.execute.before hook", () => {
   it("df-profile changes the profile in config and state", async () => {
-    const { hooks, messages } = buildWithMessenger();
-    const output = { parts: [] };
-    await hooks["command.execute.before"]?.(
-      { command: "df-profile", sessionID: "s1", arguments: "strict" },
-      output as never,
-    );
-    expect(output.parts).toHaveLength(0);
-    expect(messages[0].text).toContain('profile set to "strict"');
+    const { hooks, toasts } = buildWithToast();
+    await hooks["command.execute.before"]?.({
+      command: "df-profile",
+      sessionID: "s1",
+      arguments: "strict",
+    } as never);
+    expect(toasts[0].message).toContain('profile set to "strict"');
+    expect(toasts[0].variant).toBe("success");
     expect(getHookState(dir)?.config.profile).toBe("strict");
   });
 
   it("df-profile rejects invalid profiles", async () => {
-    const { hooks, messages } = buildWithMessenger();
-    const output = { parts: [] };
-    await hooks["command.execute.before"]?.(
-      { command: "df-profile", sessionID: "s1", arguments: "nope" },
-      output as never,
-    );
-    expect(messages[0].text).toContain("Invalid profile");
+    const { hooks, toasts } = buildWithToast();
+    await hooks["command.execute.before"]?.({
+      command: "df-profile",
+      sessionID: "s1",
+      arguments: "nope",
+    } as never);
+    expect(toasts[0].message).toContain("Invalid profile");
+    expect(toasts[0].variant).toBe("warning");
     expect(getHookState(dir)?.config.profile).toBe("standard");
   });
 
   it("df-verify runs the completion gate and reports the result", async () => {
     const run = async () => ({ stdout: "", stderr: "", exitCode: 0, timedOut: false });
-    const { hooks, messages } = buildWithMessenger({ commands: { test: "echo ok" } }, { run });
-    const output = { parts: [] };
-    await hooks["command.execute.before"]?.(
-      { command: "df-verify", sessionID: "s1", arguments: "" },
-      output as never,
-    );
-    expect(output.parts).toHaveLength(0);
-    expect(messages[0].text).toContain("completion gate");
+    const { hooks, toasts } = buildWithToast({ commands: { test: "echo ok" } }, { run });
+    await hooks["command.execute.before"]?.({
+      command: "df-verify",
+      sessionID: "s1",
+      arguments: "",
+    } as never);
+    expect(toasts[0].message).toContain("completion gate");
   });
 
   it("unknown df-* command returns a helpful message", async () => {
-    const { hooks, messages } = buildWithMessenger();
-    const output = { parts: [] };
-    await hooks["command.execute.before"]?.(
-      { command: "df-foobar", sessionID: "s1", arguments: "" },
-      output as never,
-    );
-    expect(output.parts).toHaveLength(0);
-    expect(messages[0].text).toContain("Unknown command");
-    expect(messages[0].text).toContain("/df-help");
+    const { hooks, toasts } = buildWithToast();
+    await hooks["command.execute.before"]?.({
+      command: "df-foobar",
+      sessionID: "s1",
+      arguments: "",
+    } as never);
+    expect(toasts[0].message).toContain("Unknown command");
+    expect(toasts[0].message).toContain("/df-help");
+    expect(toasts[0].variant).toBe("warning");
   });
 });

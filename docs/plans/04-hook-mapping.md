@@ -133,16 +133,24 @@ return a hint to use `/df-help`.
 
 **`/df-status` and `/df-help` are now handled by a separate TUI plugin module**
 (`tui.tsx`, exported as `opencode-dev-framework/tui`). The TUI module registers
-slash commands via `api.command.register` and opens a `DialogAlert` modal with the
-status/help text. This matches how DCP shows instant status: the output renders
-in a modal and is **never** inserted into the chat stream, so it cannot be
-re-processed as a user turn.
+slash commands via `api.keymap.registerLayer({ commands, bindings })` (the current
+OpenCode API) and opens a `DialogAlert` modal with the status/help text. This
+matches how DCP shows instant status: the output renders in a modal and is
+**never** inserted into the chat stream, so it cannot be re-processed as a user
+turn.
 
-**Update (v0.1.22):** after studying DCP's `tui.tsx`, the previous chat-message
-approach (`client.session.prompt` with `synthetic`/`ignored` flags) was abandoned.
-Posting to the conversation always leaked into the model context one way or
-another. The TUI modal pattern is the gold standard and is now used for
-`/df-status` and `/df-help`.
+**Update (v0.1.23):** the legacy `api.command` v1 API is deprecated and `undefined`
+in current OpenCode runtimes, so the TUI module no longer falls back to
+`api.command.register`. It registers exclusively through `api.keymap.registerLayer`,
+which is exactly what DCP uses. The earlier `client.session.prompt` chat-message
+attempts (synthetic/ignored flags) were abandoned in v0.1.22 because posting to the
+conversation always leaked into the model context one way or another.
+
+**Update (v0.1.23):** `df-profile` and `df-verify` results now surface via a TUI
+toast (`client.tui.showToast`) instead of `output.parts` or `client.session.prompt`.
+A toast is visible to the user but is **not** a chat turn, so it is never fed back
+to the model. The server-side `command.execute.before` handler no longer writes to
+`output.parts` at all.
 
 **Update (v0.1.15):** migrated from markdown command templates (under
 `templates/.opencode/commands/`) to plugin-registered, handler-backed slash

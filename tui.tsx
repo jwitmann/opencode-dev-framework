@@ -4,45 +4,66 @@ import type { TuiPluginModule } from "@opencode-ai/plugin/tui";
 import { loadConfig } from "./dist/config.js";
 import { renderConfigStatus, renderHelp } from "./dist/format-status.js";
 
-const tui: TuiPluginModule["tui"] = async (api) => {
-  const directory = api.state.path.directory;
-  const commandApi = api.command;
+type TuiApi = Parameters<TuiPluginModule["tui"]>[0];
 
-  if (!commandApi) {
+type DevFrameworkCommand = {
+  title: string;
+  name: string;
+  description: string;
+  slashName: string;
+  run: () => void;
+};
+
+/**
+ * Register dev-framework slash commands.
+ *
+ * The current OpenCode API is `api.keymap.registerLayer` (a command-palette
+ * layer that also wires up `/slash` invocations). This mirrors how DCP
+ * registers its commands. The legacy `api.command` v1 API is deprecated and
+ * `undefined` in current runtimes, so it is intentionally not used.
+ */
+function registerCommands(api: TuiApi, commands: DevFrameworkCommand[]): void {
+  const keymap = (api as { keymap?: { registerLayer?: (layer: unknown) => void } }).keymap;
+  if (!keymap?.registerLayer) {
     return;
   }
+  keymap.registerLayer({
+    commands: commands.map((command) => ({
+      namespace: "palette",
+      name: command.name,
+      title: command.title,
+      desc: command.description,
+      category: "dev-framework",
+      slashName: command.slashName,
+      run: command.run,
+    })),
+  });
+}
 
-  commandApi.register(() => [
+const tui: TuiPluginModule["tui"] = async (api) => {
+  const directory = api.state.path.directory;
+
+  registerCommands(api, [
     {
       title: "dev-framework status",
-      value: "df-status",
+      name: "df-status",
       description: "Show the current dev-framework configuration",
-      category: "dev-framework",
-      slash: { name: "df-status" },
-      onSelect: () => {
-        showStatusDialog(api, directory);
-      },
+      slashName: "df-status",
+      run: () => showStatusDialog(api, directory),
     },
     {
       title: "dev-framework help",
-      value: "df-help",
+      name: "df-help",
       description: "List available dev-framework commands",
-      category: "dev-framework",
-      slash: { name: "df-help" },
-      onSelect: () => {
-        showHelpDialog(api);
-      },
+      slashName: "df-help",
+      run: () => showHelpDialog(api),
     },
   ]);
 };
 
-function showStatusDialog(
-  api: Parameters<TuiPluginModule["tui"]>[0],
-  directory: string,
-): void {
+function showStatusDialog(api: TuiApi, directory: string): void {
   const config = loadConfig(directory);
   const DialogAlert = api.ui.DialogAlert;
-
   api.ui.dialog.replace(() => (
     <DialogAlert
       title="opencode-dev-framework status"
@@ -52,9 +73,8 @@ function showStatusDialog(
   ));
 }
 
-function showHelpDialog(api: Parameters<TuiPluginModule["tui"]>[0]): void {
+function showHelpDialog(api: TuiApi): void {
   const DialogAlert = api.ui.DialogAlert;
-
   api.ui.dialog.replace(() => (
     <DialogAlert
       title="dev-framework commands"

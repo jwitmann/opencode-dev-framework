@@ -333,6 +333,23 @@ Keep both. The custom tool lets the agent call verification explicitly; the slas
   hook state. `renderStatus(config, state)` now composes the config portion plus
   the live state portion.
 
+## v0.1.23 release decisions
+
+- **TUI registration uses the current `api.keymap.registerLayer` API.** The
+  previous `tui.tsx` registered commands via the deprecated `api.command` v1 API.
+  That API is `undefined` in current OpenCode runtimes, so the `if (!commandApi)
+  return;` guard silently bailed and `/df-status`/`/df-help` were never
+  registered (the symptom: "not a valid command"). The module now registers
+  exclusively through `api.keymap.registerLayer({ commands, bindings })`, which is
+  exactly how DCP registers `/dcp`. This also removes dead deprecated code.
+- **`df-profile` / `df-verify` results now use a TUI toast, not chat.** The old
+  `command.execute.before` handler wrote results to `output.parts` (which is fed
+  back to the model) or via the broken `client.session.prompt` messenger. Both
+  leaked into the model. Results now surface via `client.tui.showToast` (visible,
+  non-chat), stored as `HookState.showToast`. The `src/messenger.ts` helper and
+  its test were deleted as dead code.
+- **Validation:** 165 tests pass; format/lint/lint:md/typecheck/build all green.
+
 ## References
 
 - OpenCode plugin docs: <https://opencode.ai/docs/plugins>

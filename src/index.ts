@@ -23,7 +23,6 @@ import {
 import { runCommand, type RunCommand } from "./host.js";
 import { detectPreCommitAvailability, isLintFailure, lintFile, summarizeLint } from "./lint.js";
 import { createLogger, type LogFn } from "./logger.js";
-import { createMessenger, type SendMessageFn } from "./messenger.js";
 import { checkToolCall } from "./protect.js";
 import {
   clearSessionDirectory,
@@ -33,6 +32,7 @@ import {
   setHookState,
   setSessionDirectory,
   updateHookState,
+  type HookState,
   type HostPermission,
 } from "./registry.js";
 import { injectConstitution, loadConstitution } from "./rules.js";
@@ -64,12 +64,29 @@ export function buildHooks(
   run: RunCommand = runCommand,
   tracker: ChangedFileTracker = createChangedFileTracker(),
   constitution: string | null = null,
-  sendMessage: SendMessageFn | null = createMessenger(ctx.client),
 ): HooksWithStopping {
   // All hook state — including the project directory — lives in the registry
   // and is looked up at call time. OpenCode's Effect runtime stripped closure
   // captures in production (config/log/run came back undefined), so hooks must
   // not rely on variables from this scope.
+  const showToast: NonNullable<HookState["showToast"]> = (message, variant = "info") => {
+    try {
+      const tui = (
+        ctx.client as unknown as {
+          tui?: {
+            showToast?: (input: {
+              title?: string;
+              message: string;
+              variant?: string;
+            }) => Promise<unknown>;
+          };
+        }
+      ).tui;
+      tui?.showToast?.({ title: "opencode-dev-framework", message, variant });
+    } catch {
+      // TUI may be unavailable; the log line is enough.
+    }
+  };
   setHookState(ctx.directory, {
     directory: ctx.directory,
     config,
@@ -78,7 +95,7 @@ export function buildHooks(
     tracker,
     constitution,
     blockCounts: new Map(),
-    sendMessage,
+    showToast,
   });
 
   return {
@@ -108,30 +125,31 @@ export function buildHooks(
       };
     },
 
-    "command.execute.before": async (input, output) => {
+    "command.execute.before": async (input) => {
       const state = getStateForSession(input.sessionID);
       if (!state) {
-        const fallback = "[opencode-dev-framework] plugin state is not available for this session.";
-        output.parts.length = 0;
-        output.parts.push({ type: "text", text: fallback, synthetic: true } as never);
+        // The plugin never initialized for this session — surface it without
+        // touching the chat (a synthetic part would be fed back to the model).
+        getHookState()?.showToast?.(
+          "[opencode-dev-framework] plugin state is not available for this session.",
+          "error",
+        );
         return;
       }
 
       const directory = state.directory;
-      const reply = async (text: string) => {
-        output.parts.length = 0;
-        if (state.sendMessage) {
-          await state.sendMessage(input.sessionID, text);
-        } else {
-          output.parts.push({ type: "text", text, synthetic: true } as never);
-        }
+      const reply = (text: string, variant: "info" | "success" | "warning" | "error" = "info") => {
+        state.showToast?.(text, variant);
       };
 
       if (input.command === "df-profile") {
         const profile = input.arguments.trim().toLowerCase();
         const validProfiles: Profile[] = ["off", "advisory", "standard", "strict"];
         if (!validProfiles.includes(profile as Profile)) {
-          await reply(`Invalid profile "${profile}". Valid values: ${validProfiles.join(", ")}.`);
+          reply(
+            `Invalid profile "${profile}". Valid values: ${validProfiles.join(", ")}.`,
+            "warning",
+          );
           return;
         }
 
@@ -142,8 +160,9 @@ export function buildHooks(
         const { constitution } = await loadConstitution(nextConfig, state.directory);
         updateHookState(state.directory, { config: nextConfig, constitution });
 
-        await reply(
+        reply(
           `opencode-dev-framework profile set to "${profile}". Change applied immediately.`,
+          "success",
         );
         await state.log("info", "df-profile command executed", { directory, profile });
         return;
@@ -155,7 +174,7 @@ export function buildHooks(
           cwd: state.directory,
         });
         const summary = summarizeGate(report);
-        await reply(summary);
+        reply(summary, report.ok ? "success" : "error");
         const level = report.ok ? "info" : "error";
         await state.log(level, "df-verify command executed", {
           directory,
@@ -167,7 +186,7 @@ export function buildHooks(
 
       // Unknown /df-* command — give a helpful response.
       if (input.command.startsWith("df-")) {
-        await reply(`Unknown command /${input.command}. Try /df-help.`);
+        reply(`Unknown command /${input.command}. Try /df-help.`, "warning");
         await state.log("warn", "unknown df command", { directory, command: input.command });
       }
     },

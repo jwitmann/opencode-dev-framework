@@ -2,60 +2,74 @@ import { describe, expect, it } from "vitest";
 import type { TuiPluginModule } from "@opencode-ai/plugin/tui";
 import tuiModule from "../tui.tsx";
 
-describe("TUI plugin module", () => {
-  it("registers /df-status and /df-help slash commands", async () => {
-    const registered: Array<{
-      title: string;
-      value: string;
-      slash?: { name: string };
-      onSelect?: () => void;
-    }> = [];
+type TuiApi = Parameters<TuiPluginModule["tui"]>[0];
 
-    const api = {
-      state: {
-        path: { directory: "/project" },
+function makeApi(overrides: Partial<TuiApi> = {}): TuiApi {
+  return {
+    state: { path: { directory: "/project" } },
+    ui: {
+      DialogAlert: ((props: { title: string; message: string; onConfirm?: () => void }) =>
+        props) as unknown as TuiApi["ui"]["DialogAlert"],
+      dialog: {
+        replace: () => {},
+        clear: () => {},
       },
-      command: {
-        register: (factory: () => typeof registered) => {
-          registered.push(...factory());
-        },
-      },
-      ui: {
-        DialogAlert: ((props: { title: string; message: string; onConfirm?: () => void }) =>
-          props) as unknown as Parameters<TuiPluginModule["tui"]>[0]["ui"]["DialogAlert"],
-        dialog: {
-          replace: () => {},
-          clear: () => {},
-        },
-      },
-    } as unknown as Parameters<TuiPluginModule["tui"]>[0];
+    },
+    ...overrides,
+  } as unknown as TuiApi;
+}
+
+describe("TUI plugin module", () => {
+  it("registers /df-status and /df-help via api.keymap.registerLayer", async () => {
+    const layers: Array<{ commands: Array<{ name: string; slashName: string; run: unknown }> }> =
+      [];
+    const api = makeApi({
+      keymap: {
+        registerLayer: (layer: unknown) => layers.push(layer as never),
+      } as never,
+    });
 
     await tuiModule.tui(api, undefined, { id: "test" } as never);
 
-    expect(registered).toHaveLength(2);
-    expect(registered[0].value).toBe("df-status");
-    expect(registered[0].slash?.name).toBe("df-status");
-    expect(registered[1].value).toBe("df-help");
-    expect(registered[1].slash?.name).toBe("df-help");
+    expect(layers).toHaveLength(1);
+    const commands = layers[0].commands;
+    expect(commands).toHaveLength(2);
+    expect(commands[0].name).toBe("df-status");
+    expect(commands[0].slashName).toBe("df-status");
+    expect(commands[0].run).toBeTypeOf("function");
+    expect(commands[1].name).toBe("df-help");
+    expect(commands[1].slashName).toBe("df-help");
   });
 
-  it("opens a dialog when /df-status onSelect runs", async () => {
-    const replaceCalls: Array<() => unknown> = [];
-    let selected: (() => void) | undefined;
-
-    const api = {
-      state: {
-        path: { directory: "/project" },
-      },
+  it("registers nothing (and does not throw) when keymap is unavailable", async () => {
+    // The legacy `api.command` v1 API is deprecated and `undefined` in current
+    // runtimes, so registration is a no-op when `api.keymap` is missing.
+    const api = makeApi({
       command: {
-        register: (factory: () => Array<{ onSelect?: () => void }>) => {
-          const commands = factory();
-          selected = commands.find((c) => "onSelect" in c)?.onSelect;
+        register: () => {
+          throw new Error("legacy api.command should not be used");
         },
-      },
+      } as never,
+    });
+
+    await expect(tuiModule.tui(api, undefined, { id: "test" } as never)).resolves.toBeUndefined();
+  });
+
+  it("opens a status dialog when the /df-status command runs", async () => {
+    const replaceCalls: Array<() => unknown> = [];
+    let runStatus: (() => void) | undefined;
+
+    const api = makeApi({
+      keymap: {
+        registerLayer: (layer: unknown) => {
+          const commands = (layer as { commands: Array<{ name: string; run: () => void }> })
+            .commands;
+          runStatus = commands.find((c) => c.name === "df-status")?.run;
+        },
+      } as never,
       ui: {
         DialogAlert: ((props: { title: string; message: string; onConfirm?: () => void }) =>
-          props) as unknown as Parameters<TuiPluginModule["tui"]>[0]["ui"]["DialogAlert"],
+          props) as unknown as TuiApi["ui"]["DialogAlert"],
         dialog: {
           replace: (render: () => unknown) => {
             replaceCalls.push(render);
@@ -63,10 +77,10 @@ describe("TUI plugin module", () => {
           clear: () => {},
         },
       },
-    } as unknown as Parameters<TuiPluginModule["tui"]>[0];
+    });
 
     await tuiModule.tui(api, undefined, { id: "test" } as never);
-    selected?.();
+    runStatus?.();
 
     expect(replaceCalls).toHaveLength(1);
   });
