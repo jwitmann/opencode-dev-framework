@@ -125,7 +125,8 @@ opencode-dev-framework/
 │   ├── gate.ts             # Completion gate
 │   ├── rules.ts            # Constitution injection
 │   ├── registry.ts         # Per-project hook state registry
-│   ├── tools.ts            # Custom tools (dev_framework_init / set_profile)
+│   ├── tools.ts            # Custom tools (dev_framework_init / set_profile / status)
+│   ├── format-status.ts    # Shared status renderer for tool + slash command
 │   ├── installer.ts        # Template copy + config generation for the df CLI
 │   ├── host.ts             # Host abstraction
 │   ├── logger.ts           # Structured logging
@@ -133,7 +134,7 @@ opencode-dev-framework/
 ├── bin/
 │   └── df                  # df init / profile / status / version CLI
 ├── templates/              # Project scaffolding templates
-│   └── .opencode/          # commands, agents, skills, local rules dir
+│   └── .opencode/          # agents, skills, local rules dir
 ├── rules/                  # Bundled constitution (numbered, loaded sorted)
 │   ├── 00-activation.md
 │   ├── 10-quality-bar.md

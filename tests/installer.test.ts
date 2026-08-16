@@ -23,9 +23,9 @@ describe("listTemplateFiles", () => {
   it("returns the bundled template files", async () => {
     const files = await listTemplateFiles();
     expect(files).not.toContain(".opencode-dev-framework.yml");
-    expect(files).toContain(".opencode/commands/df-verify.md");
-    expect(files).toContain(".opencode/commands/df-profile.md");
+    expect(files).not.toContain(".opencode/commands/df-verify.md");
     expect(files).toContain(".opencode/agents/test-grounder.md");
+    expect(files).toContain(".opencode/agents/style-enforcer.md");
     expect(files).toContain(".opencode/skills/peer-review/SKILL.md");
   });
 });
@@ -50,20 +50,20 @@ describe("installTemplates", () => {
   it("overwrites existing files when overwriteExisting is true", async () => {
     await installTemplates(dir, { skipExisting: true });
     const { writeFile } = await import("node:fs/promises");
-    await writeFile(join(dir, ".opencode/commands/df-verify.md"), "custom", "utf8");
+    await writeFile(join(dir, ".opencode/agents/test-grounder.md"), "custom", "utf8");
     const result = await installTemplates(dir, { overwriteExisting: true });
-    expect(result.overwritten).toContain(".opencode/commands/df-verify.md");
+    expect(result.overwritten).toContain(".opencode/agents/test-grounder.md");
   });
 
   it("applies an 'overwrite-all' prompt answer to subsequent files", async () => {
     await installTemplates(dir, { skipExisting: true });
     const { writeFile } = await import("node:fs/promises");
     await writeFile(
-      join(dir, ".opencode/commands/df-verify.md"),
+      join(dir, ".opencode/agents/test-grounder.md"),
       "---\ndescription: custom\n---\ncustom body\n",
       "utf8",
     );
-    await writeFile(join(dir, ".opencode/commands/df-profile.md"), "custom", "utf8");
+    await writeFile(join(dir, ".opencode/agents/style-enforcer.md"), "custom", "utf8");
 
     let promptCalls = 0;
     const result = await installTemplates(dir, {
@@ -74,8 +74,8 @@ describe("installTemplates", () => {
     });
 
     expect(promptCalls).toBe(1);
-    expect(result.overwritten).toContain(".opencode/commands/df-verify.md");
-    expect(result.overwritten).toContain(".opencode/commands/df-profile.md");
+    expect(result.overwritten).toContain(".opencode/agents/test-grounder.md");
+    expect(result.overwritten).toContain(".opencode/agents/style-enforcer.md");
   });
 });
 

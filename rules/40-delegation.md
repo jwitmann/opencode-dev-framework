@@ -6,8 +6,9 @@ rubber-stamp. Catching issues early is cheaper than catching them at the gate.
 
 ## The specialists
 
-Invoke these as subagents (delegate the task to them; they investigate and report,
-they do **not** edit code):
+When the project has the specialist agents installed (under `.opencode/agents/`),
+use them as focused reviewers. Treat them as investigation-only: give them a diff or
+a description and ask them to report findings; do not ask them to edit product code.
 
 - **`pattern-guardian`** — checks new/changed code against existing codebase patterns:
   duplication, re-invented helpers, divergent conventions, "second way to do a thing",
@@ -20,7 +21,7 @@ they do **not** edit code):
   test that fails without the change? do the cited commands actually pass? did you
   verify the edge cases? Use it before declaring a task done.
 
-You may also use the built-in review or planning agents for a general high-signal
+You may also ask the built-in review or planning agents for a general high-signal
 second opinion — the best moment is after planning, before implementing, and again
 before completion.
 
@@ -35,7 +36,8 @@ before completion.
 
 Keep delegation proportional: a one-line fix doesn't need the full loop; a new module
 does. Use judgment, but never skip the test-grounding and review steps for behavioral
-changes.
+changes. If the specialist agents are not installed in this project, perform the same
+checks yourself with the skills in this section.
 
 ## Skills
 

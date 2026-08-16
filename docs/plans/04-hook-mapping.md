@@ -98,30 +98,35 @@ gate failure in `standard`/`strict`, pushes a concise synthetic user message up
 to `gate.max_blocks` times before standing down. `session.idle` remains the
 fallback on older OpenCode versions.
 
-### `/df-verify` custom command
+### `/df-verify`, `/df-profile`, `/df-status` custom commands
 
-**Purpose:** Let the user run the gate on demand.
+**Purpose:** Let the user run the gate on demand, switch profile, or inspect
+plugin state.
 
-**Definition:** `templates/.opencode/commands/df-verify.md` (copied into the
-project by `df init` / `dev_framework_init`; OpenCode does not load slash
-commands from plugin packages)
+**Definition:** registered programmatically via the `config` hook and handled in
+`command.execute.before`. OpenCode does not load slash commands from plugin
+packages, but a plugin can add them to the effective config at runtime.
 
-```markdown
----
-description: Run the dev-framework completion gate manually
----
-Run the completion gate for this project. Report test, type-check, and lint results. If anything fails, list the failures and suggest fixes.
+```typescript
+config: async (opencodeConfig) => {
+  (opencodeConfig as any).command ??= {};
+  (opencodeConfig as any).command["df-status"] = {
+    template: "",
+    description: "Show the current dev-framework state",
+  };
+  // ...df-verify, df-profile
+},
 ```
 
-The command body can invoke the plugin's custom tool (if we expose one) or simply prompt the agent to run the configured commands.
+The `command.execute.before` hook looks up the session's hook state and returns
+the result as a text part. `/df-verify` runs `runGate` directly; `/df-profile`
+edits the config file, clears the cache, reloads the config, and updates the
+in-memory hook state; `/df-status` renders the live state.
 
-**Update (v0.1.7):** `templates/.opencode/commands/df-profile.md` provides
-`/df-profile <profile>` as a prompt-based alternative to the
-`dev_framework_set_profile` custom tool.
-
-**Update (v0.1.14):** `templates/.opencode/commands/df-status.md` provides
-`/df-status`, which prompts the agent to call `dev_framework_status` and report
-the current plugin state.
+**Update (v0.1.15):** migrated from markdown command templates (under
+`templates/.opencode/commands/`) to plugin-registered, handler-backed slash
+commands so the response is deterministic and does not depend on the LLM
+choosing to call a tool.
 
 ## Anti-patterns to avoid
 

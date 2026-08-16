@@ -186,6 +186,16 @@ Keep both. The custom tool lets the agent call verification explicitly; the slas
   `df init` sets `precommit: auto` automatically when a
   `.pre-commit-config.yaml` file is present.
 
+## v0.1.15 release decisions
+
+- **Slash commands migrated from templates to plugin handlers.** The original
+  `/df-verify`, `/df-profile`, and `/df-status` were markdown templates copied
+  into `.opencode/commands/`. They relied on the LLM to interpret the prompt and
+  call the right tool. As of v0.1.15, the plugin registers the commands via the
+  `config` hook and handles them in `command.execute.before`, returning the
+  result as a text part directly from in-memory state. This makes `/df-status`
+  instant and deterministic.
+
 ## v0.1.14 release decisions
 
 - **`/df-status` slash command + `dev_framework_status` tool.** Users wanted an

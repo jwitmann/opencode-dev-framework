@@ -7,17 +7,20 @@
  * - event (session.idle) -> completion gate fallback (advisory logging)
  * - experimental.chat.system.transform -> constitution injection + session mapping
  * - experimental.session.stopping -> blocking completion gate (OpenCode >= PR #41811)
- * - tool -> dev_framework_init / dev_framework_set_profile custom tools
+ * - config hook -> registers /df-status, /df-verify, /df-profile slash commands
+ * - command.execute.before -> handles those slash commands directly
  */
 
 import type { Hooks, Plugin, PluginInput } from "@opencode-ai/plugin";
-import { loadConfig } from "./config.js";
+import { join } from "node:path";
+import { clearConfigCache, loadConfig } from "./config.js";
 import {
   type ChangedFileTracker,
   createChangedFileTracker,
   runGate,
   summarizeGate,
 } from "./gate.js";
+import { renderStatus } from "./format-status.js";
 import { runCommand, type RunCommand } from "./host.js";
 import { detectPreCommitAvailability, isLintFailure, lintFile, summarizeLint } from "./lint.js";
 import { createLogger, type LogFn } from "./logger.js";
@@ -28,10 +31,12 @@ import {
   getHookState,
   setHookState,
   setSessionDirectory,
+  updateHookState,
 } from "./registry.js";
 import { injectConstitution, loadConstitution } from "./rules.js";
+import { setProfileInFile } from "./installer.js";
 import { buildTools } from "./tools.js";
-import type { ResolvedConfig } from "./types.js";
+import type { Profile, ResolvedConfig } from "./types.js";
 
 /**
  * The `experimental.session.stopping` hook was added in OpenCode PR #41811
@@ -74,6 +79,82 @@ export function buildHooks(
 
   return {
     tool: buildTools(ctx),
+
+    config: async (opencodeConfig) => {
+      const typedConfig = opencodeConfig as {
+        command?: Record<string, { template?: string; description?: string }>;
+      };
+      if (!typedConfig.command) {
+        typedConfig.command = {};
+      }
+      typedConfig.command["df-status"] = {
+        template: "",
+        description: "Show the current dev-framework state",
+      };
+      typedConfig.command["df-profile"] = {
+        template: "",
+        description: "Change the dev-framework profile (off, advisory, standard, strict)",
+      };
+      typedConfig.command["df-verify"] = {
+        template: "",
+        description: "Run the dev-framework completion gate manually",
+      };
+    },
+
+    "command.execute.before": async (input, output) => {
+      const directory = getDirectoryForSession(input.sessionID) ?? ctx.directory;
+      const state = getHookState(directory);
+      if (!state) {
+        return;
+      }
+
+      const pushText = (text: string) => {
+        output.parts.length = 0;
+        output.parts.push({ type: "text", text } as never);
+      };
+
+      if (input.command === "df-status") {
+        pushText(renderStatus(state.config, state));
+        await state.log("info", "df-status command executed", { directory });
+        return;
+      }
+
+      if (input.command === "df-profile") {
+        const profile = input.arguments.trim().toLowerCase();
+        const validProfiles: Profile[] = ["off", "advisory", "standard", "strict"];
+        if (!validProfiles.includes(profile as Profile)) {
+          pushText(`Invalid profile "${profile}". Valid values: ${validProfiles.join(", ")}.`);
+          return;
+        }
+
+        const configPath = join(state.directory, ".opencode-dev-framework.yml");
+        await setProfileInFile(configPath, profile as Profile);
+        clearConfigCache();
+        const nextConfig = loadConfig(state.directory);
+        const { constitution } = await loadConstitution(nextConfig, state.directory);
+        updateHookState(state.directory, { config: nextConfig, constitution });
+
+        pushText(`opencode-dev-framework profile set to "${profile}". Change applied immediately.`);
+        await state.log("info", "df-profile command executed", { directory, profile });
+        return;
+      }
+
+      if (input.command === "df-verify") {
+        const changedFiles = state.tracker.getChangedFiles();
+        const report = await runGate(state.run, state.config, changedFiles, {
+          cwd: state.directory,
+        });
+        const summary = summarizeGate(report);
+        pushText(summary);
+        const level = report.ok ? "info" : "error";
+        await state.log(level, "df-verify command executed", {
+          directory,
+          ok: report.ok,
+          ran: report.ran,
+        });
+        return;
+      }
+    },
 
     "experimental.chat.system.transform": async (input, output) => {
       const state = getHookState();

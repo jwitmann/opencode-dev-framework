@@ -281,7 +281,21 @@ Use this as the source of truth during implementation. Check items off as they a
 - [x] 16.2 Add `templates/.opencode/commands/df-status.md` slash command.
 - [x] 16.3 Update README and plan docs (architecture, hook mapping, notes).
 - [x] 16.4 Add tests for `dev_framework_status`.
-- [ ] 16.5 Bump version to `0.1.14` and tag.
+- [x] 16.5 Bump version to `0.1.14` and tag.
+
+## Phase 17 — Migrate slash commands to plugin-registered handlers (v0.1.15)
+
+- [x] 17.1 Add `config` hook to register `/df-status`, `/df-profile`, and
+  `/df-verify` slash commands in OpenCode's effective config.
+- [x] 17.2 Add `command.execute.before` hook to handle those commands directly:
+  read live in-memory state for `/df-status`, update config/state for
+  `/df-profile`, run `runGate` for `/df-verify`.
+- [x] 17.3 Extract `renderStatus` into `src/format-status.ts` and share it
+  between the slash-command handler and `dev_framework_status` tool.
+- [x] 17.4 Remove `templates/.opencode/commands/*.md` command templates.
+- [x] 17.5 Update README, AGENTS.md, architecture, hook mapping, installer tests.
+- [x] 17.6 Add tests for `config` and `command.execute.before` hooks.
+- [ ] 17.7 Bump version to `0.1.15` and tag.
 
 ## Notes for the implementer
 

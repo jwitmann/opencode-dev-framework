@@ -127,18 +127,20 @@ to `session.idle` and is advisory. Make the failure message extremely visible.
 
 ## Custom commands
 
-`/df-verify` is a custom OpenCode slash command that runs the completion gate on
- demand. OpenCode does not load slash commands from plugin packages, so the
-plugin ships them as **templates** under `templates/.opencode/commands/`, copied
-into the project by `df init` or the `dev_framework_init` tool. Templates
-include:
+`/df-verify`, `/df-profile`, and `/df-status` are custom OpenCode slash commands
+registered by the plugin through the `config` hook. OpenCode does not load slash
+commands from plugin packages automatically, but a plugin can mutate the
+effective OpenCode config at runtime to add them. The `command.execute.before`
+hook intercepts these commands and returns the result directly from the plugin's
+in-memory state, so no LLM prompt interpretation is required.
 
 - `/df-verify` — run the completion gate manually.
 - `/df-profile` — switch the active profile.
 - `/df-status` — show the current profile, guardrails, gate, and tracked changed
   files.
 
-Prefer the markdown command file because it requires no code and is easy to maintain.
+The project template directory no longer contains command files; only agents,
+skills, and the local rules directory are copied by `df init`.
 
 ## Build output
 
