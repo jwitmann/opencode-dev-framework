@@ -7,13 +7,14 @@
  * - event (session.idle) -> completion gate fallback (advisory logging)
  * - experimental.chat.system.transform -> constitution injection + session mapping
  * - experimental.session.stopping -> blocking completion gate (OpenCode >= PR #41811)
- * - config hook -> registers /df-status, /df-verify, /df-profile slash commands
- * - command.execute.before -> handles those slash commands directly
+ * - config hook -> registers /df-profile and /df-verify prompt commands
+ * - command.execute.before -> handles /df-profile, /df-verify, and unknown /df-*
  */
 
 import type { Hooks, Plugin, PluginInput } from "@opencode-ai/plugin";
 import { stat } from "node:fs/promises";
 import { join } from "node:path";
+import { changeProfile, verifyGate } from "./commands.js";
 import { clearConfigCache, loadConfig } from "./config.js";
 import {
   type ChangedFileTracker,
@@ -37,7 +38,7 @@ import {
 } from "./registry.js";
 import { injectConstitution, loadConstitution } from "./rules.js";
 import { buildTools } from "./tools.js";
-import type { ResolvedConfig } from "./types.js";
+import type { Profile, ResolvedConfig } from "./types.js";
 
 /**
  * The `experimental.session.stopping` hook was added in OpenCode PR #41811
@@ -137,18 +138,26 @@ export function buildHooks(
         state.hostPermissions = typedConfig.permission ?? [];
       }
 
-      // NOTE: `/df-profile` and `/df-verify` are intentionally NOT registered
-      // here. Registering a command in the OpenCode config makes it a *prompt*
-      // command, which feeds its argument to the model as a user turn. To keep
-      // them out of the model context they are registered as TUI commands in
-      // `tui.tsx` (keymap.registerLayer) instead.
+      // Register `/df-profile` and `/df-verify` as *prompt* commands so that
+      // OpenCode recognizes them **with arguments** (`/df-profile standard`)
+      // and routes them to `command.execute.before` with the trailing text in
+      // `input.arguments`. The handler performs the action and clears
+      // `output.parts` so the argument is never echoed to the model. The empty
+      // `template` means nothing is expanded into the user message.
+      // `/df-status` and `/df-help` remain TUI commands (tui.tsx) — they take
+      // no arguments and render in a modal.
+      typedConfig.command ??= {};
+      typedConfig.command["df-profile"] = {
+        template: "",
+        description: "Change the dev-framework profile (off|advisory|standard|strict)",
+      };
+      typedConfig.command["df-verify"] = {
+        template: "",
+        description: "Run the dev-framework completion gate manually",
+      };
     },
 
-    "command.execute.before": async (input) => {
-      // `/df-profile` and `/df-verify` are TUI commands (see tui.tsx), so they
-      // never reach this server-side handler. This handler only exists to give
-      // a helpful hint for mistyped `/df-*` commands that OpenCode still routes
-      // here as prompt commands.
+    "command.execute.before": async (input, output) => {
       if (!input.command.startsWith("df-")) {
         return;
       }
@@ -160,11 +169,41 @@ export function buildHooks(
         );
         return;
       }
+      await reloadConfigIfChanged(state);
+
+      if (input.command === "df-profile") {
+        const arg = (input.arguments ?? "").trim();
+        const profiles: Profile[] = ["off", "advisory", "standard", "strict"];
+        if (!arg || !profiles.includes(arg as Profile)) {
+          state.showToast?.(`Usage: /df-profile <${profiles.join("|")}>`, "warning");
+        } else {
+          const message = await changeProfile(state.directory, arg as Profile);
+          state.showToast?.(message, "success");
+        }
+        output.parts.length = 0;
+        return;
+      }
+
+      if (input.command === "df-verify") {
+        const { report, summary } = await verifyGate(
+          state.run,
+          state.directory,
+          state.config,
+          state.tracker.getChangedFiles(),
+        );
+        state.showToast?.(summary, report.ok ? "success" : "error");
+        output.parts.length = 0;
+        return;
+      }
+
+      // Unknown /df-* command — point the user at /df-help and suppress the
+      // raw text so it is not fed to the model.
       state.showToast?.(`Unknown command /${input.command}. Try /df-help.`, "warning");
       await state.log("warn", "unknown df command", {
         directory: state.directory,
         command: input.command,
       });
+      output.parts.length = 0;
     },
 
     "experimental.chat.system.transform": async (input, output) => {

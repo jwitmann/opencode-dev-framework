@@ -109,35 +109,53 @@ fallback on older OpenCode versions.
 **Purpose:** Let the user run the gate on demand, switch profile, inspect
 plugin state, or list commands.
 
-**Definition:** all four commands are registered by the TUI companion module
-(`tui.tsx`, exported as `opencode-dev-framework/tui`) via
-`api.keymap.registerLayer({ commands, bindings })`. The server plugin does **not**
-register them in the `config` hook (registering them there made OpenCode expand
-them as prompt commands and feed the argument to the model as a user turn —
-the bug fixed in v0.1.24).
+**Definition:** the commands use two mechanisms, but **none** feed text to the
+LLM:
+
+- **`/df-status` and `/df-help` are TUI commands** registered by the TUI companion
+  module (`tui.tsx`, exported as `opencode-dev-framework/tui`) via
+  `api.keymap.registerLayer({ commands, bindings })`. They open a `DialogAlert`
+  modal and are never inserted into the chat stream.
+- **`/df-profile` and `/df-verify` are server-side prompt commands.** The server
+  `config` hook registers them with an **empty** template
+  (`typedConfig.command["df-profile"] = { template: "", description: ... }`).
+  An empty template makes OpenCode recognize the command *with an argument*
+  (`/df-profile standard`) and route it to `command.execute.before` with
+  `input.arguments`, but expand nothing into the user message. The
+  `command.execute.before` hook then validates/handles the argument, shows a
+  toast, and **clears `output.parts`** (`output.parts.length = 0`) so the
+  argument is never fed to the model. This mirrors how DCP handles `/dcp <sub>` —
+  it processes the argument in `command.execute.before` and clears the parts.
+
+```typescript
+// server plugin — src/index.ts config hook
+typedConfig.command["df-profile"] = { template: "", description: "Change the active profile" };
+typedConfig.command["df-verify"]  = { template: "", description: "Run the completion gate" };
+
+// server plugin — command.execute.before
+if (input.command === "df-profile") {
+  const profile = input.arguments?.trim();
+  if (!VALID_PROFILES.includes(profile)) { state.showToast?.("usage...", "warning"); }
+  else { await changeProfile(state.directory, profile); state.showToast?.(`profile → ${profile}`, "success"); }
+  output.parts.length = 0; // suppress the model turn
+  return;
+}
+```
+
+Shared logic lives in `src/commands.ts` (`changeProfile` and `verifyGate`) so the
+server command handler and the `dev_framework_set_profile` tool reuse the same
+code path. The TUI module (`tui.tsx`) only registers `df-status`/`df-help`.
 
 ```typescript
 // tui.tsx (TUI module, runs in the TUI process)
 api.keymap.registerLayer({
   commands: {
-    "df-status":  { title: "DF Status",  description: "Show dev-framework state" },
-    "df-help":    { title: "DF Help",    description: "List dev-framework commands" },
-    "df-profile": { title: "DF Profile", description: "Change the active profile" },
-    "df-verify":  { title: "DF Verify",  description: "Run the completion gate" },
+    "df-status": { title: "DF Status", description: "Show dev-framework state" },
+    "df-help":   { title: "DF Help",   description: "List dev-framework commands" },
   },
   bindings: {},
 });
 ```
-
-The TUI module opens a `DialogAlert`/`DialogSelect` modal for each command and
-surfaces the result with a `client.tui.showToast`. Because the TUI process is
-separate from the model loop, none of this is ever fed back to the LLM. Shared
-logic lives in `src/commands.ts` (`changeProfile` and `verifyGate`) so the TUI
-module and the `dev_framework_set_profile` tool reuse the same code path.
-
-The server `command.execute.before` hook now only handles **unknown** `/df-*`
-commands, returning a hint to use `/df-help`. It no longer writes to
-`output.parts` at all.
 
 **`/df-status` and `/df-help` were the first to move to the TUI module**
 (v0.1.22). The TUI module registers slash commands via
@@ -153,13 +171,18 @@ which is exactly what DCP uses. The earlier `client.session.prompt` chat-message
 attempts (synthetic/ignored flags) were abandoned in v0.1.22 because posting to the
 conversation always leaked into the model context one way or another.
 
-**Update (v0.1.24):** `df-profile` and `df-verify` are now **also** TUI commands
-(via `keymap.registerLayer`), not prompt commands. They open a `DialogSelect`
-(profile picker) or `DialogAlert` (gate result) and use a TUI toast. This fixes the
-bug where `/df-profile standard` was expanded into a model turn (the argument
-"standard" was sent to the LLM as if the user had typed it). The shared
-`changeProfile`/`verifyGate` helpers in `src/commands.ts` back both the TUI module
-and the server-side `dev_framework_set_profile` tool.
+**Update (v0.1.24 → corrected):** the earlier v0.1.24 attempt registered
+`df-profile`/`df-verify` as TUI `keymap` commands, but OpenCode only recognizes
+keymap commands *without* arguments — so `/df-profile standard` was treated as a
+plain chat line and leaked `standard` to the model. The fix (shipped as v0.1.25)
+moves them back to **server-side prompt commands** with an *empty* template. The
+empty template lets OpenCode route `/df-profile <arg>` to `command.execute.before`
+(where `input.arguments` carries the profile) while expanding nothing into the
+user message; the handler then clears `output.parts` to suppress the model turn.
+This is exactly how DCP handles `/dcp <sub>`. `/df-status` and `/df-help` remain
+TUI modal commands. The shared `changeProfile`/`verifyGate` helpers in
+`src/commands.ts` back both the server command handler and the
+`dev_framework_set_profile` tool.
 
 **Update (v0.1.23):** the TUI plugin is loaded from `tui.json`, **not**
 `opencode.json`. OpenCode keeps server plugins (`opencode.json`) and TUI plugins

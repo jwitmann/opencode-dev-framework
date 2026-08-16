@@ -5,7 +5,7 @@ import type { PluginInput } from "@opencode-ai/plugin";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildHooks } from "../src/index";
 import { resolveConfig } from "../src/config";
-import { getHookState } from "../src/registry";
+import { getHookState, setSessionDirectory } from "../src/registry";
 import { changeProfile, verifyGate } from "../src/commands";
 import { clearConfigCache } from "../src/config";
 import type { LogFn } from "../src/logger";
@@ -32,12 +32,15 @@ function makeConfig(raw = {}) {
 }
 
 describe("config hook", () => {
-  it("registers no prompt commands (df-* are TUI commands in tui.tsx)", async () => {
+  it("registers df-profile and df-verify as prompt commands (empty template)", async () => {
     const hooks = buildHooks(makeCtx(dir), makeConfig(), noopLog);
     const config: { command?: Record<string, { template?: string; description?: string }> } = {};
     await hooks.config?.(config as never);
-    expect(config.command?.["df-profile"]).toBeUndefined();
-    expect(config.command?.["df-verify"]).toBeUndefined();
+    // df-profile / df-verify are server prompt commands so arguments are routed
+    // to command.execute.before and the argument is kept out of the model.
+    expect(config.command?.["df-profile"]?.template).toBe("");
+    expect(config.command?.["df-verify"]?.template).toBe("");
+    // df-status / df-help remain TUI commands (modals) and are NOT prompt commands.
     expect(config.command?.["df-status"]).toBeUndefined();
     expect(config.command?.["df-help"]).toBeUndefined();
   });
@@ -53,20 +56,102 @@ describe("config hook", () => {
 });
 
 describe("command.execute.before hook", () => {
-  it("unknown df-* command returns a helpful hint", async () => {
-    const toasts: { message: string }[] = [];
-    const hooks = buildHooks(makeCtx(dir), makeConfig(), noopLog);
+  function setup(run?: RunCommand) {
+    const toasts: { message: string; variant?: string }[] = [];
+    const hooks = buildHooks(
+      makeCtx(dir),
+      makeConfig(),
+      noopLog,
+      run ??
+        (async () => ({
+          stdout: "",
+          stderr: "",
+          exitCode: 0,
+          timedOut: false,
+        })),
+    );
     const state = getHookState(dir);
     if (state) {
-      state.showToast = (message) => toasts.push({ message });
+      state.showToast = (message, variant) => toasts.push({ message, variant });
     }
-    await hooks["command.execute.before"]?.({
-      command: "df-foobar",
-      sessionID: "s1",
-      arguments: "",
-    } as never);
+    setSessionDirectory("s1", dir);
+    return { hooks, toasts };
+  }
+
+  it("unknown df-* command returns a helpful hint and suppresses output", async () => {
+    const { hooks, toasts } = setup();
+    const output: { parts: unknown[] } = { parts: [{ type: "text", text: "/df-foobar" }] };
+    await hooks["command.execute.before"]?.(
+      {
+        command: "df-foobar",
+        sessionID: "s1",
+        arguments: "",
+      } as never,
+      output as never,
+    );
     expect(toasts[0].message).toContain("Unknown command");
     expect(toasts[0].message).toContain("/df-help");
+    expect(output.parts).toHaveLength(0);
+  });
+
+  it("df-profile with a valid argument applies the profile and suppresses output", async () => {
+    const { hooks, toasts } = setup();
+    await writeFile(join(dir, ".opencode-dev-framework.yml"), "profile: standard\n");
+    clearConfigCache();
+    const output: { parts: unknown[] } = { parts: [{ type: "text", text: "/df-profile strict" }] };
+    await hooks["command.execute.before"]?.(
+      {
+        command: "df-profile",
+        sessionID: "s1",
+        arguments: "strict",
+      } as never,
+      output as never,
+    );
+    expect(toasts[0].message).toContain('profile set to "strict"');
+    expect(toasts[0].variant).toBe("success");
+    expect(output.parts).toHaveLength(0);
+    const content = await readFile(join(dir, ".opencode-dev-framework.yml"), "utf8");
+    expect(content).toContain("profile: strict");
+  });
+
+  it("df-profile with an invalid argument shows usage and suppresses output", async () => {
+    const { hooks, toasts } = setup();
+    await writeFile(join(dir, ".opencode-dev-framework.yml"), "profile: standard\n");
+    clearConfigCache();
+    const output: { parts: unknown[] } = { parts: [{ type: "text", text: "/df-profile bogus" }] };
+    await hooks["command.execute.before"]?.(
+      {
+        command: "df-profile",
+        sessionID: "s1",
+        arguments: "bogus",
+      } as never,
+      output as never,
+    );
+    expect(toasts[0].message).toContain("Usage");
+    expect(toasts[0].variant).toBe("warning");
+    expect(output.parts).toHaveLength(0);
+    const content = await readFile(join(dir, ".opencode-dev-framework.yml"), "utf8");
+    expect(content).toContain("profile: standard");
+  });
+
+  it("df-verify runs the gate and suppresses output", async () => {
+    const { hooks, toasts } = setup(async () => ({
+      stdout: "",
+      stderr: "",
+      exitCode: 0,
+      timedOut: false,
+    }));
+    const output: { parts: unknown[] } = { parts: [{ type: "text", text: "/df-verify" }] };
+    await hooks["command.execute.before"]?.(
+      {
+        command: "df-verify",
+        sessionID: "s1",
+        arguments: "",
+      } as never,
+      output as never,
+    );
+    expect(toasts[0].message).toContain("completion gate");
+    expect(output.parts).toHaveLength(0);
   });
 });
 

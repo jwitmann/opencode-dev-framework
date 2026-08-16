@@ -1,6 +1,3 @@
-import { mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { TuiPluginModule } from "@opencode-ai/plugin/tui";
 import tuiModule from "../tui.tsx";
@@ -38,11 +35,11 @@ async function registeredCommands(api: TuiApi) {
 }
 
 describe("TUI plugin module", () => {
-  it("registers all four /df-* commands via api.keymap.registerLayer", async () => {
+  it("registers the two modal /df-* commands via api.keymap.registerLayer", async () => {
     const commands = await registeredCommands(makeApi());
-    expect(commands).toHaveLength(4);
+    expect(commands).toHaveLength(2);
     const names = commands.map((c) => c.name).sort();
-    expect(names).toEqual(["df-help", "df-profile", "df-status", "df-verify"]);
+    expect(names).toEqual(["df-help", "df-status"]);
     for (const command of commands) {
       expect(command.slashName).toBe(command.name);
       expect(command.run).toBeTypeOf("function");
@@ -83,59 +80,5 @@ describe("TUI plugin module", () => {
     const runStatus = commands.find((c) => c.name === "df-status")?.run;
     runStatus?.();
     expect(replaceCalls).toHaveLength(1);
-  });
-
-  it("opens a profile-select dialog when /df-profile runs", async () => {
-    const replaceCalls: Array<() => unknown> = [];
-    const commands = await registeredCommands(
-      makeApi({
-        ui: {
-          DialogAlert: ((props: { title: string; message: string; onConfirm?: () => void }) =>
-            props) as unknown as TuiApi["ui"]["DialogAlert"],
-          DialogSelect: ((props: { title: string; options: unknown[]; onSelect?: () => void }) =>
-            props) as unknown as TuiApi["ui"]["DialogSelect"],
-          dialog: {
-            replace: (render: () => unknown) => {
-              replaceCalls.push(render);
-            },
-            clear: () => {},
-          },
-        },
-      }),
-    );
-    const runProfile = commands.find((c) => c.name === "df-profile")?.run;
-    runProfile?.();
-    // The dialog is opened but does not write the config until the user picks
-    // a profile, so this is safe to exercise in a unit test.
-    expect(replaceCalls).toHaveLength(1);
-  });
-
-  it("runs the gate and opens a report dialog when /df-verify runs", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "odf-tui-"));
-    try {
-      const replaceCalls: Array<() => unknown> = [];
-      const commands = await registeredCommands(
-        makeApi({
-          state: { path: { directory: dir } },
-          ui: {
-            DialogAlert: ((props: { title: string; message: string; onConfirm?: () => void }) =>
-              props) as unknown as TuiApi["ui"]["DialogAlert"],
-            DialogSelect: ((props: { title: string; options: unknown[]; onSelect?: () => void }) =>
-              props) as unknown as TuiApi["ui"]["DialogSelect"],
-            dialog: {
-              replace: (render: () => unknown) => {
-                replaceCalls.push(render);
-              },
-              clear: () => {},
-            },
-          },
-        }),
-      );
-      const runVerify = commands.find((c) => c.name === "df-verify")?.run;
-      await runVerify?.();
-      expect(replaceCalls).toHaveLength(1);
-    } finally {
-      await rm(dir, { recursive: true, force: true });
-    }
   });
 });

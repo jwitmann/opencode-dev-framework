@@ -30,15 +30,16 @@ reimplemented as an OpenCode-native plugin.
 - **CLI installer.** `df init` auto-detects your language and writes a config
   with sensible commands; `df profile <name>` changes the profile from the
   shell; `df status` / `df version` report template state and the version.
-- **Slash commands.** `/df-status`, `/df-verify`, `/df-profile`, and `/df-help`
-  are registered by the plugin as TUI commands (via the bundled `./tui` companion
-  module). All four open an instant modal dialog and are never fed to the LLM:
-  - `/df-status` — shows the budget/guardrails/gate state in a modal.
-  - `/df-help` — lists the available dev-framework commands in a modal.
-  - `/df-profile <profile>` — opens a picker to switch the active profile.
-  - `/df-verify` — runs the completion gate and shows the result in a modal.
-  (The `dev_framework_init` and `dev_framework_set_profile` custom *tools* are
-  still available for in-agent use.)
+- **Slash commands.** The plugin registers four commands. None of them feed
+  anything to the LLM:
+  - `/df-status` and `/df-help` are TUI commands (bundled `./tui` companion module)
+    that open an instant modal dialog.
+  - `/df-profile <profile>` and `/df-verify` are server-side commands. They are
+    registered with an empty template so the argument (e.g. `standard`) is
+    captured by the plugin and the model never sees it; the result is shown as a
+    toast and the user turn is suppressed.
+  - The `dev_framework_init` and `dev_framework_set_profile` custom *tools* remain
+    available for in-agent use.
 
 ## Profiles
 
@@ -179,17 +180,24 @@ complete example.
 
 ## Slash commands
 
-All dev-framework slash commands are registered by the bundled `./tui` companion
-module (see *Local development* above for the `tui.json` requirement). They open
-instantly in a modal dialog and are **never** fed back to the LLM:
+The slash commands use two different mechanisms, but **none** feed text back to
+the LLM:
 
-- `/df-status` — shows the current profile, guardrails, completion gate, and
-  configured commands in a modal dialog.
-- `/df-help` — lists the available dev-framework commands in a modal dialog.
-- `/df-profile <profile>` — opens a picker to change the active profile; the
-  change is written to the config file and applied immediately.
-- `/df-verify` — runs the configured verification suite (the completion gate)
-  manually and shows a pass/fail summary in a modal.
+- **`/df-status` and `/df-help`** are TUI commands registered by the bundled
+  `./tui` companion module (see *Local development* above for the `tui.json`
+  requirement). They open instantly in a modal dialog.
+  - `/df-status` — shows the current profile, guardrails, completion gate, and
+    configured commands in a modal dialog.
+  - `/df-help` — lists the available dev-framework commands in a modal dialog.
+- **`/df-profile <profile>` and `/df-verify`** are server-side commands. They are
+  registered with an empty prompt template so OpenCode routes the argument to the
+  plugin instead of expanding it into a model turn. The plugin handles the
+  argument, shows a toast, and suppresses the user turn entirely.
+  - `/df-profile <profile>` — switches the active profile (`off`, `advisory`,
+    `standard`, `strict`); the change is written to the config file and applied
+    immediately.
+  - `/df-verify` — runs the configured verification suite (the completion gate)
+    manually and shows a pass/fail summary as a toast.
 
 You can still run `df init` to install the bundled agents, skills, and default
 config; the commands themselves are provided by the plugin. The
