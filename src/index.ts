@@ -23,6 +23,7 @@ import { isLintFailure, lintFile, summarizeLint } from "./lint.js";
 import { createLogger, type LogFn } from "./logger.js";
 import { checkToolCall } from "./protect.js";
 import {
+  clearSessionDirectory,
   getDirectoryForSession,
   getHookState,
   setHookState,
@@ -57,13 +58,12 @@ export function buildHooks(
   tracker: ChangedFileTracker = createChangedFileTracker(),
   constitution: string | null = null,
 ): HooksWithStopping {
-  const directory = ctx.directory;
-  // Note: hooks still close over `directory` (unlike the registry state, which
-  // exists because OpenCode's Effect runtime stripped closure captures of
-  // config/log/run in production). This is deliberate: `directory` is only
-  // used as an optional hint (cwd, path relativization), so if it were ever
-  // stripped the hooks degrade gracefully instead of crashing.
-  setHookState(directory, {
+  // All hook state — including the project directory — lives in the registry
+  // and is looked up at call time. OpenCode's Effect runtime stripped closure
+  // captures in production (config/log/run came back undefined), so hooks must
+  // not rely on variables from this scope.
+  setHookState(ctx.directory, {
+    directory: ctx.directory,
     config,
     log,
     run,
@@ -81,7 +81,7 @@ export function buildHooks(
         return;
       }
       if (input.sessionID) {
-        setSessionDirectory(input.sessionID, directory);
+        setSessionDirectory(input.sessionID, state.directory);
       }
       const next = injectConstitution(output.system, state.constitution);
       if (next !== output.system) {
@@ -95,7 +95,7 @@ export function buildHooks(
       if (!state) {
         return;
       }
-      const result = checkToolCall(state.config, input.tool, output.args, directory);
+      const result = checkToolCall(state.config, input.tool, output.args, state.directory);
       if (result.decision === "allow") {
         return;
       }
@@ -120,7 +120,7 @@ export function buildHooks(
       }
 
       const changedFiles = state.tracker.getChangedFiles();
-      const report = await runGate(state.run, state.config, changedFiles, { cwd: directory });
+      const report = await runGate(state.run, state.config, changedFiles, { cwd: state.directory });
       if (!report.ran || report.ok) {
         state.tracker.clearChangedFiles();
         state.blockCounts.delete(input.sessionID);
@@ -156,18 +156,24 @@ export function buildHooks(
     },
 
     event: async ({ event }) => {
+      // session.deleted must run even without hook state so the session map
+      // does not grow unboundedly.
+      if (event.type === "session.deleted") {
+        clearSessionDirectory(event.properties.info.id);
+        return;
+      }
       const state = getHookState();
       if (!state) {
         return;
       }
       if (event.type === "file.edited") {
         const filePath = event.properties.file;
-        state.tracker.add(filePath, directory);
+        state.tracker.add(filePath, state.directory);
         if (!state.config.on_edit.lint) {
           return;
         }
         const outcome = await lintFile(state.run, state.config, filePath, {
-          cwd: directory,
+          cwd: state.directory,
           timeout: state.config.gate?.timeout,
         });
         if (outcome.skipped) {
@@ -201,12 +207,14 @@ export function buildHooks(
           await state.log(
             "warn",
             "plugin config is incomplete (missing gate section), skipping completion gate",
-            { directory },
+            { directory: state.directory },
           );
           return;
         }
         const changedFiles = state.tracker.getChangedFiles();
-        const report = await runGate(state.run, state.config, changedFiles, { cwd: directory });
+        const report = await runGate(state.run, state.config, changedFiles, {
+          cwd: state.directory,
+        });
         state.tracker.clearChangedFiles();
         const summary = summarizeGate(report);
         if (!report.ran) {

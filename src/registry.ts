@@ -4,6 +4,9 @@ import type { LogFn } from "./logger.js";
 import type { ResolvedConfig } from "./types.js";
 
 export interface HookState {
+  /** Project directory this state belongs to. Stored here (rather than
+   * closure-captured by hooks) so every hook invocation is self-contained. */
+  directory: string;
   config: ResolvedConfig;
   log: LogFn;
   run: RunCommand;
@@ -54,4 +57,9 @@ export function setSessionDirectory(sessionID: string, directory: string): void 
 
 export function getDirectoryForSession(sessionID: string): string | null {
   return sessionToDirectory.get(sessionID) ?? null;
+}
+
+/** Forget a session's directory mapping (called on `session.deleted`). */
+export function clearSessionDirectory(sessionID: string): void {
+  sessionToDirectory.delete(sessionID);
 }

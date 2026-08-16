@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildHooks, type HooksWithStopping } from "../src/index";
 import type { CommandResult, RunCommand } from "../src/host";
 import type { LogFn } from "../src/logger";
-import { getHookState } from "../src/registry";
+import { getDirectoryForSession, getHookState } from "../src/registry";
 import type { Config, ResolvedConfig } from "../src/types";
 import { resolveConfig } from "../src/config";
 
@@ -153,5 +153,25 @@ describe("experimental.session.stopping", () => {
     const output = makeOutput();
     await stopping?.({ sessionID: "s1" }, output);
     expect(output.context.length).toBe(1);
+  });
+
+  it("clears the session-directory mapping on session.deleted", async () => {
+    const hooks: HooksWithStopping = buildHooks(
+      makeCtx(dir),
+      resolve({ profile: "standard" }),
+      noopLog,
+    );
+    const transform = hooks["experimental.chat.system.transform"];
+    await transform?.({ sessionID: "s9", model: {} as never }, { system: [] });
+    expect(getDirectoryForSession("s9")).toBe(dir);
+
+    const eventHook = hooks.event;
+    await eventHook?.({
+      event: {
+        type: "session.deleted",
+        properties: { info: { id: "s9" } },
+      },
+    } as never);
+    expect(getDirectoryForSession("s9")).toBeNull();
   });
 });
