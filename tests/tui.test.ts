@@ -46,16 +46,23 @@ describe("TUI plugin module", () => {
     }
   });
 
-  it("registers nothing (and does not throw) when keymap is unavailable", async () => {
-    // The legacy `api.command` v1 API is deprecated and `undefined` in current
-    // runtimes, so registration is a no-op when `api.keymap` is missing.
+  it("falls back to the legacy api.command registration when keymap is unavailable", async () => {
+    let registered: unknown = null;
     const api = makeApi({
       command: {
-        register: () => {
-          throw new Error("legacy api.command should not be used");
+        register: (fn: () => unknown) => {
+          registered = fn();
         },
       } as never,
     });
+    await expect(tuiModule.tui(api, undefined, { id: "test" } as never)).resolves.toBeUndefined();
+    expect(registered).not.toBeNull();
+    expect(Array.isArray(registered)).toBe(true);
+    expect((registered as Array<{ slash?: { name: string } }>).length).toBe(4);
+  });
+
+  it("is a no-op (and does not throw) when neither keymap nor api.command is available", async () => {
+    const api = makeApi({ command: undefined });
     await expect(tuiModule.tui(api, undefined, { id: "test" } as never)).resolves.toBeUndefined();
   });
 

@@ -37,20 +37,34 @@ type DevFrameworkCommand = {
  */
 function registerCommands(api: TuiApi, commands: DevFrameworkCommand[]): void {
   const keymap = (api as { keymap?: { registerLayer?: (layer: unknown) => void } }).keymap;
-  if (!keymap?.registerLayer) {
+  if (keymap?.registerLayer) {
+    keymap.registerLayer({
+      commands: commands.map((command) => ({
+        namespace: "palette",
+        name: command.name,
+        title: command.title,
+        desc: command.description,
+        category: "dev-framework",
+        slashName: command.slashName,
+        run: command.run,
+      })),
+    });
     return;
   }
-  keymap.registerLayer({
-    commands: commands.map((command) => ({
-      namespace: "palette",
-      name: command.name,
+
+  // Legacy v1 API fallback (used on runtimes where keymap.registerLayer is
+  // unavailable). Mirrors how DCP registers its commands.
+  const commandApi = (api as { command?: { register?: (fn: () => unknown) => void } }).command;
+  commandApi?.register?.(() =>
+    commands.map((command) => ({
       title: command.title,
-      desc: command.description,
+      value: command.name,
+      description: command.description,
       category: "dev-framework",
-      slashName: command.slashName,
-      run: command.run,
+      slash: { name: command.slashName },
+      onSelect: command.run,
     })),
-  });
+  );
 }
 
 const PROFILES: Profile[] = ["off", "advisory", "standard", "strict"];

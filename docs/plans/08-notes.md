@@ -383,6 +383,11 @@ Keep both. The custom tool lets the agent call verification explicitly; the slas
     shows a toast, and **clears `output.parts`** (`output.parts.length = 0`) so
     the argument never reaches the model. This mirrors DCP's
     `command.execute.before`, which clears the parts when handling `/dcp <sub>`.
+  - **`registerCommands` also keeps a legacy `api.command?.register` fallback**
+    (exactly as DCP does): if `keymap.registerLayer` is unavailable, it registers
+    the same entries via the v1 API with `slash: { name }`. This maximizes
+    recognition across OpenCode 1.18.x builds. When neither API is present the
+    registration is a safe no-op.
 - **The server plugin does NOT register these commands in the `config` hook.**
   Registering them as prompt commands there does NOT make OpenCode recognize them
   with arguments (the v0.1.25 first-cut attempt did this and it was worse: no
@@ -423,7 +428,16 @@ Keep both. The custom tool lets the agent call verification explicitly; the slas
   arg runs the gate and suppresses output). `tests/tui.test.ts` now expects 4
   commands and exercises the `run` callbacks (status dialog, profile picker with
   4 options, verify runs without throwing).
-- **Validation:** 171 tests pass; format/lint/lint:md/typecheck/build all green.
+- **Validation:** 172 tests pass; format/lint/lint:md/typecheck/build all green.
+- **Testing caveat (user-reported leak was a stale build / plan-mode test).** After
+  the keymap+`slashName` fix, `/df-profile standard` should no longer reach the
+  model. A leak observed in a running session was almost certainly one of: (1) the
+  OpenCode process was started before the rebuilt `dist/` was in place, (2) the
+  plugin cache (`~/.cache/opencode/packages/opencode-dev-framework*`) still held an
+  older build, or (3) the command was typed while OpenCode was in **plan mode**,
+  where slash-command routing differs. To verify, rebuild, clear the cache, restart
+  OpenCode in execution (non-plan) mode, and test `/df-status` (modal) before
+  `/df-profile standard`.
 
 ## References
 
