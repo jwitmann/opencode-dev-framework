@@ -275,6 +275,14 @@ Use this as the source of truth during implementation. Check items off as they a
   checklist.
 - [x] 15.7 Bump version to `0.1.12`, tag.
 
+## Phase 16 — Status slash command + `dev_framework_status` tool (v0.1.14)
+
+- [x] 16.1 Add `dev_framework_status` custom tool in `src/tools.ts`.
+- [x] 16.2 Add `templates/.opencode/commands/df-status.md` slash command.
+- [x] 16.3 Update README and plan docs (architecture, hook mapping, notes).
+- [x] 16.4 Add tests for `dev_framework_status`.
+- [ ] 16.5 Bump version to `0.1.14` and tag.
+
 ## Notes for the implementer
 
 - Do all tests first; use the stub host.

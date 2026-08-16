@@ -34,6 +34,7 @@ export const devFramework: Plugin = async (ctx) => {
     tool: {
       dev_framework_init: { /* scaffold project files */ },
       dev_framework_set_profile: { /* change profile in-session */ },
+      dev_framework_status: { /* report current plugin state */ },
     },
   };
 };
@@ -58,7 +59,7 @@ The package may export a single default plugin or multiple named plugins. Use on
 | `src/lint.ts` | Implement per-edit checks on `file.edited`, with optional `pre-commit` fallback. |
 | `src/gate.ts` | Implement the completion gate and changed-file tracking. |
 | `src/rules.ts` | Load and inject constitution / project rules via `experimental.chat.system.transform`. |
-| `src/tools.ts` | Custom tools (`dev_framework_init`, `dev_framework_set_profile`). |
+| `src/tools.ts` | Custom tools (`dev_framework_init`, `dev_framework_set_profile`, `dev_framework_status`). |
 | `src/registry.ts` | Module-level hook state registry (avoids closure-capture issues in OpenCode's Effect runtime). |
 | `src/installer.ts` | Template copy and detected-config generation used by `bin/df` and the `dev_framework_init` tool. |
 | `src/logger.ts` | Structured logging wrapper around `client.app.log()`. |
@@ -124,14 +125,18 @@ push a synthetic user message on failure, keeping the session running up to
 `gate.max_blocks` times before standing down. Without it, the gate falls back
 to `session.idle` and is advisory. Make the failure message extremely visible.
 
-## Custom command
+## Custom commands
 
 `/df-verify` is a custom OpenCode slash command that runs the completion gate on
-demand. OpenCode does not load slash commands from plugin packages, so the
-plugin ships it as a **template** at
-`templates/.opencode/commands/df-verify.md`, copied into the project by
-`df init` or the `dev_framework_init` tool. A `df-profile.md` template provides
-`/df-profile` for switching profiles.
+ demand. OpenCode does not load slash commands from plugin packages, so the
+plugin ships them as **templates** under `templates/.opencode/commands/`, copied
+into the project by `df init` or the `dev_framework_init` tool. Templates
+include:
+
+- `/df-verify` — run the completion gate manually.
+- `/df-profile` — switch the active profile.
+- `/df-status` — show the current profile, guardrails, gate, and tracked changed
+  files.
 
 Prefer the markdown command file because it requires no code and is easy to maintain.
 

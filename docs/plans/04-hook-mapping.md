@@ -119,6 +119,10 @@ The command body can invoke the plugin's custom tool (if we expose one) or simpl
 `/df-profile <profile>` as a prompt-based alternative to the
 `dev_framework_set_profile` custom tool.
 
+**Update (v0.1.14):** `templates/.opencode/commands/df-status.md` provides
+`/df-status`, which prompts the agent to call `dev_framework_status` and report
+the current plugin state.
+
 ## Anti-patterns to avoid
 
 - Do not claim the gate unconditionally blocks completion. Document the bounded

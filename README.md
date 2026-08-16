@@ -25,13 +25,15 @@ reimplemented as an OpenCode-native plugin.
   versions the gate reports loudly via `session.idle`.
 - **Custom tools.** `dev_framework_init` scaffolds project-level agents,
   skills, commands, and config; `dev_framework_set_profile` changes the profile
-  in-session without restarting.
+  in-session without restarting; `dev_framework_status` reports the current
+  profile, guardrails, gate, and tracked changed files.
 - **CLI installer.** `df init` auto-detects your language and writes a config
   with sensible commands; `df profile <name>` changes the profile from the
   shell; `df status` / `df version` report template state and the version.
-- **Slash-command templates.** `/df-verify` and `/df-profile` are installed
-  into `.opencode/commands/` by `df init` or the `dev_framework_init` tool.
-  (OpenCode does not load slash commands from plugin packages automatically.)
+- **Slash-command templates.** `/df-verify`, `/df-profile`, and `/df-status` are
+  installed into `.opencode/commands/` by `df init` or the `dev_framework_init`
+  tool. (OpenCode does not load slash commands from plugin packages
+  automatically.)
 
 ## Profiles
 
@@ -150,12 +152,16 @@ compatibility, but the native format above is preferred. See
 config reference and [`examples/go-service/`](examples/go-service/) for a
 complete example.
 
-## Slash command
+## Slash commands
 
-The `/df-verify` and `/df-profile` commands are installed by `df init` (or the
-`dev_framework_init` tool) into `.opencode/commands/`. Inside an OpenCode
-session, type `/df-verify` to ask the agent to run the configured verification
-suite manually, or `/df-profile strict` to change the profile.
+The `/df-verify`, `/df-profile`, and `/df-status` commands are installed by
+`df init` (or the `dev_framework_init` tool) into `.opencode/commands/`. Inside
+an OpenCode session:
+
+- `/df-verify` asks the agent to run the configured verification suite manually.
+- `/df-profile strict` changes the active profile.
+- `/df-status` shows the current profile, guardrails, completion gate, and
+  tracked changed files.
 
 ## Limitations
 

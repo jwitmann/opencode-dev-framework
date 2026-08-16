@@ -186,6 +186,15 @@ Keep both. The custom tool lets the agent call verification explicitly; the slas
   `df init` sets `precommit: auto` automatically when a
   `.pre-commit-config.yaml` file is present.
 
+## v0.1.14 release decisions
+
+- **`/df-status` slash command + `dev_framework_status` tool.** Users wanted an
+  in-session way to inspect plugin state. We added a custom tool that returns the
+  active profile, guardrails, completion gate, configured commands, pre-commit
+  status, changed-file tracker, and per-session block counts. A
+  `templates/.opencode/commands/df-status.md` slash-command template instructs
+  the agent to call the tool and present the result.
+
 ## v0.1.11 release decisions
 
 - **`constitution` config key removed.** The original `dev-framework` has no
