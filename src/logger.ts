@@ -15,15 +15,23 @@ export type LogFn = (
 ) => Promise<void>;
 
 /**
- * Create a logger bound to the OpenCode client. Logging failures are
- * swallowed — logging must never break the plugin or a tool call.
+ * Create a logger bound to the OpenCode client. Logging never throws:
+ * `app.log` failures fall back to stderr so the failure stays visible
+ * (a total swallow made production debugging painful during development),
+ * and even stderr failures are ignored as a last resort.
  */
 export function createLogger(client: PluginInput["client"]): LogFn {
   return async (level, message, extra) => {
     try {
       await client.app.log({ body: { service: LOG_SERVICE, level, message, extra } });
-    } catch {
-      // Intentionally ignored: logging is best-effort.
+    } catch (error) {
+      try {
+        process.stderr.write(
+          `[${LOG_SERVICE}] ${level} ${message} (app.log failed: ${String(error)})\n`,
+        );
+      } catch {
+        // Even stderr may be unavailable; truly ignore.
+      }
     }
   };
 }

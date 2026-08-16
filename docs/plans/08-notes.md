@@ -166,6 +166,14 @@ Keep both. The custom tool lets the agent call verification explicitly; the slas
   the project by `df init` or the `dev_framework_init` tool; they do not appear
   just because the plugin is loaded.
 
+## v0.1.8 release decisions
+
+- **Logging must never throw, but total swallow is dangerous.** During
+  development, `client.app.log` itself threw in some OpenCode builds, making
+  plugin failures invisible. `createLogger` now catches `app.log` errors and
+  writes a fallback line to `process.stderr`; even if stderr fails, the log
+  call still resolves.
+
 ## References
 
 - OpenCode plugin docs: <https://opencode.ai/docs/plugins>
