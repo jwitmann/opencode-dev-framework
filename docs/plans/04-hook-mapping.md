@@ -109,24 +109,23 @@ fallback on older OpenCode versions.
 **Purpose:** Let the user run the gate on demand, switch profile, inspect
 plugin state, or list commands.
 
-**Definition (v0.1.25 final — all four are TUI commands, dual dispatch):** every
-`/df-*` command is a **TUI command** registered by the companion module
-(`tui.tsx`, exported as `opencode-dev-framework/tui`) via
-`api.keymap.registerLayer` with a `slashName` (and a legacy
-`api.command?.register` fallback, like DCP). TUI commands are UI-only — they
-never insert text into the chat stream. They use **two dispatch paths**, exactly
-like DCP's `/dcp`:
+**Definition (v0.1.25 final — TUI-only):** every `/df-*` command is a **TUI
+command** registered by the companion module (`tui.tsx`, exported as
+`opencode-dev-framework/tui`) via `api.keymap.registerLayer` with a `slashName`
+(and a legacy `api.command?.register` fallback, like DCP). TUI commands are
+UI-only — they never insert text into the chat stream, so they cannot leak into a
+model turn. The `run(ctx)` callback does all the work:
 
-- **Bare form** (`/df-profile`, `/df-verify`) → the TUI command `run(ctx)` fires.
-  `df-profile` opens a `DialogSelect` picker (off / advisory / standard /
-  strict); selecting one calls `changeProfile` + toast. `df-verify` runs the gate
-  and shows a `DialogAlert` + toast. No model turn.
-- **Argument form** (`/df-profile standard`) → OpenCode routes it to the server
-  `command.execute.before` hook with `input.arguments` (exactly how DCP's
-  `/dcp <sub>` is handled). Because the command has no prompt template to
-  execute, the handler does the work and **clears `output.parts`**
-  (`output.parts.length = 0`) → no model turn. The bare form is left untouched by
-  the hook so the picker still opens.
+- `df-status` / `df-help` → `run` opens a `DialogAlert` modal (status / help).
+- `df-profile` → `run` calls `handleProfile(api, dir, ctx?.input)`:
+  - OpenCode passes the command **name** (`"df-profile"`) as `ctx.input` for the
+    bare command. That is normalized to the "bare" case, which opens a
+    `DialogSelect` picker (off / advisory / standard / strict); selecting one
+    calls `changeProfile` + toast.
+  - If a build ever passes a real profile string as `ctx.input`, it is applied
+    directly (`changeProfile`) when valid; otherwise a usage toast is shown.
+- `df-verify` → `run` calls `handleVerify(api, dir)` which runs `verifyGate` and
+  shows a `DialogAlert` + toast.
 
 ```typescript
 // tui.tsx — all four registered as keymap commands with slashName
@@ -138,28 +137,22 @@ keymap.registerLayer({
     { name: "df-verify",  slashName: "df-verify",  run: () => handleVerify(api, dir) },
   ].map((c) => ({ namespace: "palette", ...c, title: c.name, desc: c.name, category: "dev-framework" })),
 });
-
-// server plugin — command.execute.before (fires for the ARGUMENT form)
-if (input.command === "df-profile" && (input.arguments ?? "").trim()) {
-  const profile = (input.arguments ?? "").trim();
-  if (PROFILES.includes(profile)) await changeProfile(state.directory, profile);
-  else state.showToast?.(`Usage: /df-profile <${PROFILES.join("|")}>`, "warning");
-  output.parts.length = 0; // no model turn
-}
 ```
 
 Shared logic lives in `src/commands.ts` (`changeProfile` and `verifyGate`) so the
 TUI `run` callbacks and the `dev_framework_set_profile` tool reuse the same code
 path.
 
-**Why not server prompt commands?** Registering `df-profile`/`df-verify` as
-`config.command` prompt commands (empty template) DID make OpenCode recognize the
-argument form, but a prompt command **always executes as a model turn** —
-clearing `output.parts` in `command.execute.before` does not suppress it. DCP's
-`/dcp-compress` only "works" because it *wants* the model to run compression (it
-pushes a replacement prompt). Our commands need no model involvement, so the TUI
-command path (where OpenCode passes the trailing text to `run` via
-`ctx.input`) is the correct, leak-free mechanism.
+**Argument form (`/df-profile standard`) is intentionally NOT supported.**
+In the current OpenCode runtime (v1.18.18) a command typed *with* an argument is
+routed to a model turn and never reaches the TUI `run` callback. We confirmed a
+`command.execute.before` server hook also fires a model turn for these TUI
+commands (clearing `output.parts` does not suppress it), and server *prompt*
+commands (`config.command`) likewise always produce a model turn. Per user
+preference (m0106) the plugin is **TUI-only**: run the bare `/df-profile` and pick
+from the dialog. The `command.execute.before` handler and any `config.command`
+registration for these commands were removed — they could not prevent the leak and
+are dead code.
 
 **`/df-status` and `/df-help` were the first to move to the TUI module**
 (v0.1.22). The TUI module registers slash commands via
@@ -176,16 +169,15 @@ in current OpenCode runtimes, so the TUI module keeps it only as a fallback
 abandoned in v0.1.22 because posting to the conversation always leaked into the
 model context one way or another.
 
-**Update (v0.1.24 → v0.1.25 corrected):** v0.1.24 registered the four commands as
-`keymap` entries *without* `slashName`, so OpenCode only recognized them without
-arguments (the bare `/df-profile` opened a picker, but `/df-profile standard`
-leaked `standard` to the model). Adding `slashName` makes OpenCode recognize the
-command *with* arguments and pass the trailing text to `run` via `ctx.input`, so
-the final v0.1.25 fix keeps **all four** as TUI commands whose `run(ctx)` reads
-`ctx.input`. A brief v0.1.25 server-prompt-command attempt was abandoned because
-prompt commands always produce a model turn. The shared `changeProfile`/
-`verifyGate` helpers in `src/commands.ts` back the TUI `run` callbacks and the
-`dev_framework_set_profile` tool.
+**Update (v0.1.24 → v0.1.25 corrected):** earlier attempts tried (a) keymap
+entries *without* `slashName` (only the bare command worked; `/df-profile
+standard` leaked `standard` to the model), and (b) a `command.execute.before`
+hook to suppress the argument form (could not suppress the model turn for a TUI
+command). The final v0.1.25 decision is **TUI-only**: all four are TUI commands
+whose `run(ctx)` does the work via the picker / dialog, and the argument form is
+explicitly unsupported. The shared `changeProfile`/`verifyGate` helpers in
+`src/commands.ts` back the TUI `run` callbacks and the `dev_framework_set_profile`
+tool.
 
 **Update (v0.1.23):** the TUI plugin is loaded from `tui.json`, **not**
 `opencode.json`. OpenCode keeps server plugins (`opencode.json`) and TUI plugins

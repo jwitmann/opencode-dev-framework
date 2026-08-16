@@ -366,59 +366,46 @@ Keep both. The custom tool lets the agent call verification explicitly; the slas
 
 ## v0.1.25 release decisions (final — all four `/df-*` are TUI commands, no model turn)
 
-- **The reliable fix for the `/df-profile <arg>` leak:** all four `/df-*` commands
+- **TUI-only design (per user preference, m0106).** All four `/df-*` commands
   (`df-status`, `df-help`, `df-profile`, `df-verify`) are registered as **TUI
   commands** in `tui.tsx` via `api.keymap.registerLayer` with a `slashName` (plus
   the legacy `api.command?.register` fallback, mirroring DCP). TUI commands are
   UI-only: they never insert text into the chat stream, so they **cannot** leak
   into a model turn — exactly why `df-status`/`df-help` already worked.
-- **Two dispatch paths, matching DCP's `/dcp` design:**
-  - **Bare form** (`/df-profile`, `/df-verify`) → the TUI command `run(ctx)`
-    callback fires. `df-profile` opens a `DialogSelect` picker (or applies directly
-    if `ctx.input` already carries a valid profile); `df-verify` runs the gate and
-    shows a `DialogAlert`. No model turn.
-  - **Argument form** (`/df-profile standard`) → OpenCode routes it to the server
-    `command.execute.before` hook with `input.arguments` (exactly how DCP's
-    `/dcp <sub>` is handled). Because these are TUI commands (no prompt template
-    to execute), the handler does the work and **clears `output.parts`**
-    (`output.parts.length = 0`) — producing **no** model turn. The bare form is
-    intentionally left untouched by the hook so the TUI picker still opens.
-- **Server prompt commands were tried and REJECTED.** Registering `df-profile`/
-  `df-verify` as `config.command` prompt commands (empty template) made OpenCode
-  recognize the argument form, but a prompt command **always executes as a model
-  turn** — clearing `output.parts` in `command.execute.before` does NOT suppress
-  it. DCP's `/dcp-compress` only "works" because it *wants* the model to run
-  compression; it pushes a replacement prompt rather than suppressing. Our
-  commands need no model involvement, so prompt commands are wrong for them.
-- **Why v0.1.24 leaked.** The four commands were `keymap` entries *without*
-  `slashName`, so OpenCode only matched them without arguments. `/df-profile`
-  (bare) opened the picker, but `/df-profile standard` was treated as plain chat
-  and `standard` leaked to the model. Adding `slashName` makes OpenCode recognize
-  the command *with* arguments and route it to `command.execute.before`.
-- **Why earlier attempts leaked / regressed.** v0.1.24 registered the four
-  commands as `keymap` entries *without* `slashName`, so OpenCode only matched
-  them without arguments (the bare `/df-profile` opened the picker, but
-  `/df-profile standard` leaked `standard` to the model). Adding `slashName`
-  fixed bare-form recognition but the **with-argument** form still did not route
-  to   `command.execute.before` (keymap layers are not consulted by the command
-  pipeline for the argument form). The v0.1.25 first-cut registered them as
-  server prompt commands, which always produced a model turn (leak) and lost the
-  picker. The final fix keeps all four as TUI commands whose `run(ctx)` reads the
-  argument from `ctx.input`.
-- **Shared command logic extracted to `src/commands.ts`.** Added
-  `changeProfile(directory, profile)` (writes the profile line via
-  `setProfileInFile`, returns a message) and `verifyGate(run, directory, config?,
-  changedFiles=[])` (runs `runGate`, returns `{ report, summary }`). The TUI
-  command `run` callbacks and the `dev_framework_set_profile` tool both call
-  them, so every path shares one implementation.
-- **Out-of-process config edits now reload automatically.** `/df-profile` (TUI
-  picker or server arg) writes the config file directly (outside the server
-  process), so the server's in-memory config would go stale. Added
-  `HookState.configMtime` (set initially via `stat` in `devFramework`) and a
-  `reloadConfigIfChanged(state)` helper in `src/index.ts` that stats the config
-  file and, on mtime change, clears the config cache and reloads config +
-  constitution via `loadConfig`/`loadConstitution`. Wired into every enforcement
-  hook (`tool.execute.before`, `event`, `experimental.session.stopping`,
+- **`run(ctx)` does all the work:**
+  - `df-status` / `df-help` → `run` opens a `DialogAlert` modal.
+  - `df-profile` → `run` calls `handleProfile(api, dir, ctx?.input)`. OpenCode
+    passes the command **name** (`"df-profile"`) as `ctx.input` for the bare
+    command, which is normalized to the picker case (a `DialogSelect` with off /
+    advisory / standard / strict; selecting one calls `changeProfile` + toast). If
+    a build ever passes a real profile string as `ctx.input`, it is applied
+    directly when valid; otherwise a usage toast is shown.
+  - `df-verify` → `run` calls `handleVerify(api, dir)` which runs `verifyGate` and
+    shows a `DialogAlert` + toast.
+- **Argument form (`/df-profile standard`) is intentionally NOT supported.**
+  In the current OpenCode runtime (v1.18.18) a command typed *with* an argument is
+  routed to a model turn and never reaches the TUI `run` callback, so it still
+  leaks `standard` to the model. We confirmed a `command.execute.before` server
+  hook fires for TUI commands but **cannot suppress** the model turn (clearing
+  `output.parts` does not stop it), and server *prompt* commands (`config.command`)
+  likewise always produce a model turn. Per the user's decision we dropped the
+  `command.execute.before` handler and any `config.command` registration for these
+  commands entirely — they were dead/leaking code. The bare commands (picker /
+  dialog) are the supported interface.
+- **Shared command logic extracted to `src/commands.ts`.** `changeProfile`
+  (writes the profile line via `setProfileInFile`, returns a message) and
+  `verifyGate` (runs `runGate`, returns `{ report, summary }`) are called by the
+  TUI `run` callbacks and the `dev_framework_set_profile` tool, so those two paths
+  share one implementation. The server `command.execute.before` handler no longer
+  exists.
+- **Out-of-process config edits now reload automatically.** The `df-profile` TUI
+  picker writes the config file directly (outside the server process), so the
+  server's in-memory config would go stale. Added `HookState.configMtime` (set
+  initially via `stat` in `devFramework`) and a `reloadConfigIfChanged(state)`
+  helper in `src/index.ts` that stats the config file and, on mtime change,
+  clears the config cache and reloads config + constitution via
+  `loadConfig`/`loadConstitution`. Wired into every enforcement hook
+  (`tool.execute.before`, `event`, `experimental.session.stopping`,
   `experimental.chat.system.transform`). This removes the need for a plugin
   restart after a `/df-profile` change.
 - **`package.json` gained `pretypecheck`/`pretest` scripts (`npm run build`).**
@@ -429,14 +416,13 @@ Keep both. The custom tool lets the agent call verification explicitly; the slas
   `changeProfile`/`verifyGate` helpers. `tests/tui.test.ts` now expects 4 TUI
   commands and exercises the status dialog and the `df-profile` picker.
 - **Validation:** 167 tests pass; format/lint/lint:md/typecheck/build all green.
-- **Testing caveat (earlier leak reports).** Two earlier attempts leaked:
-  (a) v0.1.24 without `slashName` (arg form treated as chat), and (b) the
-  v0.1.25 server-prompt-command cut (prompt commands always run as a model turn).
-  The final TUI-only approach with `ctx.input` resolves both. To verify, rebuild,
-  clear the OpenCode plugin cache
+- **Documented limitation (arg form leaks in this runtime).** Because the argument
+  form cannot be intercepted for a TUI command, `/df-profile standard` will still
+  hit the model in OpenCode v1.18.18 — that is a known limitation, not a fixable
+  leak in the TUI-only design. Use the bare `/df-profile` picker. To verify,
+  rebuild, clear the OpenCode plugin cache
   (`~/.cache/opencode/packages/opencode-dev-framework*`), restart OpenCode, and
-  test `/df-status` (modal) before `/df-profile standard` (should apply with no
-  model turn).
+  test `/df-status` (modal) and bare `/df-profile` (picker).
 
 ## References
 

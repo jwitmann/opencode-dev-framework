@@ -15,7 +15,6 @@ import type { Hooks, Plugin, PluginInput } from "@opencode-ai/plugin";
 import { stat } from "node:fs/promises";
 import { join } from "node:path";
 import { clearConfigCache, loadConfig } from "./config.js";
-import { changeProfile, verifyGate } from "./commands.js";
 import {
   type ChangedFileTracker,
   createChangedFileTracker,
@@ -38,7 +37,7 @@ import {
 } from "./registry.js";
 import { injectConstitution, loadConstitution } from "./rules.js";
 import { buildTools } from "./tools.js";
-import type { Profile, ResolvedConfig } from "./types.js";
+import type { ResolvedConfig } from "./types.js";
 
 /**
  * The `experimental.session.stopping` hook was added in OpenCode PR #41811
@@ -143,54 +142,6 @@ export function buildHooks(
       // commands never insert text into the chat stream, so they cannot leak
       // into a model turn. No server prompt command is registered here — such
       // commands always produce a model turn, which is exactly what we avoid.
-    },
-
-    // The BARE form of `/df-profile` / `/df-verify` is handled by the TUI command
-    // `run` callbacks (which open a picker / run the gate in a modal). The
-    // ARGUMENT form (`/df-profile standard`) is routed by OpenCode to this
-    // server hook with `input.arguments`. Because these are TUI commands (not
-    // prompt commands) there is no prompt template to execute, so clearing
-    // `output.parts` and returning produces NO model turn — the action is done
-    // and the argument never reaches the model. This mirrors how DCP's
-    // `/dcp <subcommand>` is handled via `command.execute.before`.
-    "command.execute.before": async (input, output) => {
-      if (!input.command.startsWith("df-")) {
-        return;
-      }
-      const state = getStateForSession(input.sessionID);
-      if (!state) {
-        return;
-      }
-      await reloadConfigIfChanged(state);
-
-      const arg = (input.arguments ?? "").trim();
-      if (input.command === "df-profile") {
-        const profiles: Profile[] = ["off", "advisory", "standard", "strict"];
-        if (profiles.includes(arg as Profile)) {
-          const message = await changeProfile(state.directory, arg as Profile);
-          state.showToast?.(message, "success");
-        } else if (arg) {
-          state.showToast?.(`Usage: /df-profile <${profiles.join("|")}>`, "warning");
-        }
-        // Bare `/df-profile` (no arg) is intentionally left to the TUI picker;
-        // only act when there is an argument.
-        if (arg) {
-          output.parts.length = 0;
-        }
-        return;
-      }
-
-      if (input.command === "df-verify") {
-        const { report, summary } = await verifyGate(
-          state.run,
-          state.directory,
-          state.config,
-          state.tracker.getChangedFiles(),
-        );
-        state.showToast?.(summary, report.ok ? "success" : "error");
-        output.parts.length = 0;
-        return;
-      }
     },
 
     "experimental.chat.system.transform": async (input, output) => {

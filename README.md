@@ -187,12 +187,12 @@ They open instantly and **never** feed text back to the LLM:
 - `/df-status` — shows the current profile, guardrails, completion gate, and
   configured commands in a modal dialog.
 - `/df-help` — lists the available dev-framework commands in a modal dialog.
-- `/df-profile <profile>` — switches the active profile (`off`, `advisory`,
-  `standard`, `strict`). Bare `/df-profile` opens a picker; with an argument it
-  applies immediately. The change is written to the config file and applied
-  immediately.
+- `/df-profile` — opens a profile picker (off / advisory / standard / strict) in
+  a modal dialog; selecting one switches the active profile immediately (written
+  to the config file). Run it **bare** — the argument form
+  (`/df-profile standard`) is not wired up in this build.
 - `/df-verify` — runs the configured verification suite (the completion gate)
-  manually and shows a pass/fail summary as a toast.
+  manually and shows a pass/fail summary in a modal dialog.
 
 You can still run `df init` to install the bundled agents, skills, and default
 config; the commands themselves are provided by the plugin. The
