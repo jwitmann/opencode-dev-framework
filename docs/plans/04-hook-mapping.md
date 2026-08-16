@@ -134,10 +134,15 @@ messenger API is unavailable, the hook falls back to `client.tui.showToast`.
 the cache, reloads the config, and updates the in-memory hook state; `/df-status`
 renders the live state. Unknown `/df-*` commands return a hint to use `/df-help`.
 
-**Update (v0.1.19):** corrected the `client.session.prompt` call shape and
-switched from `ignored: true` (which hid the message) to `synthetic: true`
-(which keeps it visible). A toast fallback ensures the response is still surfaced
-when the prompt API fails.
+**Update (v0.1.19):** after inspecting DCP and the OpenCode SDK types, the
+final slash-command messenger uses `client.session.prompt` with a
+`{ path: { id: sessionID }, body: { noReply: true, parts: [{ type: "text", text,
+ignored: true }] } }` wrapper. This is DCP's pattern for ignored notifications: the
+message is visible in the chat but is not treated as a user turn. Earlier attempts
+used `synthetic: true` (invisible) or a flat SDK-v2 shape (processed as user
+input). If the prompt API is unavailable, the handler falls back to
+`client.tui.showToast`. When the messenger is not configured (e.g. tests), the
+handler writes the text to `output.parts` with `ignored: true`.
 
 **Update (v0.1.15):** migrated from markdown command templates (under
 `templates/.opencode/commands/`) to plugin-registered, handler-backed slash

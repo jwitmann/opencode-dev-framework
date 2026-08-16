@@ -159,11 +159,18 @@ Keep both. The custom tool lets the agent call verification explicitly; the slas
 
 ## v0.1.19 release decisions
 
-- **Corrected slash-command messenger API shape.** The initial v0.1.17 messenger
-  used the wrong `client.session.prompt` call shape (`{ path: { id }, body: { ... }}`).
-  The OpenCode SDK v2 expects a flat object (`{ sessionID, noReply, parts }`).
-  The fix uses `synthetic: true` (not `ignored: true`) so the message is visible in
-  the UI, and falls back to `client.tui.showToast` if the prompt API fails.
+- **Corrected slash-command messenger API shape again.** The initial v0.1.17
+  messenger used the right `client.session.prompt` wrapper (`{ path: { id }, body:
+  { ... }}`) but the wrong part flag (`synthetic: true`), which produced invisible
+  output. The v0.1.18 revision switched to the flat SDK-v2 shape (`{ sessionID,
+  noReply, parts }`), still with `synthetic: true`, which OpenCode processed as a
+  user turn. After inspecting DCP and the SDK types, the correct pattern is the
+  wrapper shape with `ignored: true`. The final v0.1.19 implementation posts
+  slash-command responses via `client.session.prompt({ path: { id: sessionID },
+  body: { noReply: true, parts: [{ type: "text", text, ignored: true }] } })`.
+  If the prompt API is unavailable, it falls back to `client.tui.showToast`.
+  The `output.parts` fallback (when no messenger is configured) also marks the
+  part `ignored: true`.
 
 ## v0.1.17 release decisions
 

@@ -29,7 +29,7 @@ function makeConfig(raw = {}) {
   return resolveConfig({ profile: "standard", ...raw }, join(dir, ".opencode-dev-framework.yml"));
 }
 
-function makePartsOutput(): { parts: { type: string; text: string }[] } {
+function makePartsOutput(): { parts: { type: string; text: string; ignored?: boolean }[] } {
   return { parts: [] };
 }
 
@@ -166,5 +166,6 @@ describe("command.execute.before hook", () => {
     );
     expect(output.parts).toHaveLength(1);
     expect(output.parts[0].text).toContain("/df-status");
+    expect(output.parts[0].ignored).toBe(true);
   });
 });

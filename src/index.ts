@@ -122,7 +122,7 @@ export function buildHooks(
       if (!state) {
         const fallback = "[opencode-dev-framework] plugin state is not available for this session.";
         output.parts.length = 0;
-        output.parts.push({ type: "text", text: fallback } as never);
+        output.parts.push({ type: "text", text: fallback, ignored: true } as never);
         return;
       }
 
@@ -133,7 +133,7 @@ export function buildHooks(
           await state.sendMessage(input.sessionID, text);
         } else {
           output.parts.length = 0;
-          output.parts.push({ type: "text", text } as never);
+          output.parts.push({ type: "text", text, ignored: true } as never);
         }
       };
 

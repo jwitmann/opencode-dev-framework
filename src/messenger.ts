@@ -4,9 +4,12 @@ export type SendMessageFn = (sessionID: string, text: string) => Promise<void>;
 
 /**
  * Create a messenger that posts a chat message without it being treated as a
- * user turn. OpenCode's `client.session.prompt` with `noReply: true` and a
- * `synthetic: true` text part shows the message in the conversation UI but
- * does not feed it back to the model as input.
+ * user turn.
+ *
+ * DCP's approach (and the OpenCode SDK shape) is to call
+ * `client.session.prompt` with a `{ path: { id: sessionID }, body: {...} }`
+ * wrapper and a text part marked `ignored: true`. This shows the message in the
+ * conversation UI but does not feed it back to the model as input.
  *
  * If the prompt API fails or is unavailable, the messenger falls back to a TUI
  * toast so the output is still visible.
@@ -23,15 +26,17 @@ export function createMessenger(client: PluginInput["client"]): SendMessageFn {
     if (prompt) {
       try {
         await prompt({
-          sessionID,
-          noReply: true,
-          parts: [
-            {
-              type: "text",
-              text,
-              synthetic: true,
-            },
-          ],
+          path: { id: sessionID },
+          body: {
+            noReply: true,
+            parts: [
+              {
+                type: "text",
+                text,
+                ignored: true,
+              },
+            ],
+          },
         });
         return;
       } catch {
