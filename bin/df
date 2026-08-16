@@ -1,0 +1,94 @@
+#!/usr/bin/env node
+// df — opencode-dev-framework CLI installer.
+// Scaffold project-level agents, skills, commands, and config into a repo.
+
+import { readFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { installTemplates, resolveTargetDir, statusTemplates } from "../dist/installer.js";
+
+async function getVersion() {
+  const packagePath = join(dirname(fileURLToPath(import.meta.url)), "..", "package.json");
+  const pkg = JSON.parse(await readFile(packagePath, "utf8"));
+  return pkg.version ?? "unknown";
+}
+
+function printHelp() {
+  console.log(`df — opencode-dev-framework project installer
+
+Usage:
+  df init [dir]        Scaffold templates into a project (default: cwd)
+  df status [dir]      Show which template files are missing/present/different
+  df version           Print the plugin version
+  df help              Show this help
+
+Options:
+  --overwrite-existing  Overwrite files that already exist (non-interactive)
+  --skip-existing       Skip files that already exist (non-interactive)
+`);
+}
+
+function formatList(label, files) {
+  if (files.length === 0) {
+    return [`${label}: (none)`];
+  }
+  return [`${label}:`, ...files.map((file) => `  - ${file}`)];
+}
+
+async function main() {
+  const args = process.argv.slice(2);
+  const command = args[0];
+
+  if (!command || command === "help" || command === "--help" || command === "-h") {
+    printHelp();
+    return;
+  }
+
+  if (command === "version") {
+    console.log(await getVersion());
+    return;
+  }
+
+  if (command !== "init" && command !== "status") {
+    console.error(`Unknown command: ${command}`);
+    printHelp();
+    process.exitCode = 1;
+    return;
+  }
+
+  const flags = new Set(args.slice(1).filter((arg) => arg.startsWith("--")));
+  const positional = args.slice(1).filter((arg) => !arg.startsWith("--"));
+  const targetDir = resolveTargetDir(positional[0]);
+
+  if (command === "status") {
+    const status = await statusTemplates(targetDir);
+    console.log(`Template status for ${targetDir}:`);
+    for (const line of [
+      ...formatList("Missing", status.missing),
+      ...formatList("Present", status.present),
+      ...formatList("Different", status.different),
+    ]) {
+      console.log(line);
+    }
+    return;
+  }
+
+  const result = await installTemplates(targetDir, {
+    overwriteExisting: flags.has("--overwrite-existing"),
+    skipExisting: flags.has("--skip-existing"),
+  });
+
+  console.log(`Installed templates into ${targetDir}:`);
+  for (const line of [
+    ...formatList("Created", result.created),
+    ...formatList("Overwritten", result.overwritten),
+    ...formatList("Skipped", result.skipped),
+  ]) {
+    console.log(line);
+  }
+}
+
+main().catch((error) => {
+  console.error(error instanceof Error ? error.message : String(error));
+  process.exitCode = 1;
+});
