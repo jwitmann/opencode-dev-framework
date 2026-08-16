@@ -131,6 +131,7 @@ opencode-dev-framework/
 │   ├── host.ts             # Host abstraction
 │   ├── logger.ts           # Structured logging
 │   └── types.ts            # Shared types
+├── tui.tsx                 # TUI plugin module (slash-command modal dialogs)
 ├── bin/
 │   └── df                  # df init / profile / status / version CLI
 ├── templates/              # Project scaffolding templates

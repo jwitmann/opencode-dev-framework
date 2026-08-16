@@ -125,33 +125,24 @@ config: async (opencodeConfig) => {
 },
 ```
 
-The `command.execute.before` hook looks up the session's hook state (falling
-back to the project `baseDirectory` when the session has not been mapped yet)
-and posts the result as a **synthetic** chat message via `src/messenger.ts` so it
-appears in the UI but is **not** fed back to the model as a user turn. If the
-messenger API is unavailable, the hook falls back to `client.tui.showToast`.
-`/df-verify` runs `runGate` directly; `/df-profile` edits the config file, clears
-the cache, reloads the config, and updates the in-memory hook state; `/df-status`
-renders the live state. Unknown `/df-*` commands return a hint to use `/df-help`.
+The `command.execute.before` hook (server plugin) still handles `/df-profile`
+and `/df-verify`. `/df-profile` edits the config file, clears the cache, reloads
+the config, and updates the in-memory hook state so the change applies
+immediately. `/df-verify` runs `runGate` directly. Unknown `/df-*` commands
+return a hint to use `/df-help`.
 
-**Update (v0.1.21):** after inspecting the installed `@opencode-ai/sdk` v1 types
-(the plugin depends on SDK `1.18.18`, not SDK v2), the slash-command messenger
-uses `client.session.prompt` with the SDK v1 wrapper:
+**`/df-status` and `/df-help` are now handled by a separate TUI plugin module**
+(`tui.tsx`, exported as `opencode-dev-framework/tui`). The TUI module registers
+slash commands via `api.command.register` and opens a `DialogAlert` modal with the
+status/help text. This matches how DCP shows instant status: the output renders
+in a modal and is **never** inserted into the chat stream, so it cannot be
+re-processed as a user turn.
 
-```text
-{ path: { id: sessionID }, body: { noReply: true, parts: [{ type: "text", text, synthetic: true }] } }
-```
-
-`synthetic: true` marks the message as system-generated and visible in the chat
-without becoming a user turn. Earlier attempts used `ignored: true` (hidden from
-the UI but still included in the model context) or a flat shape (processed as
-user input). If the prompt API is unavailable, the handler falls back to
-`client.tui.showToast`.
-
-**Update (v0.1.15):** migrated from markdown command templates (under
-`templates/.opencode/commands/`) to plugin-registered, handler-backed slash
-commands so the response is deterministic and does not depend on the LLM
-choosing to call a tool.
+**Update (v0.1.22):** after studying DCP's `tui.tsx`, the previous chat-message
+approach (`client.session.prompt` with `synthetic`/`ignored` flags) was abandoned.
+Posting to the conversation always leaked into the model context one way or
+another. The TUI modal pattern is the gold standard and is now used for
+`/df-status` and `/df-help`.
 
 **Update (v0.1.15):** migrated from markdown command templates (under
 `templates/.opencode/commands/`) to plugin-registered, handler-backed slash

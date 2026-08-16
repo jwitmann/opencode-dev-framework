@@ -31,11 +31,10 @@ reimplemented as an OpenCode-native plugin.
   with sensible commands; `df profile <name>` changes the profile from the
   shell; `df status` / `df version` report template state and the version.
 - **Slash commands.** `/df-status`, `/df-verify`, `/df-profile`, and `/df-help`
-  are registered directly by the plugin so they work without template files.
-  `/df-status` and `/df-verify` read live in-memory state; `/df-profile`
-  updates the config and applies the change immediately; `/df-help` lists
-  the commands. Responses are posted as ignored messages so they do not get
-  re-processed as user input.
+  are registered by the plugin. `/df-status` and `/df-help` are handled by a
+  dedicated TUI plugin module and open an instant modal dialog, so they never
+  reach the LLM. `/df-profile` and `/df-verify` still run on the server side
+  because they mutate state or execute commands.
 
 ## Profiles
 
@@ -52,11 +51,14 @@ reimplemented as an OpenCode-native plugin.
 npm install opencode-dev-framework
 ```
 
-Then add it to your project's `opencode.json`:
+Then add both the server plugin and the TUI plugin to your project's `opencode.json`:
 
 ```json
 {
-  "plugin": ["opencode-dev-framework"]
+  "plugin": [
+    "opencode-dev-framework",
+    "opencode-dev-framework/tui"
+  ]
 }
 ```
 
@@ -83,12 +85,16 @@ local repository path in your project's `opencode.json`:
 
 ```json
 {
-  "plugin": ["/home/jerome/opencode-dev-framework"]
+  "plugin": [
+    "/home/jerome/opencode-dev-framework",
+    "/home/jerome/opencode-dev-framework/tui"
+  ]
 }
 ```
 
 The path must be the **repository root** (where `package.json` lives). OpenCode
-loads `dist/index.js`, so rebuild after every source change:
+loads the server plugin from `dist/index.js` and the TUI plugin from `tui.tsx`,
+so rebuild after every source change:
 
 ```bash
 npm run build
@@ -156,13 +162,32 @@ complete example.
 
 ## Slash commands
 
-The plugin registers three slash commands directly (no template files required):
+The plugin registers slash commands directly (no template files required). The
+status and help commands are handled by a separate TUI plugin module
+(`opencode-dev-framework/tui`) so they open instantly in a modal dialog and are
+never fed back to the LLM:
 
-- `/df-status` — shows the current profile, guardrails, completion gate,
-  configured commands, and tracked changed files. Reads live in-memory state.
+- `/df-status` — shows the current profile, guardrails, completion gate, and
+  configured commands in a modal dialog.
+- `/df-help` — lists the available dev-framework commands in a modal dialog.
+
+Server-side slash commands (no TUI module required):
+
 - `/df-verify` — runs the configured verification suite manually.
 - `/df-profile <profile>` — changes the active profile and applies it
   immediately.
+
+To use `/df-status` and `/df-help`, make sure both plugin exports are listed in
+`opencode.json`:
+
+```json
+{
+  "plugin": [
+    "opencode-dev-framework",
+    "opencode-dev-framework/tui"
+  ]
+}
+```
 
 You can still run `df init` to install the bundled agents, skills, and default
 config; the commands themselves are provided by the plugin.

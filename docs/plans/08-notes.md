@@ -311,6 +311,28 @@ Keep both. The custom tool lets the agent call verification explicitly; the slas
   those fragments were removed in v0.1.16; command parsing helpers moved to
   `src/command-utils.ts`.
 
+## v0.1.22 release decisions
+
+- **Slash-command status/help moved to a TUI plugin module.** After months of
+  iterating on a chat-message side channel (`client.session.prompt` with
+  `synthetic`/`ignored` flags), we adopted DCP's pattern: a separate TUI plugin
+  (`tui.tsx`, exported as `opencode-dev-framework/tui`) registers `/df-status` and
+  `/df-help` via `api.command.register` and opens a `DialogAlert` modal. The output
+  renders in the TUI and is never inserted into the chat stream, so it cannot be
+  re-processed as a user turn.
+- **`package.json` now exports `./tui`** pointing to `tui.tsx` (shipped as source,
+  compiled by OpenCode/Bun at runtime, like DCP). The main `tsconfig.json` stays
+  NodeNext-friendly; a separate `tsconfig.tui.json` typechecks the TUI module with
+  `jsx: preserve` and `jsxImportSource: @opentui/solid`.
+- **Server-side `command.execute.before` no longer handles `/df-status` or
+  `/df-help`.** It still handles `/df-profile` (edits config + reloads hook state)
+  and `/df-verify` (runs the gate). They remain server-side because they mutate
+  state or execute commands.
+- **`format-status.ts` split.** Added `renderConfigStatus(config)` (stateless, used
+  by the TUI module) and `renderHelp()` so the TUI module does not depend on live
+  hook state. `renderStatus(config, state)` now composes the config portion plus
+  the live state portion.
+
 ## References
 
 - OpenCode plugin docs: <https://opencode.ai/docs/plugins>

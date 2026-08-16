@@ -20,7 +20,6 @@ import {
   runGate,
   summarizeGate,
 } from "./gate.js";
-import { renderStatus } from "./format-status.js";
 import { runCommand, type RunCommand } from "./host.js";
 import { detectPreCommitAvailability, isLintFailure, lintFile, summarizeLint } from "./lint.js";
 import { createLogger, type LogFn } from "./logger.js";
@@ -99,10 +98,6 @@ export function buildHooks(
       if (!typedConfig.command) {
         typedConfig.command = {};
       }
-      typedConfig.command["df-status"] = {
-        template: "",
-        description: "Show the current dev-framework state",
-      };
       typedConfig.command["df-profile"] = {
         template: "",
         description: "Change the dev-framework profile (off, advisory, standard, strict)",
@@ -110,10 +105,6 @@ export function buildHooks(
       typedConfig.command["df-verify"] = {
         template: "",
         description: "Run the dev-framework completion gate manually",
-      };
-      typedConfig.command["df-help"] = {
-        template: "",
-        description: "List the available dev-framework slash commands",
       };
     },
 
@@ -135,23 +126,6 @@ export function buildHooks(
           output.parts.push({ type: "text", text, synthetic: true } as never);
         }
       };
-
-      if (input.command === "df-help" || input.command === "df") {
-        await reply(`df — opencode-dev-framework commands
-
-/df-status    Show the current dev-framework state
-/df-profile   Change the profile to off, advisory, standard, or strict
-/df-verify    Run the completion gate manually
-/df-help      Show this message`);
-        await state.log("info", "df-help command executed", { directory });
-        return;
-      }
-
-      if (input.command === "df-status") {
-        await reply(renderStatus(state.config, state));
-        await state.log("info", "df-status command executed", { directory });
-        return;
-      }
 
       if (input.command === "df-profile") {
         const profile = input.arguments.trim().toLowerCase();

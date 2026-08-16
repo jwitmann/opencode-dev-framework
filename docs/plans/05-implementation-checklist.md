@@ -315,15 +315,16 @@ Use this as the source of truth during implementation. Check items off as they a
 - [x] 18.8 Add `/df-help` slash command and unknown `/df-*` command response.
 - [x] 18.9 Validate config on load; show TUI toast on parse error; add optional
   `OPENCODE_DEV_FRAMEWORK_LOG_FILE` debug logging.
-- [x] 18.10 Post slash-command responses as synthetic chat messages via
-  `src/messenger.ts` so they are visible in the UI but not re-processed as user
-  input.
-- [x] 18.11 Align `src/messenger.ts` with the installed `@opencode-ai/sdk` v1
-  shape (`path: { id }`, `synthetic: true`); remove the incorrect SDK-v2 wrapper
-  and `ignored: true` flag that hid output from the UI while still feeding the
-  model.
-- [ ] 18.12 Run full validation suite and have the user test `/df-status` locally
-  before tagging the next release.
+- [x] 18.10 Post slash-command responses as chat messages via `src/messenger.ts`
+  so they are visible in the UI.
+- [x] 18.11 Abandoned the chat-message approach after discovering DCP uses a separate
+  TUI plugin module (`tui.tsx`) that opens a modal, never inserting text into the
+  conversation. The chat-message side channel always leaked into the model context.
+- [x] 18.12 Implement `/df-status` and `/df-help` as a TUI plugin module
+  (`opencode-dev-framework/tui`) that registers slash commands and opens a
+  `DialogAlert` modal. `/df-profile` and `/df-verify` remain server-side.
+- [x] 18.13 Run full validation suite and have the user test `/df-status` locally
+  before tagging v0.1.22.
 
 ## Notes for the implementer
 

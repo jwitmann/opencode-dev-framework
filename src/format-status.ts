@@ -35,12 +35,12 @@ function formatRules(rules: ResolvedConfig["rules"] | undefined): string {
 }
 
 /**
- * Render a human-readable summary of the current plugin state.
+ * Render the config-only portion of the status summary.
  *
- * Used by the `dev_framework_status` custom tool and by the `/df-status`
- * slash-command handler.
+ * This is shared between the server-side `/df-status` tool and the TUI plugin,
+ * which does not have access to live hook state.
  */
-export function renderStatus(config: ResolvedConfig, state?: HookState | null): string {
+export function renderConfigStatus(config: ResolvedConfig): string {
   const lines: string[] = [];
   lines.push(`opencode-dev-framework status`);
   lines.push("");
@@ -63,11 +63,6 @@ export function renderStatus(config: ResolvedConfig, state?: HookState | null): 
   lines.push(`  format: ${config.on_edit.format}`);
   lines.push(`  lint: ${config.on_edit.lint}`);
   lines.push(`  precommit: ${config.precommit}`);
-  if (state && config.precommit === "auto") {
-    lines.push(
-      `  pre-commit binary available: ${state.precommitAvailable === true ? "yes" : state.precommitAvailable === false ? "no" : "not checked yet"}`,
-    );
-  }
   lines.push("");
   lines.push("Completion gate:");
   lines.push(`  run_typecheck: ${config.gate.run_typecheck}`);
@@ -99,7 +94,39 @@ export function renderStatus(config: ResolvedConfig, state?: HookState | null): 
     lines.push(`  style_guide: ${config.style_guide}`);
   }
 
+  return lines.join("\n");
+}
+
+/**
+ * Render a help message listing the available dev-framework slash commands.
+ */
+export function renderHelp(): string {
+  const lines: string[] = [];
+  lines.push("dev-framework commands");
+  lines.push("");
+  lines.push("/df-status    Show the current dev-framework state");
+  lines.push("/df-profile   Change the profile to off, advisory, standard, or strict");
+  lines.push("/df-verify    Run the completion gate manually");
+  lines.push("/df-help      Show this message");
+  return lines.join("\n");
+}
+
+/**
+ * Render a human-readable summary of the current plugin state.
+ *
+ * Used by the `dev_framework_status` custom tool and by the server-side
+ * slash-command handler.
+ */
+export function renderStatus(config: ResolvedConfig, state?: HookState | null): string {
+  const lines: string[] = [renderConfigStatus(config)];
+
   if (state) {
+    if (config.precommit === "auto") {
+      lines.push(
+        `  pre-commit binary available: ${state.precommitAvailable === true ? "yes" : state.precommitAvailable === false ? "no" : "not checked yet"}`,
+      );
+    }
+
     const changedFiles = state.tracker.getChangedFiles();
     lines.push("");
     lines.push(`Changed files tracked: ${changedFiles.length}`);

@@ -1,11 +1,21 @@
 {
   "name": "opencode-dev-framework",
-  "version": "0.1.21",
+  "version": "0.1.22",
   "description": "OpenCode plugin that enforces project-specific quality gates during AI coding sessions",
   "license": "MIT",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./tui": {
+      "types": "./dist/tui.d.ts",
+      "import": "./tui.tsx"
+    }
+  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/jwitmann/opencode-dev-framework.git"
@@ -14,14 +24,16 @@
     "dist",
     "bin",
     "rules",
-    "templates"
+    "templates",
+    "tui.tsx"
   ],
   "bin": {
     "df": "bin/df"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.tui.json",
+    "typecheck:tui": "tsc --noEmit -p tsconfig.tui.json",
     "test": "vitest run",
     "lint": "biome lint .",
     "lint:fix": "biome lint --write .",
@@ -44,6 +56,9 @@
   "devDependencies": {
     "@biomejs/biome": "^2.5.8",
     "@opencode-ai/plugin": "^1.18.18",
+    "@opentui/core": "^0.5.3",
+    "@opentui/keymap": "^0.5.3",
+    "@opentui/solid": "^0.5.3",
     "@types/node": "^26.2.0",
     "@types/picomatch": "^4.0.3",
     "markdownlint-cli2": "^0.23.2",
