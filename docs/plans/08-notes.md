@@ -348,6 +348,20 @@ Keep both. The custom tool lets the agent call verification explicitly; the slas
   leaked into the model. Results now surface via `client.tui.showToast` (visible,
   non-chat), stored as `HookState.showToast`. The `src/messenger.ts` helper and
   its test were deleted as dead code.
+- **TUI module requires a `tui.json` entry (not just `opencode.json`).** Even
+  after the `keymap.registerLayer` fix, `/df-status`/`/df-help` remained
+  unregistered because the TUI plugin was never loaded. OpenCode's spec
+  (`packages/opencode/specs/tui-plugins.md`) is explicit: **server plugins load
+  from `opencode.json`; TUI plugins load from `tui.json`.** The `./tui` export is
+  only consulted when the package is listed in a TUI config. DCP works with a
+  single `opencode.json` entry only because it is an **npm** package and
+  OpenCode 1.18.18 auto-resolves `./tui` from an npm entry; a **local
+  filesystem path** does not get `./tui` auto-loaded. Confirmed by `grep` on the
+  `opencode` binary (references `tui.json`, `registerLayer`, version 1.18.18).
+  For local development, add the repo path to both `opencode.json` (server) and
+  `tui.json` (project `.opencode/tui.json` or global
+  `~/.config/opencode/tui.json`). The published npm package still works with a
+  single `opencode.json` entry on 1.18.18+.
 - **Validation:** 165 tests pass; format/lint/lint:md/typecheck/build all green.
 
 ## References

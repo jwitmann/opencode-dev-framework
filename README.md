@@ -51,15 +51,18 @@ reimplemented as an OpenCode-native plugin.
 npm install opencode-dev-framework
 ```
 
-Then add the plugin to your project's `opencode.json`. OpenCode automatically
-loads the bundled `./tui` companion (the slash-command modals), so a single
-entry is enough:
+Then add the plugin to your project's `opencode.json`:
 
 ```json
 {
   "plugin": ["opencode-dev-framework"]
 }
 ```
+
+On OpenCode 1.18.18+ the `./tui` companion (the `/df-status` and `/df-help`
+modals) is auto-discovered from the npm plugin entry above, so the server and
+TUI parts load together. (On older builds, or if the modals do not appear, also
+add the package to `tui.json` — see *Local development* below.)
 
 Finally, scaffold the project-level files (agents, skills, local rules directory,
 and default config) into your repo with the bundled `df` CLI:
@@ -80,8 +83,21 @@ profile from the shell; `df version` prints the plugin version.
 ## Local development and testing
 
 To test the plugin from source without publishing to npm, point OpenCode at the
-local repository path in your project's `opencode.json`. The `./tui` companion
-is loaded automatically:
+local repository path in your project's `opencode.json` **and** in a `tui.json`.
+The TUI module (`/df-status`, `/df-help` modals) is **not** auto-discovered for
+local filesystem paths — it only loads when the package is listed in the TUI
+config. OpenCode reads `tui.json` from the global config dir
+(`~/.config/opencode/tui.json`) and the project dir (`.opencode/tui.json`).
+
+`opencode.json` (server plugin):
+
+```json
+{
+  "plugin": ["/home/jerome/opencode-dev-framework"]
+}
+```
+
+`tui.json` (TUI plugin — same path):
 
 ```json
 {

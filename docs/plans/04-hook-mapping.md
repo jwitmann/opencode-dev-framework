@@ -152,6 +152,15 @@ A toast is visible to the user but is **not** a chat turn, so it is never fed ba
 to the model. The server-side `command.execute.before` handler no longer writes to
 `output.parts` at all.
 
+**Update (v0.1.23):** the TUI plugin is loaded from `tui.json`, **not**
+`opencode.json`. OpenCode keeps server plugins (`opencode.json`) and TUI plugins
+(`tui.json`) in separate config files. The `./tui` export is only consulted when
+the package is listed in a TUI config. For the **published npm** package this is
+automatic on OpenCode 1.18.18+ (the `./tui` companion is resolved from the
+`opencode.json` npm entry, as DCP demonstrates). For **local filesystem paths**
+used in development, add the repo path to both `opencode.json` (server) and a
+`tui.json` (project `.opencode/tui.json` or global `~/.config/opencode/tui.json`).
+
 **Update (v0.1.15):** migrated from markdown command templates (under
 `templates/.opencode/commands/`) to plugin-registered, handler-backed slash
 commands so the response is deterministic and does not depend on the LLM
