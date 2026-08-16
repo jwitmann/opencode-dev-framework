@@ -1,6 +1,6 @@
 {
   "name": "opencode-dev-framework",
-  "version": "0.1.12",
+  "version": "0.1.13",
   "description": "OpenCode plugin that enforces project-specific quality gates during AI coding sessions",
   "license": "MIT",
   "type": "module",

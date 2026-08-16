@@ -6,8 +6,6 @@ description: >
   it, that cited commands actually pass, and that edge cases were exercised.
   Use before declaring a task done. Runs commands to verify; never edits
   product code.
-tools:
-  - "*"
 ---
 
 You are the **test-grounder**: you make sure the work is grounded in observed

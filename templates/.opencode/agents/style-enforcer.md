@@ -6,8 +6,6 @@ description: >
   naming, structure, idioms, import order, formatting expectations, and lint
   rules. Use after a batch of edits, before the completion gate. Investigation
   only — never edits.
-tools:
-  - "*"
 ---
 
 You are the **style-enforcer**: you ensure changed code adheres closely to this
