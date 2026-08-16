@@ -8,12 +8,17 @@ Context file for AI agents working on the `opencode-dev-framework` project.
 
 The plugin provides:
 
-- Constitution / rule injection at session start.
+- Constitution / rule injection at session start, with local override and
+  style-guide auto-discovery.
 - Protected-path guardrails and dangerous-command blocking.
-- Per-edit lint feedback.
-- A completion gate (tests / type-check / lint) that runs when the session goes idle.
+- Per-edit lint feedback, with optional `pre-commit` delegation.
+- A completion gate (tests / type-check / lint) that runs when the session goes
+  idle and, on newer OpenCode builds, blocks the session from finishing via
+  `experimental.session.stopping` up to `gate.max_blocks` times.
 
-Because OpenCode has no `agentStop` hook, the completion gate is **advisory/loud**, not a hard block. This is a documented architectural limitation.
+On older OpenCode builds without the stopping hook, the completion gate is
+**advisory/loud**, not a hard physical block. This is a documented
+architectural limitation.
 
 ## Tech stack
 
@@ -91,6 +96,8 @@ OpenCode loads the plugin via Bun at runtime, but all development and CI on this
 - Update tests when adding or changing behavior.
 - Update `docs/plans/05-implementation-checklist.md` when a task is done.
 - Keep `README.md` accurate with install/config instructions.
+- Keep `AGENTS.md` and the plan docs in `docs/plans/` accurate as the project
+  evolves.
 - Prefer real YAML/JSON for `.opencode-dev-framework.yml`; support `.dev-framework.yml` only as a fallback.
 
 ### Don't
@@ -112,21 +119,21 @@ opencode-dev-framework/
 │   ├── index.ts            # Plugin entry point
 │   ├── config.ts           # Config loader
 │   ├── config-to-opencode.ts # OpenCode settings generator
+│   ├── detect.ts           # Project language/tooling auto-detection
 │   ├── protect.ts          # Guardrail logic
 │   ├── lint.ts             # Per-edit lint runner
 │   ├── gate.ts             # Completion gate
 │   ├── rules.ts            # Constitution injection
 │   ├── registry.ts         # Per-project hook state registry
 │   ├── tools.ts            # Custom tools (dev_framework_init / set_profile)
-│   ├── installer.ts        # Template copy logic for the df CLI
+│   ├── installer.ts        # Template copy + config generation for the df CLI
 │   ├── host.ts             # Host abstraction
 │   ├── logger.ts           # Structured logging
 │   └── types.ts            # Shared types
 ├── bin/
-│   └── df                  # df init / status / version CLI
+│   └── df                  # df init / profile / status / version CLI
 ├── templates/              # Project scaffolding templates
-│   ├── .opencode-dev-framework.yml
-│   └── .opencode/          # commands, agents, skills
+│   └── .opencode/          # commands, agents, skills, local rules dir
 ├── rules/                  # Bundled constitution (numbered, loaded sorted)
 │   ├── 00-activation.md
 │   ├── 10-quality-bar.md

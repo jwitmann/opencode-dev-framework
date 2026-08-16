@@ -12,11 +12,12 @@ Build and publish `opencode-dev-framework`, an OpenCode plugin that brings dev-f
 ## Non-goals
 
 - Do not implement an unconditional "agent cannot finish" block. OpenCode has no
-  `agentStop` hook; the `experimental.session.stopping` hook (PR #41811) can
-  keep a session running up to `gate.max_blocks` times, then stands down.
-- ~~Do not build a CLI launcher like `bin/df`.~~ **Superseded in v0.1.7:** the
-  user explicitly requested a `df` CLI for scaffolding; it ships as `bin/df` and
-  only copies templates — it does not load or launch the plugin itself.
+  native `agentStop` hook; the `experimental.session.stopping` hook (PR #41811)
+  can keep a session running up to `gate.max_blocks` times, then stands down.
+- ~~Do not build a CLI launcher like `bin/df`.~~ **Superseded in v0.1.7+:** the
+  user explicitly requested a `df` CLI. It now scaffolds templates (`init`),
+  auto-detects project commands, switches profile (`profile`), reports status,
+  and prints the version.
 - Do not support Copilot/Claude/Codex in the MVP. Keep the internal design host-agnostic enough that future hosts could be added, but ship only OpenCode support now.
 
 ## Target users
@@ -43,14 +44,15 @@ Teams or individuals who:
 
 ## Success criteria
 
-- [ ] Plugin installs cleanly from npm and loads in OpenCode.
-- [ ] `.opencode-dev-framework.yml` configures the plugin.
-- [ ] `.dev-framework.yml` is read as a fallback for compatibility.
-- [ ] Protected-path edits are denied in `standard`/`strict` profiles.
-- [ ] Formatters and linters run on edited files.
-- [ ] Completion gate runs on `session.idle` and reports failures.
-- [ ] Unit tests cover config loading, guardrails, and gate logic.
-- [ ] CI runs tests on every PR and publishes to npm on tagged releases.
+- [x] Plugin installs cleanly from npm and loads in OpenCode.
+- [x] `.opencode-dev-framework.yml` configures the plugin.
+- [x] `.dev-framework.yml` is read as a fallback for compatibility.
+- [x] Protected-path edits are denied in `standard`/`strict` profiles.
+- [x] Formatters and linters run on edited files.
+- [x] Completion gate runs on `session.idle` and reports failures.
+- [x] Blocking gate works via `experimental.session.stopping` on supported OpenCode builds.
+- [x] Unit tests cover config loading, guardrails, gate logic, rules, lint, and installer.
+- [x] CI runs tests on every PR and publishes to npm on tagged releases.
 
 ## High-level phases
 

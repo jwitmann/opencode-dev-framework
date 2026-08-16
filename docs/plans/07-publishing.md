@@ -1,7 +1,9 @@
 # Publishing Guide
 
-This project publishes to npm using **trusted publishing (OIDC)** from GitHub
-Actions. No long-lived npm token is stored in GitHub secrets.
+This project publishes to npm from GitHub Actions. It uses `--provenance` for
+Sigstore attestations and a **granular npm access token** stored in the
+`NPM_TOKEN` GitHub secret for authentication (npm's OIDC trusted-publishing UI
+has proven unreliable for this package).
 
 ## npm account setup
 
@@ -175,7 +177,7 @@ Release steps:
 - [ ] `package.json` name is `opencode-dev-framework`.
 - [ ] `package.json` version is updated.
 - [ ] `package.json` `repository.url` exactly matches the GitHub repo.
-- [ ] `files` array includes `dist`, `commands`, `rules`.
+- [ ] `files` array includes `dist`, `bin`, `commands`, `rules`, `templates`.
 - [ ] `main` points to `dist/index.js`.
 - [ ] `types` points to `dist/index.d.ts`.
 - [ ] `LICENSE` exists.
@@ -258,7 +260,7 @@ The README and docs must clearly state:
 
 - This is a community project, not affiliated with OpenCode or the original
   dev-framework team.
-- The completion gate is advisory because OpenCode does not expose a blocking
-  completion hook.
+- The completion gate blocks finishing on OpenCode builds that support
+  `experimental.session.stopping`; on older builds it is advisory/loud.
 - Some features rely on OpenCode native config (`permission`, `formatter`),
   which may evolve.

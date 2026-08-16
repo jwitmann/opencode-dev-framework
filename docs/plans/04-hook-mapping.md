@@ -8,34 +8,36 @@
 
 | dev-framework primitive | Copilot CLI hook | OpenCode equivalent | Can block? | Notes |
 |---|---|---|---|---|
-| Constitution injection | `sessionStart` | `session.created` + OpenCode `rules`/`instructions` | N/A | Inject project rules into context. |
+| Constitution injection | `sessionStart` | `experimental.chat.system.transform` | N/A | Inject project rules into the system prompt; also maps sessionID → directory. |
 | Protected-path guardrail | `preToolUse` | Native `permission` config + `tool.execute.before` | Yes (permission) / Yes (hook throw) | Native `permission` is the primary defense; plugin hook adds clearer messaging. |
 | Format on edit | `postToolUse` | OpenCode native `formatter` config + `file.edited` | Indirectly | OpenCode's formatter runs automatically when enabled. Plugin supplements with project-specific commands. |
-| Lint on edit | `postToolUse` | `file.edited` / `tool.execute.after` | No (advisory) | Run linter and feed output back. |
-| Completion gate | `agentStop` | `session.idle` + `/df-verify` command | **No** | This is the biggest gap. OpenCode fires `session.idle` after the agent goes idle. We can only report failure loudly. |
+| Lint on edit | `postToolUse` | `file.edited` | No (advisory) | Run linter and feed output back. Can delegate to `pre-commit run --files`. |
+| Completion gate | `agentStop` | `experimental.session.stopping` + `session.idle` | **Bounded** | PR #41811 adds a blocking hook; older builds fall back to loud `session.idle`. |
 | Specialist agents | `agents/` subagents | OpenCode subagents / custom tools | N/A | Out of MVP scope. |
 | Workflows / skills | `skills/` | Custom commands / custom tools | N/A | Out of MVP scope. |
 
 ## Detailed hook behavior
 
-### `session.created`
+### `experimental.chat.system.transform`
 
-**Purpose:** Inject constitution and project context.
+**Purpose:** Inject constitution and project context, and map the session to its
+project directory.
 
 **Actions:**
 
 1. Load resolved config.
 2. If profile is `off`, do nothing.
-3. Read `rules` files and any auto-discovered style guides.
-4. Inject a summary into session instructions via `client.instructions` or a lightweight system message. The exact API must be validated against `@opencode-ai/plugin`.
+3. Read `rules` files, local override directory, and any auto-discovered style guides.
+4. Inject the concatenated rules into the system prompt.
 
-### Native `permission` config (generated)
+### Native `permission` config (generated, not injected automatically)
 
-**Purpose:** Block edits to protected paths and dangerous commands.
+**Purpose:** Suggest rules that block edits to protected paths and dangerous commands.
 
-**How:** The plugin does not rewrite `opencode.json` on disk. Instead, it dynamically contributes permission rules by registering as an OpenCode plugin. If OpenCode does not allow dynamic permission contributions from plugins, we rely entirely on the `tool.execute.before` hook and document that users should manually add generated `permission` rules to their `opencode.json`.
-
-**Investigation required:** confirm whether a plugin can contribute `permission`/`formatter`/`rules` fragments at runtime, or whether it can only enforce them in hooks. Document the answer here.
+**How:** The plugin does not rewrite `opencode.json` on disk and does not contribute
+permissions at runtime. It applies guardrails in `tool.execute.before`. Users can
+use `config-to-opencode.ts` to generate suggested `permission` rules and copy
+them into their `opencode.json` if desired.
 
 ### `tool.execute.before`
 
@@ -63,7 +65,7 @@
 3. Resolve per-extension linter from `commands.lint.<ext>` or `commands.lint`.
 4. Substitute `{file}`.
 5. Run the command with timeout.
-6. If it fails, log the output. In `advisory`, continue; in `standard`/`strict`, optionally throw depending on policy.
+6. If it fails, log the output. In `advisory`, continue; in `standard`, log an error; in `strict`, throw.
 
 ### `tool.execute.after`
 
@@ -119,6 +121,8 @@ The command body can invoke the plugin's custom tool (if we expose one) or simpl
 
 ## Anti-patterns to avoid
 
-- Do not try to fake a blocking completion gate. Document the advisory behavior.
+- Do not claim the gate unconditionally blocks completion. Document the bounded
+  blocking via `experimental.session.stopping` and the advisory fallback on
+  older OpenCode builds.
 - Do not rewrite `opencode.json` automatically. Generate suggestions, not silent mutations.
 - Do not run network-dependent commands during `file.edited` unless explicitly configured.

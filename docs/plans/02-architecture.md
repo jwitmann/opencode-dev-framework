@@ -21,11 +21,20 @@ import type { Plugin } from "@opencode-ai/plugin";
 
 export const devFramework: Plugin = async (ctx) => {
   return {
-    "session.created": async () => { /* inject constitution */ },
+    "experimental.chat.system.transform": async (input, output) => {
+      /* inject constitution + map session */
+    },
     "tool.execute.before": async (input, output) => { /* guardrails */ },
-    "file.edited": async (event) => { /* lint edited file */ },
-    "tool.execute.after": async (input, output) => { /* observe results */ },
-    "session.idle": async () => { /* completion gate */ },
+    event: async ({ event }) => {
+      /* file.edited -> lint; session.idle -> gate; session.deleted -> cleanup */
+    },
+    "experimental.session.stopping": async (input, output) => {
+      /* blocking completion gate on supported OpenCode builds */
+    },
+    tool: {
+      dev_framework_init: { /* scaffold project files */ },
+      dev_framework_set_profile: { /* change profile in-session */ },
+    },
   };
 };
 ```
@@ -44,13 +53,14 @@ The package may export a single default plugin or multiple named plugins. Use on
 |---|---|
 | `src/config.ts` | Load and merge `.opencode-dev-framework.yml` and `.dev-framework.yml`, resolve profile defaults, validate with Zod. |
 | `src/config-to-opencode.ts` | Helper that translates framework config into OpenCode-native-style `permission` / `formatter` fragments. The plugin does **not** inject these automatically (it enforces guardrails in `tool.execute.before` and does not rewrite `opencode.json`); the fragments are available for users who want to copy them manually. |
+| `src/detect.ts` | Detect the project's language and tooling from root files for `df init`. |
 | `src/protect.ts` | Implement `tool.execute.before` guardrails for protected paths and dangerous commands. |
-| `src/lint.ts` | Implement per-edit checks on `file.edited`. |
+| `src/lint.ts` | Implement per-edit checks on `file.edited`, with optional `pre-commit` fallback. |
 | `src/gate.ts` | Implement the completion gate and changed-file tracking. |
 | `src/rules.ts` | Load and inject constitution / project rules via `experimental.chat.system.transform`. |
 | `src/tools.ts` | Custom tools (`dev_framework_init`, `dev_framework_set_profile`). |
 | `src/registry.ts` | Module-level hook state registry (avoids closure-capture issues in OpenCode's Effect runtime). |
-| `src/installer.ts` | Template copy logic used by `bin/df` and the `dev_framework_init` tool. |
+| `src/installer.ts` | Template copy and detected-config generation used by `bin/df` and the `dev_framework_init` tool. |
 | `src/logger.ts` | Structured logging wrapper around `client.app.log()`. |
 | `src/types.ts` | Shared TypeScript types and interfaces. |
 
@@ -78,7 +88,7 @@ opencode session starts
   -> plugin loaded
     -> load config (native -> fallback)
       -> resolve profile defaults
-        -> generate OpenCode native config fragments
+        -> load constitution (bundled / local override / explicit rules / style guide)
           -> if enabled, register hooks
 ```
 
@@ -90,12 +100,15 @@ opencode session starts
 
 ## Tool guardrails
 
-Use both native `permission` config and plugin hook:
+Use native `permission` config as the primary defense and the plugin hook for clearer messaging:
 
-1. `config-to-opencode.ts` emits `permission.edit` rules from `protect` globs. This is the primary defense.
-2. `tool.execute.before` acts as a belt-and-suspenders check and can throw a clearer error message.
+1. `config-to-opencode.ts` emits suggested `permission.edit` rules from `protect`
+   globs. Users can copy these into their `opencode.json` if desired.
+2. `tool.execute.before` acts as a belt-and-suspenders check and throws a clearer
+   error message when the plugin denies a call.
 
-The plugin does not modify `opencode.json` on disk. It returns the generated fragments to OpenCode at runtime. In practice this means the plugin itself applies guardrails in code rather than rewriting config files.
+The plugin does not modify `opencode.json` on disk and does not contribute
+permissions at runtime. It applies guardrails directly in the hook.
 
 ## Completion gate
 
@@ -132,7 +145,7 @@ Prefer the markdown command file because it requires no code and is easy to main
 {
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
-  "files": ["dist", "commands", "rules"]
+  "files": ["dist", "bin", "commands", "rules", "templates"]
 }
 ```
 
@@ -141,7 +154,6 @@ Prefer the markdown command file because it requires no code and is easy to main
 - `@opencode-ai/plugin` (dev dependency for types)
 - `yaml` (parsing)
 - `zod` (validation)
-- `minimatch` or `picomatch` (glob matching)
-- `chalk` or no color library (keep minimal)
+- `picomatch` (glob matching)
 
 Avoid heavy dependencies. The plugin runs inside OpenCode's Bun environment.

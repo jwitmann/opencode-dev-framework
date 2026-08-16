@@ -15,12 +15,14 @@ Use this file to get back up to speed in a new session.
 
 It is an OpenCode plugin that enforces a project-specific quality bar on AI coding sessions:
 
-- Injects constitution/rules into context.
+- Injects constitution/rules into context (bundled, local override, or explicit `rules`).
 - Guards protected paths and dangerous commands.
-- Formats and lints edited files.
+- Formats and lints edited files, with optional `pre-commit` delegation.
 - Runs a completion gate (tests / type-check / lint) when the session goes idle.
 
-Because OpenCode has no `agentStop`/completion-blocking hook, the gate is **advisory/loud**, not a hard physical block. This is an architectural limitation we document honestly.
+On OpenCode builds with PR #41811, the gate blocks finishing via
+`experimental.session.stopping` up to `gate.max_blocks` times. On older builds,
+without that hook, the gate is **advisory/loud**, not a hard physical block.
 
 ## Key decisions already made
 
@@ -39,7 +41,7 @@ Read this file, then open:
 3. `05-implementation-checklist.md` for the task list.
 4. `02-architecture.md` for the technical design.
 
-Then run the first checklist item: scaffold the npm/TypeScript project.
+Then run the next unchecked checklist item (or continue the current phase).
 
 ## Mandatory validation before any release
 

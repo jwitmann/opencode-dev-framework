@@ -19,11 +19,15 @@ Recommendation: `vitest` because it has excellent TypeScript support and runs in
 tests/
 ├── config.test.ts
 ├── config-to-opencode.test.ts
+├── detect.test.ts
+├── installer.test.ts
 ├── protect.test.ts
 ├── lint.test.ts
 ├── gate.test.ts
 ├── rules.test.ts
-└── host.test.ts
+├── tools.test.ts
+├── host.test.ts
+└── smoke.test.ts
 ```
 
 ## Stub host
@@ -131,4 +135,4 @@ This can be documented as a manual step rather than automated in CI.
 
 ## Coverage target
 
-Aim for >80% line coverage on `src/` before v0.1.0. Do not chase coverage for coverage's sake; focus on behavior.
+Aim for high line coverage on `src/` through behavior-focused tests. Do not chase coverage for coverage's sake.
