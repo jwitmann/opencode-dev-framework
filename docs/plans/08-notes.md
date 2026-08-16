@@ -156,12 +156,22 @@ Keep both. The custom tool lets the agent call verification explicitly; the slas
 - **Optional file logging.** Setting `OPENCODE_DEV_FRAMEWORK_LOG_FILE` appends a
   JSON line for every log call, which helps debug production runs where
   `client.app.log` may not be visible.
-- **Slash-command responses are posted as ignored messages.** As of v0.1.16,
-  `/df-status`, `/df-profile`, `/df-verify`, and `/df-help` use
-  `client.session.prompt` with `noReply: true` and `ignored: true` so the result
-  is shown in the chat but is not fed back to the model as a user turn. Before
-  this fix, writing to `output.parts` caused the status output to be processed
-  as user input on the next turn.
+
+## v0.1.19 release decisions
+
+- **Corrected slash-command messenger API shape.** The initial v0.1.17 messenger
+  used the wrong `client.session.prompt` call shape (`{ path: { id }, body: { ... }}`).
+  The OpenCode SDK v2 expects a flat object (`{ sessionID, noReply, parts }`).
+  The fix uses `synthetic: true` (not `ignored: true`) so the message is visible in
+  the UI, and falls back to `client.tui.showToast` if the prompt API fails.
+
+## v0.1.17 release decisions
+
+- **Slash-command responses moved from `output.parts` to a messenger.** The
+  original slash-command handler wrote to `output.parts`, which OpenCode treated
+  as a user message on the next turn. `src/messenger.ts` now posts responses via
+  `client.session.prompt` with `noReply: true` so the result appears in the chat
+  without being fed back to the model.
 
 ## Phase 10 release decisions
 
