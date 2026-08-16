@@ -243,25 +243,37 @@ Use this as the source of truth during implementation. Check items off as they a
 
 ## Phase 13 — `config.rules` explicit replace/append (v0.1.10)
 
-- [ ] 13.1 Change `rules` from implicit append to explicit replace/append:
+- [x] 13.1 Change `rules` from implicit append to explicit replace/append:
   array form = replace; object form = `{ mode: "replace" | "append"; files: string[] }`.
-- [ ] 13.2 Update `src/types.ts`, `src/config.ts` schema/flat mapping/resolve,
+- [x] 13.2 Update `src/types.ts`, `src/config.ts` schema/flat mapping/resolve,
   `src/rules.ts` loader, and tests.
-- [ ] 13.3 Update `03-config-spec.md`, `08-notes.md`, and this checklist.
-- [ ] 13.4 Bump version to `0.1.10` and tag.
+- [x] 13.3 Update `03-config-spec.md`, `08-notes.md`, and this checklist.
+- [x] 13.4 Bump version to `0.1.10` and tag.
 
 ## Phase 14 — Constitution/rules redesign (v0.1.11)
 
-- [ ] 14.1 Remove `constitution` config key from types/schema/loader.
-- [ ] 14.2 Auto-discover project `.opencode/opencode-dev-framework/rules/*.md`
+- [x] 14.1 Remove `constitution` config key from types/schema/loader.
+- [x] 14.2 Auto-discover project `.opencode/opencode-dev-framework/rules/*.md`
   as a local override.
-- [ ] 14.3 Keep explicit `rules` config (`replace`/`append`).
-- [ ] 14.4 Implement `style_guide` injection.
-- [ ] 14.5 Add local rules directory to `templates/`.
-- [ ] 14.6 Update tests for local override and style guide.
-- [ ] 14.7 Update README, `03-config-spec.md`, `08-notes.md`, and this
+- [x] 14.3 Keep explicit `rules` config (`replace`/`append`).
+- [x] 14.4 Implement `style_guide` injection.
+- [x] 14.5 Add local rules directory to `templates/`.
+- [x] 14.6 Update tests for local override and style guide.
+- [x] 14.7 Update README, `03-config-spec.md`, `08-notes.md`, and this
   checklist.
-- [ ] 14.8 Bump version to `0.1.11`, tag.
+- [x] 14.8 Bump version to `0.1.11`, tag.
+
+## Phase 15 — Further parity additions (v0.1.12)
+
+- [x] 15.1 Implement `df init` command auto-detection.
+- [x] 15.2 Implement `df profile <profile>` CLI profile switching.
+- [x] 15.3 Implement style-guide auto-discovery (`STYLE.md`,
+  `docs/STYLE.md`, `CONTRIBUTING.md`, `docs/CONTRIBUTING.md`).
+- [x] 15.4 Implement `precommit: auto` integration for per-file linting.
+- [x] 15.5 Update `dev_framework_init` tool to write detected config.
+- [x] 15.6 Update tests, README, `03-config-spec.md`, `08-notes.md`, and this
+  checklist.
+- [x] 15.7 Bump version to `0.1.12`, tag.
 
 ## Notes for the implementer
 

@@ -14,6 +14,8 @@ export interface HookState {
   constitution: string | null;
   /** Per-session count of completion-gate blocks (keyed by sessionID). */
   blockCounts: Map<string, number>;
+  /** Cached result of checking whether `pre-commit` is available. */
+  precommitAvailable?: boolean;
 }
 
 /**

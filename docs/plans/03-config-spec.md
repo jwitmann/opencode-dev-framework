@@ -173,9 +173,29 @@ but do not stop other files from loading.
 - Default: auto-detect
 
 Path to a project style guide to inject into context, appended after the
-constitution. If the file cannot be read, a warning is logged.
+constitution. When not set, the plugin auto-discovers the first existing file
+from this list (in order):
 
-## Profile default overrides
+1. `STYLE.md`
+2. `docs/STYLE.md`
+3. `CONTRIBUTING.md`
+4. `docs/CONTRIBUTING.md`
+
+If the explicit file cannot be read, a warning is logged. Auto-discovery is
+silent when no candidate exists.
+
+### `precommit`
+
+- Type: `"auto" | "off"`
+- Default: `off`
+
+When set to `auto`, per-file linting (`on_edit.lint` and `gate.lint_changed`)
+uses `pre-commit run --files <file>` instead of the configured lint command,
+but only when the `pre-commit` binary is available in the project. If the
+binary is missing, the plugin falls back to the normal lint command.
+
+`df init` sets `precommit: auto` automatically when a
+`.pre-commit-config.yaml` file is present.
 
 Explicit config keys always override profile defaults.
 
@@ -232,7 +252,7 @@ When reading `.dev-framework.yml` as fallback, map flat keys to the native struc
 | `format.<ext>` | `commands.format.<ext>` |
 | `lint.<ext>` | `commands.lint.<ext>` |
 | `test_changed` | `commands.test_changed` |
-| `precommit` | ignored in MVP |
+| `precommit` | `precommit` |
 | `format_on_edit` | `on_edit.format` |
 | `lint_on_edit` | `on_edit.lint` |
 | `gate_run_typecheck` | `gate.run_typecheck` |

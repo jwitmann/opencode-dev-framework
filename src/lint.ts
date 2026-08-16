@@ -68,6 +68,21 @@ export function resolveLintCommand(config: ResolvedConfig, filePath: string): st
   return splitCommand(template).map((token) => token.replaceAll("{file}", filePath));
 }
 
+export function resolvePreCommitCommand(filePath: string): string[] {
+  return ["pre-commit", "run", "--files", filePath];
+}
+
+/**
+ * Check whether the `pre-commit` binary is available in the project.
+ */
+export async function detectPreCommitAvailability(
+  run: RunCommand,
+  directory?: string,
+): Promise<boolean> {
+  const result = await run(["pre-commit", "--version"], { cwd: directory, timeout: 10 });
+  return result.exitCode === 0;
+}
+
 /**
  * Lint a single file. Excluded files and file types without a configured
  * linter are skipped; everything else runs through the injected runner.
@@ -76,14 +91,18 @@ export async function lintFile(
   run: RunCommand,
   config: ResolvedConfig,
   filePath: string,
-  options?: { cwd?: string; timeout?: number },
+  options?: { cwd?: string; timeout?: number; precommitAvailable?: boolean },
 ): Promise<LintOutcome> {
   const excluded = matchExclude(config, filePath, options?.cwd);
   if (excluded !== undefined) {
     return { skipped: true, reason: `excluded by "${excluded}"`, filePath };
   }
 
-  const command = resolveLintCommand(config, filePath);
+  const usePreCommit = config.precommit === "auto" && options?.precommitAvailable === true;
+  const command = usePreCommit
+    ? resolvePreCommitCommand(filePath)
+    : resolveLintCommand(config, filePath);
+
   if (command === undefined) {
     return { skipped: true, reason: "no lint command configured for this file type", filePath };
   }

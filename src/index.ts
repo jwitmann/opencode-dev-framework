@@ -19,7 +19,7 @@ import {
   summarizeGate,
 } from "./gate.js";
 import { runCommand, type RunCommand } from "./host.js";
-import { isLintFailure, lintFile, summarizeLint } from "./lint.js";
+import { detectPreCommitAvailability, isLintFailure, lintFile, summarizeLint } from "./lint.js";
 import { createLogger, type LogFn } from "./logger.js";
 import { checkToolCall } from "./protect.js";
 import {
@@ -178,9 +178,13 @@ export function buildHooks(
         if (!state.config.on_edit.lint) {
           return;
         }
+        if (state.config.precommit === "auto" && state.precommitAvailable === undefined) {
+          state.precommitAvailable = await detectPreCommitAvailability(state.run, state.directory);
+        }
         const outcome = await lintFile(state.run, state.config, filePath, {
           cwd: state.directory,
           timeout: state.config.gate?.timeout,
+          precommitAvailable: state.precommitAvailable,
         });
         if (outcome.skipped) {
           await state.log("debug", summarizeLint(outcome), { filePath, reason: outcome.reason });

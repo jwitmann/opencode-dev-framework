@@ -2,7 +2,12 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { installTemplates, listTemplateFiles, statusTemplates } from "../src/installer";
+import {
+  installTemplates,
+  listTemplateFiles,
+  statusTemplates,
+  writeDetectedConfig,
+} from "../src/installer";
 
 let dir: string;
 
@@ -17,7 +22,7 @@ afterEach(async () => {
 describe("listTemplateFiles", () => {
   it("returns the bundled template files", async () => {
     const files = await listTemplateFiles();
-    expect(files).toContain(".opencode-dev-framework.yml");
+    expect(files).not.toContain(".opencode-dev-framework.yml");
     expect(files).toContain(".opencode/commands/df-verify.md");
     expect(files).toContain(".opencode/commands/df-profile.md");
     expect(files).toContain(".opencode/agents/test-grounder.md");
@@ -31,7 +36,7 @@ describe("installTemplates", () => {
     expect(result.created.length).toBeGreaterThan(0);
     expect(result.skipped).toEqual([]);
     expect(result.overwritten).toEqual([]);
-    expect(result.created).toContain(".opencode-dev-framework.yml");
+    expect(result.created).not.toContain(".opencode-dev-framework.yml");
   });
 
   it("skips existing files when skipExisting is true", async () => {
@@ -44,23 +49,21 @@ describe("installTemplates", () => {
 
   it("overwrites existing files when overwriteExisting is true", async () => {
     await installTemplates(dir, { skipExisting: true });
-    // Modify one file
-    const path = join(dir, ".opencode-dev-framework.yml");
     const { writeFile } = await import("node:fs/promises");
-    await writeFile(path, "profile: strict\n", "utf8");
+    await writeFile(join(dir, ".opencode/commands/df-verify.md"), "custom", "utf8");
     const result = await installTemplates(dir, { overwriteExisting: true });
-    expect(result.overwritten).toContain(".opencode-dev-framework.yml");
+    expect(result.overwritten).toContain(".opencode/commands/df-verify.md");
   });
 
   it("applies an 'overwrite-all' prompt answer to subsequent files", async () => {
     await installTemplates(dir, { skipExisting: true });
     const { writeFile } = await import("node:fs/promises");
-    await writeFile(join(dir, ".opencode-dev-framework.yml"), "profile: strict\n", "utf8");
     await writeFile(
       join(dir, ".opencode/commands/df-verify.md"),
       "---\ndescription: custom\n---\ncustom body\n",
       "utf8",
     );
+    await writeFile(join(dir, ".opencode/commands/df-profile.md"), "custom", "utf8");
 
     let promptCalls = 0;
     const result = await installTemplates(dir, {
@@ -70,10 +73,48 @@ describe("installTemplates", () => {
       },
     });
 
-    // Prompted once; the second differing file used the sticky decision.
     expect(promptCalls).toBe(1);
-    expect(result.overwritten).toContain(".opencode-dev-framework.yml");
     expect(result.overwritten).toContain(".opencode/commands/df-verify.md");
+    expect(result.overwritten).toContain(".opencode/commands/df-profile.md");
+  });
+});
+
+describe("writeDetectedConfig", () => {
+  it("creates a config file for an empty project", async () => {
+    const result = await writeDetectedConfig(dir, { skipExisting: true });
+    expect(result.action).toBe("created");
+    const { readFile } = await import("node:fs/promises");
+    const content = await readFile(join(dir, ".opencode-dev-framework.yml"), "utf8");
+    expect(content).toContain("profile: standard");
+    expect(content).toContain("protect:");
+  });
+
+  it("detects Go tooling when go.mod is present", async () => {
+    const { writeFile } = await import("node:fs/promises");
+    await writeFile(join(dir, "go.mod"), "module example.com/foo\n", "utf8");
+    const result = await writeDetectedConfig(dir, { skipExisting: true });
+    expect(result.action).toBe("created");
+    const { readFile } = await import("node:fs/promises");
+    const content = await readFile(join(dir, ".opencode-dev-framework.yml"), "utf8");
+    expect(content).toContain("test: go test ./...");
+    expect(content).toContain("typecheck: go build ./...");
+    expect(content).toContain("lint: golangci-lint run {file}");
+  });
+
+  it("skips an existing config when skipExisting is true", async () => {
+    const { writeFile } = await import("node:fs/promises");
+    await writeFile(join(dir, ".opencode-dev-framework.yml"), "profile: strict\n", "utf8");
+    const result = await writeDetectedConfig(dir, { skipExisting: true });
+    expect(result.action).toBe("skipped");
+  });
+
+  it("overwrites an existing config when overwriteExisting is true", async () => {
+    const { writeFile, readFile } = await import("node:fs/promises");
+    await writeFile(join(dir, ".opencode-dev-framework.yml"), "profile: strict\n", "utf8");
+    const result = await writeDetectedConfig(dir, { overwriteExisting: true });
+    expect(result.action).toBe("overwritten");
+    const content = await readFile(join(dir, ".opencode-dev-framework.yml"), "utf8");
+    expect(content).toContain("profile: standard");
   });
 });
 
@@ -91,14 +132,5 @@ describe("statusTemplates", () => {
     expect(status.missing).toEqual([]);
     expect(status.present.length).toBeGreaterThan(0);
     expect(status.different).toEqual([]);
-  });
-
-  it("reports different files after modification", async () => {
-    await installTemplates(dir, { skipExisting: true });
-    const path = join(dir, ".opencode-dev-framework.yml");
-    const { writeFile } = await import("node:fs/promises");
-    await writeFile(path, "profile: strict\n", "utf8");
-    const status = await statusTemplates(dir);
-    expect(status.different).toContain(".opencode-dev-framework.yml");
   });
 });

@@ -77,6 +77,7 @@ const configSchema = z.object({
     ])
     .optional(),
   style_guide: z.string().optional(),
+  precommit: z.enum(["auto", "off"]).optional(),
 });
 
 /** Find the highest-precedence config file in a directory, if any. */
@@ -185,9 +186,6 @@ export function mapFlatConfig(flat: Record<string, unknown>): Config {
       case "test_changed":
         commands.test_changed = String(value);
         break;
-      case "precommit":
-        // Ignored in MVP.
-        break;
       case "format_on_edit":
         onEdit.format = toBoolean(value);
         break;
@@ -235,6 +233,9 @@ export function mapFlatConfig(flat: Record<string, unknown>): Config {
         break;
       case "style_guide":
         config.style_guide = String(value);
+        break;
+      case "precommit":
+        config.precommit = value === "auto" || value === true ? "auto" : "off";
         break;
       default:
         // Unknown flat keys are ignored for forward compatibility.
@@ -309,6 +310,7 @@ export function resolveConfig(raw: Config, configPath?: string): ResolvedConfig 
     exclude: raw.exclude ?? [],
     rules: Array.isArray(raw.rules) ? { mode: "replace", files: raw.rules } : raw.rules,
     style_guide: raw.style_guide,
+    precommit: raw.precommit ?? "off",
   };
 }
 

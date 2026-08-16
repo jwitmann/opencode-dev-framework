@@ -5,10 +5,12 @@ import type { CommandResult, RunCommand, RunCommandOptions } from "../src/host";
 import { buildHooks } from "../src/index";
 import {
   DEFAULT_LINT_TIMEOUT_SECONDS,
+  detectPreCommitAvailability,
   isLintFailure,
   lintFile,
   matchExclude,
   resolveLintCommand,
+  resolvePreCommitCommand,
   summarizeLint,
 } from "../src/lint";
 import type { LogFn, LogLevel } from "../src/logger";
@@ -182,6 +184,78 @@ describe("lintFile", () => {
     expect(outcome.result?.stderr).toBe("1 problem");
     expect(summarizeLint(outcome)).toContain("exit 2");
   });
+
+  it("uses pre-commit when configured and available", async () => {
+    const config = resolve({
+      profile: "standard",
+      commands: { lint: { ".go": "golangci-lint run {file}" } },
+      precommit: "auto",
+    });
+    const { calls, run } = stubRun();
+
+    const outcome = await lintFile(run, config, "main.go", {
+      cwd: "/project",
+      precommitAvailable: true,
+    });
+
+    expect(outcome.skipped).toBe(false);
+    expect(calls[0].command).toEqual(["pre-commit", "run", "--files", "main.go"]);
+  });
+
+  it("falls back to configured lint when pre-commit is not available", async () => {
+    const config = resolve({
+      profile: "standard",
+      commands: { lint: { ".go": "golangci-lint run {file}" } },
+      precommit: "auto",
+    });
+    const { calls, run } = stubRun();
+
+    const outcome = await lintFile(run, config, "main.go", {
+      cwd: "/project",
+      precommitAvailable: false,
+    });
+
+    expect(outcome.skipped).toBe(false);
+    expect(calls[0].command).toEqual(["golangci-lint", "run", "main.go"]);
+  });
+
+  it("ignores pre-commit when precommit is off", async () => {
+    const config = resolve({
+      profile: "standard",
+      commands: { lint: { ".go": "golangci-lint run {file}" } },
+      precommit: "off",
+    });
+    const { calls, run } = stubRun();
+
+    await lintFile(run, config, "main.go", { cwd: "/project", precommitAvailable: true });
+
+    expect(calls[0].command).toEqual(["golangci-lint", "run", "main.go"]);
+  });
+});
+
+describe("resolvePreCommitCommand", () => {
+  it("returns pre-commit run --files with the file path", () => {
+    expect(resolvePreCommitCommand("src/main.go")).toEqual([
+      "pre-commit",
+      "run",
+      "--files",
+      "src/main.go",
+    ]);
+  });
+});
+
+describe("detectPreCommitAvailability", () => {
+  it("returns true when pre-commit --version succeeds", async () => {
+    const { run } = stubRun({ stdout: "pre-commit 3.0.0" });
+    const available = await detectPreCommitAvailability(run, "/project");
+    expect(available).toBe(true);
+  });
+
+  it("returns false when pre-commit --version fails", async () => {
+    const { run } = stubRun({ exitCode: 127 });
+    const available = await detectPreCommitAvailability(run, "/project");
+    expect(available).toBe(false);
+  });
 });
 
 describe("file.edited hook wiring", () => {
@@ -213,6 +287,18 @@ describe("file.edited hook wiring", () => {
     } as unknown as EventInput);
 
     expect(calls).toHaveLength(0);
+  });
+
+  it("detects pre-commit availability on first file.edited when precommit is auto", async () => {
+    const config = resolve({ ...withLint, precommit: "auto" });
+    const { calls, run } = stubRun();
+    const hooks = buildHooks(stubCtx, config, stubLog().log, run);
+
+    await hooks.event?.(fileEditedEvent("/project/main.go"));
+
+    expect(calls).toHaveLength(2);
+    expect(calls[0].command).toEqual(["pre-commit", "--version"]);
+    expect(calls[1].command).toEqual(["pre-commit", "run", "--files", "/project/main.go"]);
   });
 
   it("does nothing when on_edit.lint is disabled", async () => {

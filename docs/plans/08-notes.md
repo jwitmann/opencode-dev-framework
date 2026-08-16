@@ -166,6 +166,26 @@ Keep both. The custom tool lets the agent call verification explicitly; the slas
   the project by `df init` or the `dev_framework_init` tool; they do not appear
   just because the plugin is loaded.
 
+## v0.1.12 release decisions
+
+- **`df init` auto-detects project commands.** `src/detect.ts` inspects root
+  files (`package.json`, `go.mod`, `pyproject.toml`, etc.) and writes a
+  `.opencode-dev-framework.yml` with matching test/typecheck/format/lint
+  commands instead of a static Go-oriented template.
+- **`df profile <profile>` CLI.** The CLI can now change the project profile
+  from the shell, using the same text-level YAML edit as the in-session
+  `dev_framework_set_profile` tool.
+- **Style-guide auto-discovery.** When `style_guide` is not configured, the
+  plugin looks for `STYLE.md`, `docs/STYLE.md`, `CONTRIBUTING.md`, and
+  `docs/CONTRIBUTING.md` (in that order) and appends the first found file under
+  a "Style Guide" heading.
+- **`precommit: auto` integration.** When enabled and the `pre-commit` binary
+  is available, per-file linting (`on_edit.lint` and `gate.lint_changed`) uses
+  `pre-commit run --files <file>` instead of the configured lint command. If
+  the binary is missing, the plugin falls back to the normal lint command.
+  `df init` sets `precommit: auto` automatically when a
+  `.pre-commit-config.yaml` file is present.
+
 ## v0.1.11 release decisions
 
 - **`constitution` config key removed.** The original `dev-framework` has no
@@ -176,7 +196,7 @@ Keep both. The custom tool lets the agent call verification explicitly; the slas
   2. Auto-discovers `.opencode/opencode-dev-framework/rules/*.md` in the project
      (replace bundled when no explicit config).
   3. Falls back to the bundled `rules/*.md`.
-  4. Appends `style_guide` content if configured.
+  4. Appends `style_guide` content if configured or auto-discovered.
 - **`style_guide` is now injected.** It matches the original `dev-framework`
   behavior: a project-specific style guide file is appended to the constitution.
 

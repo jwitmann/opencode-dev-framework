@@ -133,6 +133,33 @@ describe("loadConstitution", () => {
     expect(result.warning).toContain("missing.md");
     expect(result.constitution).toContain("Quality Bar");
   });
+
+  it("auto-discovers a style guide file when style_guide is not configured", async () => {
+    await writeFile(join(dir, "CONTRIBUTING.md"), "# Contributing\nBe kind.");
+    const result = await loadConstitution(resolve({ profile: "standard" }), dir);
+    expect(result.constitution).toContain("# Style Guide");
+    expect(result.constitution).toContain("Be kind.");
+  });
+
+  it("auto-discovers docs/STYLE.md before CONTRIBUTING.md", async () => {
+    await writeFile(join(dir, "CONTRIBUTING.md"), "# Contributing");
+    await mkdir(join(dir, "docs"), { recursive: true });
+    await writeFile(join(dir, "docs", "STYLE.md"), "# Docs Style");
+    const result = await loadConstitution(resolve({ profile: "standard" }), dir);
+    expect(result.constitution).toContain("Docs Style");
+    expect(result.constitution).not.toContain("Contributing");
+  });
+
+  it("uses explicit style_guide over auto-discovery", async () => {
+    await writeFile(join(dir, "CONTRIBUTING.md"), "# Contributing");
+    await writeFile(join(dir, "TEAM.md"), "# Team");
+    const result = await loadConstitution(
+      resolve({ profile: "standard", style_guide: "TEAM.md" }),
+      dir,
+    );
+    expect(result.constitution).toContain("# Team");
+    expect(result.constitution).not.toContain("Contributing");
+  });
 });
 
 describe("injectConstitution", () => {

@@ -11,12 +11,13 @@ reimplemented as an OpenCode-native plugin.
   discipline, focus rules) to the system prompt at session start. Ships with a
   bundled default split into numbered rule files. Override it by dropping files
   in `.opencode/opencode-dev-framework/rules/`, by setting explicit `rules`, or
-  by setting `style_guide` for project-specific conventions.
+  by letting the plugin auto-discover `STYLE.md` / `CONTRIBUTING.md`.
 - **Guardrails.** Blocks or warns on edits to protected paths (`.env` files,
   `node_modules`, vendored code, your own globs) and on dangerous shell
   commands (`git push`, `rm -rf`, `git reset --hard`, ...).
 - **Per-edit lint.** Runs your configured linter on each file the agent edits
-  and reports failures loudly.
+  and reports failures loudly. Optionally delegates per-file linting to
+  `pre-commit run --files` when `precommit: auto` is set.
 - **Completion gate.** When the session goes idle, runs typecheck, tests, and
   (optionally) lint on changed files. In OpenCode versions with the
   `experimental.session.stopping` hook, gate failures keep the session running
@@ -25,6 +26,9 @@ reimplemented as an OpenCode-native plugin.
 - **Custom tools.** `dev_framework_init` scaffolds project-level agents,
   skills, commands, and config; `dev_framework_set_profile` changes the profile
   in-session without restarting.
+- **CLI installer.** `df init` auto-detects your language and writes a config
+  with sensible commands; `df profile <name>` changes the profile from the
+  shell; `df status` / `df version` report template state and the version.
 - **Slash-command templates.** `/df-verify` and `/df-profile` are installed
   into `.opencode/commands/` by `df init` or the `dev_framework_init` tool.
   (OpenCode does not load slash commands from plugin packages automatically.)
@@ -63,8 +67,10 @@ df init
 
 `df init` is interactive by default: it asks before overwriting existing files.
 Use `--skip-existing` or `--overwrite-existing` for non-interactive runs.
-`df status` shows what is and isn't scaffolded; `df version` prints the plugin
-version.
+`df init` auto-detects your project's language and writes a matching
+`.opencode-dev-framework.yml` with sensible commands. `df status` shows what is
+and isn't scaffolded; `df profile off|advisory|standard|strict` changes the
+profile from the shell; `df version` prints the plugin version.
 
 ## Local development and testing
 
@@ -126,11 +132,15 @@ gate:
 on_edit:
   lint: true
 
+# Optional: delegate per-file linting to pre-commit when available
+# precommit: auto
+
 # Optional: explicit rule files (replace bundled; use mode: append to extend)
 # rules:
 #   - docs/team-rules.md
 
-# Optional: project style guide appended to the constitution
+# Optional: project style guide appended to the constitution.
+# Auto-discovers STYLE.md / CONTRIBUTING.md / docs/STYLE.md when not set.
 # style_guide: STYLE.md
 ```
 

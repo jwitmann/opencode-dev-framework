@@ -5,7 +5,13 @@
 import { readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { installTemplates, resolveTargetDir, statusTemplates } from "../dist/installer.js";
+import {
+  installTemplates,
+  resolveTargetDir,
+  setProfileInFile,
+  statusTemplates,
+  writeDetectedConfig,
+} from "../dist/installer.js";
 
 async function getVersion() {
   const packagePath = join(dirname(fileURLToPath(import.meta.url)), "..", "package.json");
@@ -18,6 +24,7 @@ function printHelp() {
 
 Usage:
   df init [dir]        Scaffold templates into a project (default: cwd)
+  df profile <name> [dir]  Set profile to off, advisory, standard, or strict
   df status [dir]      Show which template files are missing/present/different
   df version           Print the plugin version
   df help              Show this help
@@ -46,6 +53,22 @@ async function main() {
 
   if (command === "version" || command === "--version" || command === "-v") {
     console.log(await getVersion());
+    return;
+  }
+
+  if (command === "profile") {
+    const profile = positional[0];
+    const profileDir = resolveTargetDir(positional[1]);
+    const valid = ["off", "advisory", "standard", "strict"];
+    if (!profile || !valid.includes(profile)) {
+      console.error(`Invalid profile: ${profile ?? "(missing)"}`);
+      console.error(`Valid profiles: ${valid.join(", ")}`);
+      process.exitCode = 1;
+      return;
+    }
+    const configPath = join(profileDir, ".opencode-dev-framework.yml");
+    await setProfileInFile(configPath, profile);
+    console.log(`Profile set to "${profile}" in ${configPath}`);
     return;
   }
 
@@ -84,6 +107,11 @@ async function main() {
     skipExisting: flags.has("--skip-existing"),
   });
 
+  const configResult = await writeDetectedConfig(targetDir, {
+    overwriteExisting: flags.has("--overwrite-existing"),
+    skipExisting: flags.has("--skip-existing"),
+  });
+
   console.log(`Installed templates into ${targetDir}:`);
   for (const line of [
     ...formatList("Created", result.created),
@@ -92,6 +120,7 @@ async function main() {
   ]) {
     console.log(line);
   }
+  console.log(`\nConfig: ${configResult.action}`);
 }
 
 main().catch((error) => {

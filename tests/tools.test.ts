@@ -31,7 +31,7 @@ describe("dev_framework_init tool", () => {
     const result = await init?.execute({}, { directory: dir } as never);
     expect(typeof result).toBe("string");
     expect(result).toContain("Installed opencode-dev-framework templates");
-    expect(result).toContain("Created: 10 file(s)");
+    expect(result).toContain("Config: created");
   });
 });
 

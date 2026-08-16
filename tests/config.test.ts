@@ -180,9 +180,9 @@ describe("mapFlatConfig helpers", () => {
     expect(config.commands?.format).toEqual({ ".py": "ruff format {file}" });
   });
 
-  it("ignores unknown keys and precommit", () => {
-    const config = mapFlatConfig({ precommit: "x", whatever: 1 });
-    expect(config).toEqual({});
+  it("ignores unknown keys but maps precommit", () => {
+    const config = mapFlatConfig({ precommit: "auto", whatever: 1 });
+    expect(config).toEqual({ precommit: "auto" });
   });
 });
 

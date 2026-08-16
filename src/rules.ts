@@ -17,6 +17,14 @@ export const BUNDLED_CONSTITUTION_DIR = join(
 /** Namespaced directory inside the project for local rule overrides. */
 export const LOCAL_RULES_DIR = ".opencode/opencode-dev-framework/rules";
 
+/** Default style-guide filenames the plugin auto-discovers. */
+export const STYLE_GUIDE_CANDIDATES = [
+  "STYLE.md",
+  "docs/STYLE.md",
+  "CONTRIBUTING.md",
+  "docs/CONTRIBUTING.md",
+];
+
 export interface ConstitutionResult {
   /** Constitution text to inject, or null when nothing should be injected. */
   constitution: string | null;
@@ -80,6 +88,16 @@ async function readRulesFiles(
   return { content: parts.length === 0 ? null : parts.join("\n\n"), warnings };
 }
 
+async function discoverStyleGuide(directory: string): Promise<string | null> {
+  for (const candidate of STYLE_GUIDE_CANDIDATES) {
+    const content = await readRuleFile(resolve(directory, candidate));
+    if (content !== null) {
+      return content;
+    }
+  }
+  return null;
+}
+
 /**
  * Loads the constitution to inject for a session.
  *
@@ -95,6 +113,10 @@ async function readRulesFiles(
  * - If no local override exists, the bundled `rules/*.md` files are used.
  * - Missing rule files produce warnings but do not stop other files from
  *   loading.
+ * - `style_guide` config always wins. When it is not set, the plugin
+ *   auto-discovers `STYLE.md`, `CONTRIBUTING.md`, `docs/STYLE.md`, or
+ *   `docs/CONTRIBUTING.md` in the project root and appends it under a
+ *   "Style Guide" heading.
  */
 export async function loadConstitution(
   config: ResolvedConfig,
@@ -148,6 +170,11 @@ export async function loadConstitution(
       parts.push(`# Style Guide\n\n${style}`);
     } else {
       warnings.push(`Could not read style guide at ${stylePath}; skipping.`);
+    }
+  } else {
+    const discovered = await discoverStyleGuide(cwd);
+    if (discovered !== null) {
+      parts.push(`# Style Guide\n\n${discovered}`);
     }
   }
 

@@ -69,6 +69,8 @@ export interface Config {
   rules?: string[] | RulesConfig;
   /** Path to a project style guide (absolute or relative to project root). */
   style_guide?: string;
+  /** Use pre-commit for per-file linting when available (`auto`) or never (`off`). */
+  precommit?: "auto" | "off";
 }
 
 /**
@@ -88,4 +90,5 @@ export interface ResolvedConfig {
   exclude: string[];
   rules?: RulesConfig;
   style_guide?: string;
+  precommit: "auto" | "off";
 }

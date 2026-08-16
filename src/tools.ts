@@ -1,8 +1,7 @@
-import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tool } from "@opencode-ai/plugin";
 import { loadConfig, clearConfigCache } from "./config.js";
-import { installTemplates } from "./installer.js";
+import { installTemplates, setProfileInFile, writeDetectedConfig } from "./installer.js";
 import { getHookState, updateHookState } from "./registry.js";
 import { loadConstitution } from "./rules.js";
 import type { Profile } from "./types.js";
@@ -11,27 +10,6 @@ const PROFILES: Profile[] = ["off", "advisory", "standard", "strict"];
 
 function isProfile(value: string): value is Profile {
   return PROFILES.includes(value as Profile);
-}
-
-/**
- * Set the top-level `profile:` key in the config file. Edits the raw text
- * instead of re-serializing the YAML so user comments and formatting survive.
- */
-async function setProfileInFile(configPath: string, profile: Profile): Promise<void> {
-  let content = "";
-  try {
-    content = await readFile(configPath, "utf8");
-  } catch {
-    // File does not exist yet; it will be created below.
-  }
-
-  const line = `profile: ${profile}`;
-  if (/^profile\s*:/m.test(content)) {
-    content = content.replace(/^profile\s*:.*$/m, line);
-  } else {
-    content = content.trim() === "" ? `${line}\n` : `${content.trimEnd()}\n${line}\n`;
-  }
-  await writeFile(configPath, content, "utf8");
 }
 
 export function buildTools(_ctx: {
@@ -57,12 +35,17 @@ export function buildTools(_ctx: {
           overwriteExisting: args.overwrite ?? false,
           skipExisting: !(args.overwrite ?? false),
         });
+        const configResult = await writeDetectedConfig(targetDir, {
+          overwriteExisting: args.overwrite ?? false,
+          skipExisting: !(args.overwrite ?? false),
+        });
 
         const lines = [
           `Installed opencode-dev-framework templates into ${targetDir}.`,
           `Created: ${result.created.length} file(s)`,
           `Overwritten: ${result.overwritten.length} file(s)`,
           `Skipped: ${result.skipped.length} file(s)`,
+          `Config: ${configResult.action}`,
         ];
         if (result.created.length > 0) {
           lines.push("", "Created files:", ...result.created.map((file) => `- ${file}`));
