@@ -51,14 +51,13 @@ reimplemented as an OpenCode-native plugin.
 npm install opencode-dev-framework
 ```
 
-Then add both the server plugin and the TUI plugin to your project's `opencode.json`:
+Then add the plugin to your project's `opencode.json`. OpenCode automatically
+loads the bundled `./tui` companion (the slash-command modals), so a single
+entry is enough:
 
 ```json
 {
-  "plugin": [
-    "opencode-dev-framework",
-    "opencode-dev-framework/tui"
-  ]
+  "plugin": ["opencode-dev-framework"]
 }
 ```
 
@@ -81,14 +80,12 @@ profile from the shell; `df version` prints the plugin version.
 ## Local development and testing
 
 To test the plugin from source without publishing to npm, point OpenCode at the
-local repository path in your project's `opencode.json`:
+local repository path in your project's `opencode.json`. The `./tui` companion
+is loaded automatically:
 
 ```json
 {
-  "plugin": [
-    "/home/jerome/opencode-dev-framework",
-    "/home/jerome/opencode-dev-framework/tui"
-  ]
+  "plugin": ["/home/jerome/opencode-dev-framework"]
 }
 ```
 
@@ -163,9 +160,9 @@ complete example.
 ## Slash commands
 
 The plugin registers slash commands directly (no template files required). The
-status and help commands are handled by a separate TUI plugin module
-(`opencode-dev-framework/tui`) so they open instantly in a modal dialog and are
-never fed back to the LLM:
+status and help commands are handled by a separate TUI plugin module that
+OpenCode loads automatically alongside the main plugin, so they open instantly in
+a modal dialog and are never fed back to the LLM:
 
 - `/df-status` — shows the current profile, guardrails, completion gate, and
   configured commands in a modal dialog.
@@ -176,18 +173,6 @@ Server-side slash commands (no TUI module required):
 - `/df-verify` — runs the configured verification suite manually.
 - `/df-profile <profile>` — changes the active profile and applies it
   immediately.
-
-To use `/df-status` and `/df-help`, make sure both plugin exports are listed in
-`opencode.json`:
-
-```json
-{
-  "plugin": [
-    "opencode-dev-framework",
-    "opencode-dev-framework/tui"
-  ]
-}
-```
 
 You can still run `df init` to install the bundled agents, skills, and default
 config; the commands themselves are provided by the plugin.
