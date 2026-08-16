@@ -32,8 +32,9 @@ Use this as the source of truth during implementation. Check items off as they a
   - Disable rules that conflict with Prettier/Biome if needed.
 - [x] 1.8 Create directory structure
   - `src/`
-  - `commands/`
+  - `bin/`
   - `rules/`
+  - `templates/`
   - `tests/`
   - `examples/go-service/`
 - [x] 1.9 Add GitHub Actions workflow `.github/workflows/ci.yml`
@@ -125,8 +126,8 @@ Use this as the source of truth during implementation. Check items off as they a
   - Call gate.
   - On failure, emit loud structured log.
 - [x] 5.4 Add `/df-verify` command
-  - Create `commands/df-verify.md`.
-  - Optionally expose a custom tool `devFramework_verify`. (skipped — optional; see 08-notes.md)
+  - Original plan: create `commands/df-verify.md`. Later superseded by
+    plugin-registered slash commands (Phase 17).
 - [x] 5.5 Unit tests for gate
   - passes when all green
   - reports failure when test fails
@@ -198,8 +199,8 @@ Use this as the source of truth during implementation. Check items off as they a
 - [x] 10.1 Verify CI passes on every checklist item.
   - `.github/workflows/ci.yml` (Node 22) runs format, lint, lint:md,
     typecheck, test, and build; all pass locally. `npm pack --dry-run`
-    confirms the published tarball contains `dist/`, `commands/`, `rules/`,
-    `README.md`, and `LICENSE`.
+    confirms the published tarball contains `dist/`, `bin/`, `rules/`,
+    `templates/`, `README.md`, and `LICENSE`.
 - [x] 10.2 Add npm publish workflow secrets instructions to docs.
   - Covered by `docs/plans/07-publishing.md` (npm token + `NPM_TOKEN`
     GitHub secret).
@@ -295,7 +296,26 @@ Use this as the source of truth during implementation. Check items off as they a
 - [x] 17.4 Remove `templates/.opencode/commands/*.md` command templates.
 - [x] 17.5 Update README, AGENTS.md, architecture, hook mapping, installer tests.
 - [x] 17.6 Add tests for `config` and `command.execute.before` hooks.
-- [ ] 17.7 Bump version to `0.1.15` and tag.
+- [x] 17.7 Bump version to `0.1.15` and tag.
+
+## Phase 18 — Dead-code cleanup and hardening (v0.1.16)
+
+- [x] 18.1 Fix `bin/df profile` `positional` reference-order bug.
+- [x] 18.2 Remove dead `src/config-to-opencode.ts` generator code; move shared
+  command parsing helpers to `src/command-utils.ts`.
+- [x] 18.3 Consolidate `DEFAULT_PROTECT` constant (config.ts source of truth).
+- [x] 18.4 Scrub stale `commands/` directory references from docs, README,
+  checklists, and architecture snippets.
+- [x] 18.5 Fix silent guardrail/gate no-ops: add `baseDirectory` fallback and
+  `getStateForSession`; fail closed when hook state is missing.
+- [x] 18.6 Harden `injectConstitution` to append to the last system entry and
+  keep the prompt compact.
+- [x] 18.7 Capture host permissions in the `config` hook and respect host-level
+  denies in guardrail checks.
+- [x] 18.8 Add `/df-help` slash command and unknown `/df-*` command response.
+- [x] 18.9 Validate config on load; show TUI toast on parse error; add optional
+  `OPENCODE_DEV_FRAMEWORK_LOG_FILE` debug logging.
+- [ ] 18.10 Run full validation suite, bump to `v0.1.16`, commit, tag.
 
 ## Notes for the implementer
 

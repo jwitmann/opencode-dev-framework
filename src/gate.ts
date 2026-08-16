@@ -10,7 +10,7 @@
  */
 
 import { isAbsolute, relative } from "node:path";
-import { splitCommand } from "./config-to-opencode.js";
+import { splitCommand } from "./command-utils.js";
 import type { CommandResult, RunCommand } from "./host.js";
 import { lintFile } from "./lint.js";
 import type { ResolvedConfig } from "./types.js";

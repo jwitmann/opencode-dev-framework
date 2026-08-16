@@ -41,6 +41,15 @@ describe("config hook", () => {
     expect(config.command?.["df-profile"]).toBeDefined();
     expect(config.command?.["df-verify"]).toBeDefined();
   });
+
+  it("captures host permissions into hook state", async () => {
+    const hooks = buildHooks(makeCtx(dir), makeConfig(), noopLog);
+    const config = { permission: [{ permission: "edit", pattern: "**/*.md", action: "deny" }] };
+    await hooks.config?.(config as never);
+    expect(getHookState(dir)?.hostPermissions).toEqual([
+      { permission: "edit", pattern: "**/*.md", action: "deny" },
+    ]);
+  });
 });
 
 describe("command.execute.before hook", () => {
@@ -89,5 +98,28 @@ describe("command.execute.before hook", () => {
     );
     expect(output.parts).toHaveLength(1);
     expect(output.parts[0].text).toContain("completion gate");
+  });
+
+  it("df-help returns the command list", async () => {
+    const hooks = buildHooks(makeCtx(dir), makeConfig(), noopLog);
+    const output = makePartsOutput();
+    await hooks["command.execute.before"]?.(
+      { command: "df-help", sessionID: "s1", arguments: "" },
+      output as never,
+    );
+    expect(output.parts[0].text).toContain("/df-status");
+    expect(output.parts[0].text).toContain("/df-profile");
+    expect(output.parts[0].text).toContain("/df-verify");
+  });
+
+  it("unknown df-* command returns a helpful message", async () => {
+    const hooks = buildHooks(makeCtx(dir), makeConfig(), noopLog);
+    const output = makePartsOutput();
+    await hooks["command.execute.before"]?.(
+      { command: "df-foobar", sessionID: "s1", arguments: "" },
+      output as never,
+    );
+    expect(output.parts[0].text).toContain("Unknown command");
+    expect(output.parts[0].text).toContain("/df-help");
   });
 });

@@ -23,7 +23,6 @@ describe("listTemplateFiles", () => {
   it("returns the bundled template files", async () => {
     const files = await listTemplateFiles();
     expect(files).not.toContain(".opencode-dev-framework.yml");
-    expect(files).not.toContain(".opencode/commands/df-verify.md");
     expect(files).toContain(".opencode/agents/test-grounder.md");
     expect(files).toContain(".opencode/agents/style-enforcer.md");
     expect(files).toContain(".opencode/skills/peer-review/SKILL.md");

@@ -28,8 +28,8 @@ Controls enforcement intensity:
 |---|---|---|---|
 | `off` | — | — | — |
 | `advisory` | lint feedback | runs & reports, **never blocks** | warns |
-| `standard` | lint feedback | **reports** failing type-check/tests | **denies** protected edits |
-| `strict` | lint feedback | also reports lint failures on changed files | **denies** protected edits |
+| `standard` | lint feedback | **blocks up to `max_blocks`** when checks fail | **denies** protected edits |
+| `strict` | lint feedback | also lints changed files; **blocks up to `max_blocks`** | **denies** protected edits |
 
 ### `commands`
 
@@ -223,7 +223,7 @@ commands:
 protect:
   - .env*
   - go.sum
-  - bin/
+  - bin/**
 
 on_edit:
   format: true

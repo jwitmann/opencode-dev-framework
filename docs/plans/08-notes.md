@@ -110,9 +110,8 @@ Keep both. The custom tool lets the agent call verification explicitly; the slas
   `.md` files in sorted order. The `constitution` config key still overrides
   the bundled set; `rules` appends extra files.
 - **Project templates.** `templates/` contains the default config,
-  `.opencode/commands/df-verify.md`, `.opencode/commands/df-profile.md`, three
-  specialist agents, and three skills. These are copied into a project by the
-  CLI or the `dev_framework_init` tool.
+  specialist agents, skills, and a local rules directory scaffold. These are
+  copied into a project by the CLI or the `dev_framework_init` tool.
 - **`bin/df` CLI.** `df init [dir]` scaffolds templates; interactive by
   default with `[o]verwrite / [s]kip / [a]ll / [n]one` prompts. Flags
   `--skip-existing` and `--overwrite-existing` make it non-interactive. `df
@@ -130,6 +129,33 @@ Keep both. The custom tool lets the agent call verification explicitly; the slas
 - **Session-to-directory mapping.** `experimental.chat.system.transform`
   records `sessionID → directory` so the `session.stopping` hook (which only
   receives a session ID) can look up the right hook state.
+
+## v0.1.16 release decisions
+
+- **Dead code removed.** `src/config-to-opencode.ts` and its tests were deleted;
+  the generator helpers were unused in production. Shared command parsing moved
+  to `src/command-utils.ts`. Stale `commands/` directory references were removed
+  from docs, README, and architecture snippets.
+- **`bin/df profile` positional parsing fixed.** The `positional` array was used
+  before it was constructed; parsing now happens before any command branch reads it.
+- **Guardrails no longer silently no-op when session state is missing.**
+  `getStateForSession` falls back to the project `baseDirectory` set at plugin
+  init. If state is still missing, `tool.execute.before` fails closed (denies),
+  and `command.execute.before` returns a visible error text part.
+- **`injectConstitution` appends to the last system entry** instead of adding a
+  new array element, keeping the system prompt compact.
+- **Host permissions are respected.** The `config` hook captures
+  `opencodeConfig.permission` and stores it in hook state. Guardrails skip their
+  own block when the host permission model already denies the same tool/target,
+  avoiding redundant/conflicting blocks.
+- **`/df-help` and unknown `/df-*` handling added.** `/df-help` lists the three
+  supported commands; unrecognized `/df-*` commands return a hint.
+- **Config load errors are surfaced.** If `.opencode-dev-framework.yml` is
+  invalid, the plugin logs an error, shows a TUI toast when available, and
+  disables itself for that project.
+- **Optional file logging.** Setting `OPENCODE_DEV_FRAMEWORK_LOG_FILE` appends a
+  JSON line for every log call, which helps debug production runs where
+  `client.app.log` may not be visible.
 
 ## Phase 10 release decisions
 
@@ -159,12 +185,10 @@ Keep both. The custom tool lets the agent call verification explicitly; the slas
   Beware `.opencode/opencode.json` (created by `opencode plugin`) and
   `~/.cache/opencode/packages/opencode-dev-framework*/`, both of which can
   shadow the local source with a stale published build.
-- **Plugin markdown commands are not auto-loaded.** OpenCode only reads custom
-  slash commands from `.opencode/commands/` (project) or
-  `~/.config/opencode/commands/` (global). The command templates
-  (`templates/.opencode/commands/df-verify.md`, `df-profile.md`) are copied into
-  the project by `df init` or the `dev_framework_init` tool; they do not appear
-  just because the plugin is loaded.
+- **Slash commands are registered by the plugin, not markdown templates.** As of
+  v0.1.15, `/df-verify`, `/df-profile`, and `/df-status` are registered via the
+  `config` hook and handled in `command.execute.before`. Project-level
+  `.opencode/commands/` templates are no longer used or copied.
 
 ## v0.1.12 release decisions
 
@@ -250,8 +274,9 @@ Keep both. The custom tool lets the agent call verification explicitly; the slas
 - **No automatic OpenCode config mutation.** The plugin enforces guardrails in
   `tool.execute.before` and lints in `file.edited`. It does **not** inject
   `permission` or `formatter` fragments into OpenCode's effective config at
-  runtime, and docs no longer claim it does. `src/config-to-opencode.ts` is
-  kept as a helper for users who want to generate fragments manually.
+  runtime, and docs no longer claim it does. The generator helpers that produced
+  those fragments were removed in v0.1.16; command parsing helpers moved to
+  `src/command-utils.ts`.
 
 ## References
 

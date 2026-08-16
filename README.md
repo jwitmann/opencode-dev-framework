@@ -24,7 +24,7 @@ reimplemented as an OpenCode-native plugin.
   (up to `gate.max_blocks` times) so the agent must fix the failures. In older
   versions the gate reports loudly via `session.idle`.
 - **Custom tools.** `dev_framework_init` scaffolds project-level agents,
-  skills, commands, and config; `dev_framework_set_profile` changes the profile
+  skills, local rules directory, and config; `dev_framework_set_profile` changes the profile
   in-session without restarting; `dev_framework_status` reports the current
   profile, guardrails, gate, and tracked changed files.
 - **CLI installer.** `df init` auto-detects your language and writes a config
@@ -191,6 +191,12 @@ npm run lint:md
 npm run typecheck
 npm run test
 npm run build
+```
+
+For persistent debug traces, set `OPENCODE_DEV_FRAMEWORK_LOG_FILE`:
+
+```bash
+OPENCODE_DEV_FRAMEWORK_LOG_FILE=/tmp/odf.log opencode run
 ```
 
 See `AGENTS.md` and `docs/plans/` for the architecture and implementation

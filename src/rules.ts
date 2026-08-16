@@ -197,8 +197,9 @@ export async function loadConstitution(
 }
 
 /**
- * Appends the constitution to a system-prompt array, unless it is already
- * present (exact entry match or contained in an existing entry).
+ * Appends the constitution to the last system-prompt entry, unless it is already
+ * present. This keeps the system prompt compact instead of adding a separate
+ * array element each time the transform runs.
  */
 export function injectConstitution(system: string[], constitution: string | null): string[] {
   if (constitution === null) {
@@ -207,5 +208,10 @@ export function injectConstitution(system: string[], constitution: string | null
   if (system.some((entry) => entry.includes(constitution))) {
     return system;
   }
-  return [...system, constitution];
+  if (system.length === 0) {
+    return [constitution];
+  }
+  const next = [...system];
+  next[next.length - 1] = `${next[next.length - 1]}\n\n${constitution}`;
+  return next;
 }

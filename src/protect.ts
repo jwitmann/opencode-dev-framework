@@ -6,6 +6,7 @@
 
 import { basename, isAbsolute, relative } from "node:path";
 import picomatch from "picomatch";
+import type { HostPermission } from "./registry.js";
 import type { ResolvedConfig } from "./types.js";
 
 export type GuardDecision = "allow" | "warn" | "deny";
@@ -109,6 +110,52 @@ export function matchDangerousCommand(command: string): DangerousCommand | undef
   return DANGEROUS_COMMANDS.find(({ pattern }) => pattern.test(command));
 }
 
+function permissionMatchesTool(permission: string, tool: string): boolean {
+  if (permission === "*" || permission === tool) {
+    return true;
+  }
+  if (permission === "edit" && FILE_TOOLS.has(tool)) {
+    return true;
+  }
+  if (permission === "bash" && SHELL_TOOLS.has(tool)) {
+    return true;
+  }
+  return false;
+}
+
+/** Check whether the host OpenCode config already denies this tool/target. */
+function hostDenies(
+  tool: string,
+  target: string,
+  directory: string | undefined,
+  hostPermissions: HostPermission[] | undefined,
+): boolean {
+  if (!hostPermissions || hostPermissions.length === 0) {
+    return false;
+  }
+  for (const perm of hostPermissions) {
+    if (perm.action !== "deny") {
+      continue;
+    }
+    if (perm.permission && !permissionMatchesTool(perm.permission, tool)) {
+      continue;
+    }
+    if (perm.pattern) {
+      const matcher = picomatch(perm.pattern, { dot: true });
+      let candidate = target;
+      if (directory !== undefined && isAbsolute(target)) {
+        candidate = relative(directory, target);
+      }
+      candidate = candidate.replace(/^\.\//, "");
+      if (!matcher(candidate) && !matcher(basename(candidate))) {
+        continue;
+      }
+    }
+    return true;
+  }
+  return false;
+}
+
 function enforce(config: ResolvedConfig, reason: string, matchedPattern: string): GuardResult {
   if (config.protect_mode === "deny") {
     return { decision: "deny", reason, matchedPattern };
@@ -128,6 +175,7 @@ export function checkToolCall(
   tool: string,
   args: unknown,
   directory?: string,
+  hostPermissions?: HostPermission[],
 ): GuardResult {
   if (config.profile === "off" || config.protect_off) {
     return { decision: "allow" };
@@ -136,6 +184,11 @@ export function checkToolCall(
   if (FILE_TOOLS.has(tool)) {
     const filePath = extractFilePath(args);
     if (filePath === undefined) {
+      return { decision: "allow" };
+    }
+    // If the host permission model already denies this path, do not duplicate
+    // the block here.
+    if (hostDenies(tool, filePath, directory, hostPermissions)) {
       return { decision: "allow" };
     }
     const pattern = matchProtectedPath(config, filePath, directory);
@@ -152,6 +205,9 @@ export function checkToolCall(
   if (SHELL_TOOLS.has(tool)) {
     const command = extractCommand(args);
     if (command === undefined) {
+      return { decision: "allow" };
+    }
+    if (hostDenies(tool, command, directory, hostPermissions)) {
       return { decision: "allow" };
     }
     const dangerous = matchDangerousCommand(command);

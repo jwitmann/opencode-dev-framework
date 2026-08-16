@@ -6,7 +6,7 @@ Use this file to get back up to speed in a new session.
 
 - **Name:** `opencode-dev-framework`
 - **Local path:** `~/opencode-dev-framework`
-- **GitHub repo:** `github.com/<user>/opencode-dev-framework` (push the local repo when ready)
+- **GitHub repo:** `github.com/jwitmann/opencode-dev-framework` (push the local repo when ready)
 - **npm package:** `opencode-dev-framework`
 - **License:** MIT
 - **Inspiration:** `anticomputer/dev-framework` (GitHub Copilot CLI plugin). This is an independent, OpenCode-native implementation.

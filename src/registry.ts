@@ -3,6 +3,12 @@ import type { RunCommand } from "./host.js";
 import type { LogFn } from "./logger.js";
 import type { ResolvedConfig } from "./types.js";
 
+export interface HostPermission {
+  permission?: string;
+  pattern?: string;
+  action?: "allow" | "deny" | "ask";
+}
+
 export interface HookState {
   /** Project directory this state belongs to. Stored here (rather than
    * closure-captured by hooks) so every hook invocation is self-contained. */
@@ -16,15 +22,30 @@ export interface HookState {
   blockCounts: Map<string, number>;
   /** Cached result of checking whether `pre-commit` is available. */
   precommitAvailable?: boolean;
+  /** Snapshot of host permissions from OpenCode's effective config. */
+  hostPermissions?: HostPermission[];
 }
 
 /**
  * Per-directory hook state registry. OpenCode's effect runtime can strip
  * closure variables when invoking hooks asynchronously, so we store the state
- * in module-level maps and look it up at call time.
+ * in module-level maps and look up values at call time.
+ *
+ * `baseDirectory` is the project root set at plugin initialization. Hooks that
+ * receive only a session ID can fall back to this directory when the session
+ * has not been mapped yet.
  */
 const hookRegistry = new Map<string, HookState>();
 let activeDirectory: string | null = null;
+let baseDirectory: string | null = null;
+
+export function setBaseDirectory(directory: string): void {
+  baseDirectory = directory;
+}
+
+export function getBaseDirectory(): string | null {
+  return baseDirectory;
+}
 
 export function setHookState(directory: string, state: HookState): void {
   hookRegistry.set(directory, state);
@@ -32,11 +53,21 @@ export function setHookState(directory: string, state: HookState): void {
 }
 
 export function getHookState(directoryHint?: string): HookState | null {
-  const directory = directoryHint ?? activeDirectory;
+  const directory = directoryHint ?? activeDirectory ?? baseDirectory;
   if (!directory) {
     return null;
   }
   return hookRegistry.get(directory) ?? null;
+}
+
+export function getStateForSession(sessionID: string | undefined): HookState | null {
+  if (sessionID) {
+    const mapped = getDirectoryForSession(sessionID);
+    if (mapped) {
+      return getHookState(mapped);
+    }
+  }
+  return getHookState(baseDirectory ?? undefined);
 }
 
 export function updateHookState(directory: string, updates: Partial<HookState>): HookState | null {

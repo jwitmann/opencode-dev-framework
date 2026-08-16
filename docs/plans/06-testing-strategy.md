@@ -17,17 +17,20 @@ Recommendation: `vitest` because it has excellent TypeScript support and runs in
 
 ```text
 tests/
+├── command-utils.test.ts
+├── commands.test.ts
 ├── config.test.ts
-├── config-to-opencode.test.ts
 ├── detect.test.ts
-├── installer.test.ts
-├── protect.test.ts
-├── lint.test.ts
 ├── gate.test.ts
+├── installer.test.ts
+├── lint.test.ts
+├── logger.test.ts
+├── protect.test.ts
 ├── rules.test.ts
+├── smoke.test.ts
+├── stopping.test.ts
 ├── tools.test.ts
-├── host.test.ts
-└── smoke.test.ts
+└── (host.test.ts if host.ts grows beyond trivial spawn wrapper)
 ```
 
 ## Stub host

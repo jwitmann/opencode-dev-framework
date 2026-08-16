@@ -6,7 +6,7 @@
 
 import { basename, extname, isAbsolute, relative } from "node:path";
 import picomatch from "picomatch";
-import { normalizeCommandMap, splitCommand } from "./config-to-opencode.js";
+import { normalizeCommandMap, splitCommand } from "./command-utils.js";
 import type { CommandResult, RunCommand } from "./host.js";
 import type { ResolvedConfig } from "./types.js";
 

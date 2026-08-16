@@ -177,7 +177,7 @@ Release steps:
 - [ ] `package.json` name is `opencode-dev-framework`.
 - [ ] `package.json` version is updated.
 - [ ] `package.json` `repository.url` exactly matches the GitHub repo.
-- [ ] `files` array includes `dist`, `bin`, `commands`, `rules`, `templates`.
+- [ ] `files` array includes `dist`, `bin`, `rules`, `templates`.
 - [ ] `main` points to `dist/index.js`.
 - [ ] `types` points to `dist/index.d.ts`.
 - [ ] `LICENSE` exists.

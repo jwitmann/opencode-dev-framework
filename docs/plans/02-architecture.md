@@ -52,17 +52,18 @@ The package may export a single default plugin or multiple named plugins. Use on
 
 | Module | Responsibility |
 |---|---|
+| `src/command-utils.ts` | Shared command parsing helpers (tokenize commands, normalize per-extension command maps). |
 | `src/config.ts` | Load and merge `.opencode-dev-framework.yml` and `.dev-framework.yml`, resolve profile defaults, validate with Zod. |
-| `src/config-to-opencode.ts` | Helper that translates framework config into OpenCode-native-style `permission` / `formatter` fragments. The plugin does **not** inject these automatically (it enforces guardrails in `tool.execute.before` and does not rewrite `opencode.json`); the fragments are available for users who want to copy them manually. |
 | `src/detect.ts` | Detect the project's language and tooling from root files for `df init`. |
 | `src/protect.ts` | Implement `tool.execute.before` guardrails for protected paths and dangerous commands. |
 | `src/lint.ts` | Implement per-edit checks on `file.edited`, with optional `pre-commit` fallback. |
 | `src/gate.ts` | Implement the completion gate and changed-file tracking. |
 | `src/rules.ts` | Load and inject constitution / project rules via `experimental.chat.system.transform`. |
 | `src/tools.ts` | Custom tools (`dev_framework_init`, `dev_framework_set_profile`, `dev_framework_status`). |
-| `src/registry.ts` | Module-level hook state registry (avoids closure-capture issues in OpenCode's Effect runtime). |
+| `src/registry.ts` | Module-level hook state registry (avoids closure-capture issues in OpenCode's Effect runtime). Captures base directory and host permission snapshots. |
+| `src/format-status.ts` | Shared status renderer for `dev_framework_status` tool and `/df-status` slash command. |
 | `src/installer.ts` | Template copy and detected-config generation used by `bin/df` and the `dev_framework_init` tool. |
-| `src/logger.ts` | Structured logging wrapper around `client.app.log()`. |
+| `src/logger.ts` | Structured logging wrapper around `client.app.log()` with optional file fallback. |
 | `src/types.ts` | Shared TypeScript types and interfaces. |
 
 ## Host abstraction
@@ -101,15 +102,19 @@ opencode session starts
 
 ## Tool guardrails
 
-Use native `permission` config as the primary defense and the plugin hook for clearer messaging:
+The plugin applies guardrails directly in `tool.execute.before`:
 
-1. `config-to-opencode.ts` emits suggested `permission.edit` rules from `protect`
-   globs. Users can copy these into their `opencode.json` if desired.
-2. `tool.execute.before` acts as a belt-and-suspenders check and throws a clearer
-   error message when the plugin denies a call.
+1. `protect.ts` matches file-edit and shell tools against the configured `protect`
+   globs and the dangerous-command list.
+2. The `config` hook captures the host's permission snapshot from OpenCode's
+   effective config and stores it in hook state. When the host already denies a
+   tool/target, the plugin skips its own block to avoid redundant or conflicting
+   denials.
+3. The hook throws a clear `[opencode-dev-framework] ...` error when the plugin
+   denies a call.
 
 The plugin does not modify `opencode.json` on disk and does not contribute
-permissions at runtime. It applies guardrails directly in the hook.
+permissions at runtime.
 
 ## Completion gate
 
@@ -138,6 +143,7 @@ in-memory state, so no LLM prompt interpretation is required.
 - `/df-profile` — switch the active profile.
 - `/df-status` — show the current profile, guardrails, gate, and tracked changed
   files.
+- `/df-help` — list the available slash commands.
 
 The project template directory no longer contains command files; only agents,
 skills, and the local rules directory are copied by `df init`.
@@ -152,7 +158,7 @@ skills, and the local rules directory are copied by `df init`.
 {
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
-  "files": ["dist", "bin", "commands", "rules", "templates"]
+  "files": ["dist", "bin", "rules", "templates"]
 }
 ```
 

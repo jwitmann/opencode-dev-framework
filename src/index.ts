@@ -27,11 +27,13 @@ import { createLogger, type LogFn } from "./logger.js";
 import { checkToolCall } from "./protect.js";
 import {
   clearSessionDirectory,
-  getDirectoryForSession,
   getHookState,
+  getStateForSession,
+  setBaseDirectory,
   setHookState,
   setSessionDirectory,
   updateHookState,
+  type HostPermission,
 } from "./registry.js";
 import { injectConstitution, loadConstitution } from "./rules.js";
 import { setProfileInFile } from "./installer.js";
@@ -82,8 +84,15 @@ export function buildHooks(
 
     config: async (opencodeConfig) => {
       const typedConfig = opencodeConfig as {
+        permission?: HostPermission[];
         command?: Record<string, { template?: string; description?: string }>;
       };
+
+      const state = getHookState(ctx.directory);
+      if (state) {
+        state.hostPermissions = typedConfig.permission ?? [];
+      }
+
       if (!typedConfig.command) {
         typedConfig.command = {};
       }
@@ -102,16 +111,32 @@ export function buildHooks(
     },
 
     "command.execute.before": async (input, output) => {
-      const directory = getDirectoryForSession(input.sessionID) ?? ctx.directory;
-      const state = getHookState(directory);
+      const state = getStateForSession(input.sessionID);
       if (!state) {
+        output.parts.length = 0;
+        output.parts.push({
+          type: "text",
+          text: "[opencode-dev-framework] plugin state is not available for this session.",
+        } as never);
         return;
       }
 
+      const directory = state.directory;
       const pushText = (text: string) => {
         output.parts.length = 0;
         output.parts.push({ type: "text", text } as never);
       };
+
+      if (input.command === "df-help" || input.command === "df") {
+        pushText(`df — opencode-dev-framework commands
+
+/df-status    Show the current dev-framework state
+/df-profile   Change the profile to off, advisory, standard, or strict
+/df-verify    Run the completion gate manually
+/df-help      Show this message`);
+        await state.log("info", "df-help command executed", { directory });
+        return;
+      }
 
       if (input.command === "df-status") {
         pushText(renderStatus(state.config, state));
@@ -154,10 +179,16 @@ export function buildHooks(
         });
         return;
       }
+
+      // Unknown /df-* command — give a helpful response.
+      if (input.command.startsWith("df-")) {
+        pushText(`Unknown command /${input.command}. Try /df-help.`);
+        await state.log("warn", "unknown df command", { directory, command: input.command });
+      }
     },
 
     "experimental.chat.system.transform": async (input, output) => {
-      const state = getHookState();
+      const state = getStateForSession(input.sessionID);
       if (!state) {
         return;
       }
@@ -172,11 +203,19 @@ export function buildHooks(
     },
 
     "tool.execute.before": async (input, output) => {
-      const state = getHookState(getDirectoryForSession(input.sessionID) ?? undefined);
+      const state = getStateForSession(input.sessionID);
       if (!state) {
-        return;
+        throw new Error(
+          "[opencode-dev-framework] plugin state is not available; guardrail cannot evaluate this tool call",
+        );
       }
-      const result = checkToolCall(state.config, input.tool, output.args, state.directory);
+      const result = checkToolCall(
+        state.config,
+        input.tool,
+        output.args,
+        state.directory,
+        state.hostPermissions,
+      );
       if (result.decision === "allow") {
         return;
       }
@@ -195,7 +234,7 @@ export function buildHooks(
     },
 
     "experimental.session.stopping": async (input, output) => {
-      const state = getHookState(getDirectoryForSession(input.sessionID) ?? undefined);
+      const state = getStateForSession(input.sessionID);
       if (!state?.config.gate || state.config.profile === "off") {
         return;
       }
@@ -243,13 +282,11 @@ export function buildHooks(
         clearSessionDirectory(event.properties.info.id);
         return;
       }
-      const state = getHookState(
+      const sessionID =
         event.type === "session.idle"
-          ? (getDirectoryForSession(
-              (event as unknown as { properties: { sessionID: string } }).properties.sessionID,
-            ) ?? undefined)
-          : undefined,
-      );
+          ? (event as unknown as { properties: { sessionID: string } }).properties.sessionID
+          : undefined;
+      const state = getStateForSession(sessionID);
       if (!state) {
         return;
       }
@@ -334,14 +371,37 @@ export function buildHooks(
 }
 
 export const devFramework: Plugin = async (ctx) => {
-  const config = loadConfig(ctx.directory);
+  const log = createLogger(ctx.client);
+
+  let config: ResolvedConfig;
+  try {
+    config = loadConfig(ctx.directory);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    await log("error", message, { directory: ctx.directory });
+    const clientTui = (
+      ctx.client as unknown as {
+        tui?: { showToast?: (data: { type: string; message: string }) => Promise<unknown> };
+      }
+    ).tui;
+    try {
+      await clientTui?.showToast?.({
+        type: "error",
+        message: `[opencode-dev-framework] ${message}`,
+      });
+    } catch {
+      // TUI may not be available; the log line is enough.
+    }
+    return {};
+  }
 
   // The off profile registers no hooks at all.
   if (config.profile === "off") {
     return {};
   }
 
-  const log = createLogger(ctx.client);
+  setBaseDirectory(ctx.directory);
+
   const { constitution, warning } = await loadConstitution(config, ctx.directory);
   if (warning) {
     await log("warn", warning);

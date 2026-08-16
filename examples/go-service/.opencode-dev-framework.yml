@@ -30,6 +30,9 @@ gate:
   scope: all
   lint_changed: false
   timeout: 300
+  max_blocks: 3
+
+precommit: off
 
 on_edit:
   format: true

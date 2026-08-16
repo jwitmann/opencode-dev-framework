@@ -2,6 +2,7 @@ import { promises as fs } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createInterface } from "node:readline";
+import { DEFAULT_PROTECT } from "./config.js";
 import { detectProject } from "./detect.js";
 import type { CommandsConfig, Profile } from "./types.js";
 
@@ -194,8 +195,6 @@ export async function statusTemplates(targetDir: string): Promise<TemplateStatus
 export interface ConfigWriteResult {
   action: "created" | "skipped" | "overwritten";
 }
-
-const DEFAULT_PROTECT = [".env*", "**/.env*", "**/node_modules/**", "**/vendor/**"];
 
 function buildDefaultConfigYaml(
   language: string | null,

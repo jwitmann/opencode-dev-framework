@@ -117,8 +117,8 @@ OpenCode loads the plugin via Bun at runtime, but all development and CI on this
 opencode-dev-framework/
 ├── src/                    # Plugin source code
 │   ├── index.ts            # Plugin entry point
+│   ├── command-utils.ts    # Shared command parsing helpers
 │   ├── config.ts           # Config loader
-│   ├── config-to-opencode.ts # OpenCode settings generator
 │   ├── detect.ts           # Project language/tooling auto-detection
 │   ├── protect.ts          # Guardrail logic
 │   ├── lint.ts             # Per-edit lint runner

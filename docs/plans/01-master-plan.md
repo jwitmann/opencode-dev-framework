@@ -62,7 +62,8 @@ Initialize npm/TypeScript project, CI, directory structure, and basic build/test
 
 ### Phase 2 — Core plugin
 
-Implement config loading, native OpenCode settings generation, guardrail hooks, per-edit lint hook, completion gate, and constitution injection.
+Implement config loading, guardrail hooks, per-edit lint hook, completion gate,
+constitution injection, and the `df` CLI for scaffolding and profile switching.
 
 ### Phase 3 — Tests & docs
 

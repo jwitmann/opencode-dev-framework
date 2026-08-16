@@ -163,11 +163,14 @@ describe("loadConstitution", () => {
 });
 
 describe("injectConstitution", () => {
-  it("appends the constitution to the system prompt", () => {
+  it("appends the constitution to the last system prompt entry", () => {
     expect(injectConstitution(["You are helpful."], "RULES")).toEqual([
-      "You are helpful.",
-      "RULES",
+      "You are helpful.\n\nRULES",
     ]);
+  });
+
+  it("returns a single-entry array when system is empty", () => {
+    expect(injectConstitution([], "RULES")).toEqual(["RULES"]);
   });
 
   it("returns the array unchanged when constitution is null", () => {
@@ -176,13 +179,20 @@ describe("injectConstitution", () => {
   });
 
   it("does not inject twice when already present", () => {
-    const system = ["header", "RULES"];
+    const system = ["header\n\nRULES"];
     expect(injectConstitution(system, "RULES")).toBe(system);
   });
 
   it("does not inject when an existing entry already contains the text", () => {
     const system = ["header\nRULES\nfooter"];
     expect(injectConstitution(system, "RULES")).toBe(system);
+  });
+
+  it("appends to the last entry when there are multiple system parts", () => {
+    expect(injectConstitution(["part 1", "part 2"], "RULES")).toEqual([
+      "part 1",
+      "part 2\n\nRULES",
+    ]);
   });
 });
 
@@ -222,7 +232,7 @@ describe("system.transform wiring", () => {
 
   it("injects the constitution into the system prompt", async () => {
     const { system, messages } = await runTransform("RULES", ["base prompt"]);
-    expect(system).toEqual(["base prompt", "RULES"]);
+    expect(system).toEqual(["base prompt\n\nRULES"]);
     expect(messages).toEqual(["constitution injected into system prompt"]);
   });
 

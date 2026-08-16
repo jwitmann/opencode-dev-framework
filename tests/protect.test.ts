@@ -136,4 +136,30 @@ describe("helpers", () => {
     expect(matchDangerousCommand("git push origin main")?.pattern.source).toContain("git");
     expect(matchDangerousCommand("git status")).toBeUndefined();
   });
+
+  it("does not block a path that the host permission model already denies", () => {
+    const config = resolve({ profile: "standard", protect: PROTECT });
+    const hostPermissions = [{ permission: "edit", pattern: "go.sum", action: "deny" }];
+    const result = checkToolCall(
+      config,
+      "edit",
+      { filePath: "go.sum" },
+      undefined,
+      hostPermissions,
+    );
+    expect(result.decision).toBe("allow");
+  });
+
+  it("does not block a shell command that the host permission model already denies", () => {
+    const config = resolve({ profile: "standard" });
+    const hostPermissions = [{ permission: "bash", action: "deny" }];
+    const result = checkToolCall(
+      config,
+      "bash",
+      { command: "git push" },
+      undefined,
+      hostPermissions,
+    );
+    expect(result.decision).toBe("allow");
+  });
 });

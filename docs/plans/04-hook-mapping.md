@@ -30,14 +30,16 @@ project directory.
 3. Read `rules` files, local override directory, and any auto-discovered style guides.
 4. Inject the concatenated rules into the system prompt.
 
-### Native `permission` config (generated, not injected automatically)
+### Native `permission` config
 
-**Purpose:** Suggest rules that block edits to protected paths and dangerous commands.
+**Purpose:** OpenCode's own permission model is the primary defense. The plugin
+reads the host's effective `permission` config at load time and respects host
+ denies: when OpenCode already denies a tool/target, the plugin skips its own
+block to avoid redundant/conflicting denials.
 
-**How:** The plugin does not rewrite `opencode.json` on disk and does not contribute
-permissions at runtime. It applies guardrails in `tool.execute.before`. Users can
-use `config-to-opencode.ts` to generate suggested `permission` rules and copy
-them into their `opencode.json` if desired.
+**How:** The plugin does not rewrite `opencode.json` on disk and does not
+contribute permissions at runtime. It applies guardrails in `tool.execute.before`
+and uses `command-utils.ts` helpers for command parsing.
 
 ### `tool.execute.before`
 
@@ -53,6 +55,10 @@ them into their `opencode.json` if desired.
 - `off` profile: do nothing.
 - `advisory` profile: log a warning but do not throw.
 - `standard`/`strict` profile: throw an error with a clear message to deny the tool call.
+- If hook state cannot be resolved for a session, the hook fails closed (denies)
+  rather than silently allowing the tool call.
+- When the host permission model already denies the tool/target, the plugin
+  skips its own block to avoid redundant/conflicting denials.
 
 ### `file.edited`
 
@@ -98,10 +104,10 @@ gate failure in `standard`/`strict`, pushes a concise synthetic user message up
 to `gate.max_blocks` times before standing down. `session.idle` remains the
 fallback on older OpenCode versions.
 
-### `/df-verify`, `/df-profile`, `/df-status` custom commands
+### `/df-verify`, `/df-profile`, `/df-status`, `/df-help` custom commands
 
-**Purpose:** Let the user run the gate on demand, switch profile, or inspect
-plugin state.
+**Purpose:** Let the user run the gate on demand, switch profile, inspect
+plugin state, or list commands.
 
 **Definition:** registered programmatically via the `config` hook and handled in
 `command.execute.before`. OpenCode does not load slash commands from plugin
@@ -109,19 +115,22 @@ packages, but a plugin can add them to the effective config at runtime.
 
 ```typescript
 config: async (opencodeConfig) => {
-  (opencodeConfig as any).command ??= {};
-  (opencodeConfig as any).command["df-status"] = {
+  const typedConfig = opencodeConfig as { command?: Record<string, { template?: string; description?: string }> };
+  typedConfig.command ??= {};
+  typedConfig.command["df-status"] = {
     template: "",
     description: "Show the current dev-framework state",
   };
-  // ...df-verify, df-profile
+  // ...df-verify, df-profile, df-help
 },
 ```
 
-The `command.execute.before` hook looks up the session's hook state and returns
-the result as a text part. `/df-verify` runs `runGate` directly; `/df-profile`
-edits the config file, clears the cache, reloads the config, and updates the
-in-memory hook state; `/df-status` renders the live state.
+The `command.execute.before` hook looks up the session's hook state (falling
+back to the project `baseDirectory` when the session has not been mapped yet)
+and returns the result as a text part. `/df-verify` runs `runGate` directly;
+`/df-profile` edits the config file, clears the cache, reloads the config, and
+updates the in-memory hook state; `/df-status` renders the live state. Unknown
+`/df-*` commands return a hint to use `/df-help`.
 
 **Update (v0.1.15):** migrated from markdown command templates (under
 `templates/.opencode/commands/`) to plugin-registered, handler-backed slash
