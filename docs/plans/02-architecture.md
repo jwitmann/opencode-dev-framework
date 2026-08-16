@@ -137,9 +137,10 @@ slash commands registered by the plugin through the `config` hook. OpenCode does
 not load slash commands from plugin packages automatically, but a plugin can
 mutate the effective OpenCode config at runtime to add them. The
 `command.execute.before` hook intercepts these commands and posts the result as
-an ignored chat message via `src/messenger.ts` so it is displayed in the UI
+a synthetic chat message via `src/messenger.ts` so it is displayed in the UI
 without being processed as a user turn. When the messenger API is unavailable,
-the handler falls back to returning the result on `output.parts`.
+the handler falls back to returning the result on `output.parts` with
+`synthetic: true`.
 
 - `/df-verify` — run the completion gate manually.
 - `/df-profile` — switch the active profile.

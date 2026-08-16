@@ -159,18 +159,28 @@ Keep both. The custom tool lets the agent call verification explicitly; the slas
 
 ## v0.1.19 release decisions
 
-- **Corrected slash-command messenger API shape again.** The initial v0.1.17
-  messenger used the right `client.session.prompt` wrapper (`{ path: { id }, body:
-  { ... }}`) but the wrong part flag (`synthetic: true`), which produced invisible
-  output. The v0.1.18 revision switched to the flat SDK-v2 shape (`{ sessionID,
-  noReply, parts }`), still with `synthetic: true`, which OpenCode processed as a
-  user turn. After inspecting DCP and the SDK types, the correct pattern is the
-  wrapper shape with `ignored: true`. The final v0.1.19 implementation posts
-  slash-command responses via `client.session.prompt({ path: { id: sessionID },
-  body: { noReply: true, parts: [{ type: "text", text, ignored: true }] } })`.
-  If the prompt API is unavailable, it falls back to `client.tui.showToast`.
-  The `output.parts` fallback (when no messenger is configured) also marks the
-  part `ignored: true`.
+- **Corrected slash-command messenger API shape.** The initial v0.1.17
+  messenger used the SDK v1 wrapper (`{ path: { id }, body: { ... }}`) but
+  guessed the part flag incorrectly. We first tried `synthetic: true`, then
+  switched to `ignored: true`. After testing against the actual OpenCode runtime,
+  the right combination is the SDK v1 wrapper with `synthetic: true`:
+
+  ```ts
+  client.session.prompt({
+    path: { id: sessionID },
+    body: {
+      noReply: true,
+      parts: [{ type: "text", text, synthetic: true }],
+    },
+  })
+  ```
+
+  `synthetic: true` makes the message visible in the conversation UI without
+  treating it as a user turn. `ignored: true` hid the message from the UI while
+  still including it in the model context, which is why the status text leaked
+  into the next assistant turn. If the prompt API is unavailable, the messenger
+  falls back to `client.tui.showToast`. The `output.parts` fallback (used in
+  tests or when the messenger is absent) also marks the part `synthetic: true`.
 
 ## v0.1.17 release decisions
 

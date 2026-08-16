@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { createMessenger } from "../src/messenger";
 
 describe("createMessenger", () => {
-  it("calls client.session.prompt with the SDK v2 shape and ignored: true", async () => {
+  it("calls client.session.prompt with the SDK v1 shape and synthetic: true", async () => {
     const calls: unknown[] = [];
     const client = {
       session: {
@@ -17,15 +17,15 @@ describe("createMessenger", () => {
 
     expect(calls).toHaveLength(1);
     const call = calls[0] as {
-      path: { sessionID: string };
-      body: { noReply: boolean; parts: Array<{ type: string; text: string; ignored?: boolean }> };
+      path: { id: string };
+      body: { noReply: boolean; parts: Array<{ type: string; text: string; synthetic?: boolean }> };
     };
-    expect(call.path.sessionID).toBe("ses_123");
+    expect(call.path.id).toBe("ses_123");
     expect(call.body.noReply).toBe(true);
     expect(call.body.parts).toHaveLength(1);
     expect(call.body.parts[0].type).toBe("text");
     expect(call.body.parts[0].text).toBe("hello from df-status");
-    expect(call.body.parts[0].ignored).toBe(true);
+    expect(call.body.parts[0].synthetic).toBe(true);
   });
 
   it("falls back to client.tui.showToast when session.prompt is unavailable", async () => {

@@ -6,20 +6,24 @@ export type SendMessageFn = (sessionID: string, text: string) => Promise<void>;
  * Create a messenger that posts a chat message without it being treated as a
  * user turn.
  *
- * OpenCode SDK v2 expects `client.session.prompt` to be called with:
+ * The installed `@opencode-ai/sdk` is v1.x (matching the plugin's dependency).
+ * Its `client.session.prompt` expects the wrapper:
  *
  * ```
  * {
- *   path: { sessionID: string },
+ *   path: { id: sessionID },
  *   body: {
  *     noReply: true,
- *     parts: [{ type: "text", text: string, ignored: true }],
+ *     parts: [{ type: "text", text: string, synthetic: true }],
  *   },
  * }
  * ```
  *
- * The `ignored: true` flag keeps the message visible in the conversation UI
- * while preventing it from being fed back to the model as input.
+ * `synthetic: true` marks the message as system-generated so it is visible in
+ * the conversation but is not fed back to the model as a user turn. The older
+ * `ignored: true` flag hides the message from the UI but still includes it in
+ * the model context, which is why the previous attempt leaked the status into
+ * the next assistant turn.
  *
  * If the prompt API fails or is unavailable, the messenger falls back to a TUI
  * toast so the output is still visible.
@@ -43,14 +47,14 @@ export function createMessenger(client: PluginInput["client"]): SendMessageFn {
     if (prompt) {
       try {
         await prompt({
-          path: { sessionID },
+          path: { id: sessionID },
           body: {
             noReply: true,
             parts: [
               {
                 type: "text",
                 text,
-                ignored: true,
+                synthetic: true,
               },
             ],
           },

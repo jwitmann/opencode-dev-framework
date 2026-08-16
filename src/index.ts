@@ -122,18 +122,17 @@ export function buildHooks(
       if (!state) {
         const fallback = "[opencode-dev-framework] plugin state is not available for this session.";
         output.parts.length = 0;
-        output.parts.push({ type: "text", text: fallback, ignored: true } as never);
+        output.parts.push({ type: "text", text: fallback, synthetic: true } as never);
         return;
       }
 
       const directory = state.directory;
       const reply = async (text: string) => {
+        output.parts.length = 0;
         if (state.sendMessage) {
-          output.parts.length = 0;
           await state.sendMessage(input.sessionID, text);
         } else {
-          output.parts.length = 0;
-          output.parts.push({ type: "text", text, ignored: true } as never);
+          output.parts.push({ type: "text", text, synthetic: true } as never);
         }
       };
 

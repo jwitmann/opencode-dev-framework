@@ -127,22 +127,31 @@ config: async (opencodeConfig) => {
 
 The `command.execute.before` hook looks up the session's hook state (falling
 back to the project `baseDirectory` when the session has not been mapped yet)
-and posts the result as a synthetic chat message via `src/messenger.ts` so it
+and posts the result as a **synthetic** chat message via `src/messenger.ts` so it
 appears in the UI but is **not** fed back to the model as a user turn. If the
 messenger API is unavailable, the hook falls back to `client.tui.showToast`.
 `/df-verify` runs `runGate` directly; `/df-profile` edits the config file, clears
 the cache, reloads the config, and updates the in-memory hook state; `/df-status`
 renders the live state. Unknown `/df-*` commands return a hint to use `/df-help`.
 
-**Update (v0.1.19):** after inspecting DCP and the OpenCode SDK types, the
-final slash-command messenger uses `client.session.prompt` with a
-`{ path: { id: sessionID }, body: { noReply: true, parts: [{ type: "text", text,
-ignored: true }] } }` wrapper. This is DCP's pattern for ignored notifications: the
-message is visible in the chat but is not treated as a user turn. Earlier attempts
-used `synthetic: true` (invisible) or a flat SDK-v2 shape (processed as user
-input). If the prompt API is unavailable, the handler falls back to
-`client.tui.showToast`. When the messenger is not configured (e.g. tests), the
-handler writes the text to `output.parts` with `ignored: true`.
+**Update (v0.1.21):** after inspecting the installed `@opencode-ai/sdk` v1 types
+(the plugin depends on SDK `1.18.18`, not SDK v2), the slash-command messenger
+uses `client.session.prompt` with the SDK v1 wrapper:
+
+```text
+{ path: { id: sessionID }, body: { noReply: true, parts: [{ type: "text", text, synthetic: true }] } }
+```
+
+`synthetic: true` marks the message as system-generated and visible in the chat
+without becoming a user turn. Earlier attempts used `ignored: true` (hidden from
+the UI but still included in the model context) or a flat shape (processed as
+user input). If the prompt API is unavailable, the handler falls back to
+`client.tui.showToast`.
+
+**Update (v0.1.15):** migrated from markdown command templates (under
+`templates/.opencode/commands/`) to plugin-registered, handler-backed slash
+commands so the response is deterministic and does not depend on the LLM
+choosing to call a tool.
 
 **Update (v0.1.15):** migrated from markdown command templates (under
 `templates/.opencode/commands/`) to plugin-registered, handler-backed slash
