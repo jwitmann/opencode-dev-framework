@@ -4,8 +4,10 @@
  * Wired so far:
  * - tool.execute.before -> protected-path / dangerous-command guardrails
  * - event (file.edited)  -> per-edit lint + changed-file tracking
- * - event (session.idle) -> completion gate (advisory: reports loudly, cannot block)
- * - experimental.chat.system.transform -> constitution injection
+ * - event (session.idle) -> completion gate fallback (advisory logging)
+ * - experimental.chat.system.transform -> constitution injection + session mapping
+ * - experimental.session.stopping -> blocking completion gate (OpenCode >= PR #41811)
+ * - tool -> dev_framework_init / dev_framework_set_profile custom tools
  */
 
 import type { Hooks, Plugin, PluginInput } from "@opencode-ai/plugin";
@@ -20,36 +22,32 @@ import { runCommand, type RunCommand } from "./host.js";
 import { isLintFailure, lintFile, summarizeLint } from "./lint.js";
 import { createLogger, type LogFn } from "./logger.js";
 import { checkToolCall } from "./protect.js";
+import {
+  getDirectoryForSession,
+  getHookState,
+  setHookState,
+  setSessionDirectory,
+} from "./registry.js";
 import { injectConstitution, loadConstitution } from "./rules.js";
+import { buildTools } from "./tools.js";
 import type { ResolvedConfig } from "./types.js";
 
-interface HookState {
-  config: ResolvedConfig;
-  log: LogFn;
-  run: RunCommand;
-  tracker: ChangedFileTracker;
-  constitution: string | null;
-}
-
 /**
- * Per-directory hook state registry. OpenCode's effect runtime can strip
- * closure variables when invoking hooks asynchronously, so we store the state
- * in module-level maps and look it up at call time.
+ * The `experimental.session.stopping` hook was added in OpenCode PR #41811
+ * and is not yet in the published `@opencode-ai/plugin` types. We define it
+ * locally so the plugin compiles and automatically uses the hook when the
+ * runtime supports it.
  */
-const hookRegistry = new Map<string, HookState>();
-let activeDirectory: string | null = null;
-
-function getHookState(directoryHint?: string): HookState | null {
-  const directory = directoryHint ?? activeDirectory;
-  if (!directory) {
-    return null;
-  }
-  return hookRegistry.get(directory) ?? null;
+export interface HooksWithStopping extends Hooks {
+  "experimental.session.stopping"?: (
+    input: { sessionID: string },
+    output: { context: string[] },
+  ) => Promise<void>;
 }
 
 /**
- * Build the plugin's hooks. Exported (rather than inlined in the plugin) so
- * tests can inject a stubbed command runner and tracker.
+ * Build the plugin's hooks and custom tools. Exported (rather than inlined in
+ * the plugin) so tests can inject a stubbed command runner and tracker.
  */
 export function buildHooks(
   ctx: PluginInput,
@@ -58,16 +56,20 @@ export function buildHooks(
   run: RunCommand = runCommand,
   tracker: ChangedFileTracker = createChangedFileTracker(),
   constitution: string | null = null,
-): Hooks {
+): HooksWithStopping {
   const directory = ctx.directory;
-  hookRegistry.set(directory, { config, log, run, tracker, constitution });
-  activeDirectory = directory;
+  setHookState(directory, { config, log, run, tracker, constitution, blockCount: 0 });
 
   return {
-    "experimental.chat.system.transform": async (_input, output) => {
+    tool: buildTools(ctx),
+
+    "experimental.chat.system.transform": async (input, output) => {
       const state = getHookState();
       if (!state) {
         return;
+      }
+      if (input.sessionID) {
+        setSessionDirectory(input.sessionID, directory);
       }
       const next = injectConstitution(output.system, state.constitution);
       if (next !== output.system) {
@@ -81,12 +83,7 @@ export function buildHooks(
       if (!state) {
         return;
       }
-      const result = checkToolCall(
-        state.config,
-        input.tool,
-        output.args,
-        activeDirectory ?? undefined,
-      );
+      const result = checkToolCall(state.config, input.tool, output.args, directory);
       if (result.decision === "allow") {
         return;
       }
@@ -104,6 +101,45 @@ export function buildHooks(
       throw new Error(`[opencode-dev-framework] ${message}`);
     },
 
+    "experimental.session.stopping": async (input, output) => {
+      const state = getHookState(getDirectoryForSession(input.sessionID) ?? undefined);
+      if (!state || !state.config.gate) {
+        return;
+      }
+
+      const changedFiles = state.tracker.getChangedFiles();
+      const report = await runGate(state.run, state.config, changedFiles, { cwd: directory });
+      if (!report.ran || report.ok) {
+        state.tracker.clearChangedFiles();
+        state.blockCount = 0;
+        return;
+      }
+
+      const maxBlocks = state.config.gate.max_blocks ?? 3;
+      const blockCount = (state.blockCount ?? 0) + 1;
+      state.blockCount = blockCount;
+
+      if (blockCount > maxBlocks) {
+        await state.log(
+          "warn",
+          `completion gate has blocked ${maxBlocks} times; standing down but checks are still failing`,
+          { failedSteps: report.failedSteps.map((step) => step.name) },
+        );
+        return;
+      }
+
+      const summary = summarizeGate(report);
+      await state.log("error", summary, {
+        failedSteps: report.failedSteps.map((step) => step.name),
+      });
+
+      output.context.push(
+        `opencode-dev-framework completion gate blocked you from finishing (block ${blockCount}/${maxBlocks}). ` +
+          `The following checks failed:\n\n${summary}\n\n` +
+          `Fix the underlying cause and continue. Do NOT disable, skip, or weaken these checks to make them pass.`,
+      );
+    },
+
     event: async ({ event }) => {
       const state = getHookState();
       if (!state) {
@@ -111,12 +147,12 @@ export function buildHooks(
       }
       if (event.type === "file.edited") {
         const filePath = event.properties.file;
-        state.tracker.add(filePath, activeDirectory ?? undefined);
+        state.tracker.add(filePath, directory);
         if (!state.config.on_edit.lint) {
           return;
         }
         const outcome = await lintFile(state.run, state.config, filePath, {
-          cwd: activeDirectory ?? undefined,
+          cwd: directory,
           timeout: state.config.gate?.timeout,
         });
         if (outcome.skipped) {
@@ -147,16 +183,12 @@ export function buildHooks(
           await state.log(
             "warn",
             "plugin config is incomplete (missing gate section), skipping completion gate",
-            {
-              directory: activeDirectory ?? undefined,
-            },
+            { directory },
           );
           return;
         }
         const changedFiles = state.tracker.getChangedFiles();
-        const report = await runGate(state.run, state.config, changedFiles, {
-          cwd: activeDirectory ?? undefined,
-        });
+        const report = await runGate(state.run, state.config, changedFiles, { cwd: directory });
         state.tracker.clearChangedFiles();
         const summary = summarizeGate(report);
         if (!report.ran) {
@@ -167,8 +199,8 @@ export function buildHooks(
           await state.log("info", summary);
           return;
         }
-        // The gate cannot physically block (session.idle fires after the turn
-        // ends), so failure visibility is the enforcement mechanism.
+        // The gate cannot physically block on session.idle (the turn already
+        // ended), so failure visibility is the enforcement mechanism.
         const level = state.config.gate.block_on_failure ? "error" : "warn";
         await state.log(level, summary, {
           failedSteps: report.failedSteps.map((step) => ({

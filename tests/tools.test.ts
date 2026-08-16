@@ -1,0 +1,64 @@
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import type { PluginInput } from "@opencode-ai/plugin";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { buildHooks } from "../src/index";
+import type { LogFn } from "../src/logger";
+import { getHookState } from "../src/registry";
+
+let dir: string;
+
+beforeEach(async () => {
+  dir = await mkdtemp(join(tmpdir(), "odf-tools-"));
+});
+
+afterEach(async () => {
+  await rm(dir, { recursive: true, force: true });
+});
+
+function makeCtx(directory: string): PluginInput {
+  return { directory } as PluginInput;
+}
+
+const noopLog: LogFn = async () => {};
+
+describe("dev_framework_init tool", () => {
+  it("scaffolds templates into the project directory", async () => {
+    const hooks = buildHooks(makeCtx(dir), { profile: "standard" } as never, noopLog);
+    const init = hooks.tool?.dev_framework_init;
+    expect(init).toBeDefined();
+    const result = await init?.execute({}, { directory: dir } as never);
+    expect(typeof result).toBe("string");
+    expect(result).toContain("Installed opencode-dev-framework templates");
+    expect(result).toContain("Created: 9 file(s)");
+  });
+});
+
+describe("dev_framework_set_profile tool", () => {
+  it("creates the config file and applies the profile immediately", async () => {
+    const hooks = buildHooks(makeCtx(dir), { profile: "standard" } as never, noopLog);
+    const setProfile = hooks.tool?.dev_framework_set_profile;
+    expect(setProfile).toBeDefined();
+
+    const result = await setProfile?.execute(
+      { profile: "strict" },
+      { directory: dir } as never,
+    );
+    expect(typeof result).toBe("string");
+    expect(result).toContain('profile set to "strict"');
+
+    const state = getHookState(dir);
+    expect(state?.config.profile).toBe("strict");
+  });
+
+  it("rejects invalid profiles", async () => {
+    const hooks = buildHooks(makeCtx(dir), { profile: "standard" } as never, noopLog);
+    const setProfile = hooks.tool?.dev_framework_set_profile;
+    const result = await setProfile?.execute(
+      { profile: "invalid" },
+      { directory: dir } as never,
+    );
+    expect(result).toContain("Invalid profile");
+  });
+});
