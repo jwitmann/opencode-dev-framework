@@ -174,6 +174,24 @@ Keep both. The custom tool lets the agent call verification explicitly; the slas
   writes a fallback line to `process.stderr`; even if stderr fails, the log
   call still resolves.
 
+## v0.1.9 release decisions
+
+- **`config.rules` is now appended to the constitution.** Previously the key
+  was parsed and passed through `resolveConfig` but never read. `loadConstitution`
+  now loads each rules file and appends it after the bundled (or custom)
+  constitution, with warnings for missing files.
+- **Session-aware hook state lookups.** `tool.execute.before` and
+  `session.idle` now resolve hook state via `sessionID → directory` mapping
+  instead of relying on `activeDirectory`. `file.edited` still uses the active
+  directory because the event does not include a session ID.
+- **CLI flags are mutually exclusive.** `df init --skip-existing
+  --overwrite-existing` now exits with an error instead of silently skipping.
+- **No automatic OpenCode config mutation.** The plugin enforces guardrails in
+  `tool.execute.before` and lints in `file.edited`. It does **not** inject
+  `permission` or `formatter` fragments into OpenCode's effective config at
+  runtime, and docs no longer claim it does. `src/config-to-opencode.ts` is
+  kept as a helper for users who want to generate fragments manually.
+
 ## References
 
 - OpenCode plugin docs: <https://opencode.ai/docs/plugins>

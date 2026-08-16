@@ -66,12 +66,31 @@ async function readConstitutionDir(dir: string): Promise<string | null> {
   }
 }
 
+async function readRulesFiles(
+  paths: string[],
+  directory: string,
+): Promise<{ content: string | null; warnings: string[] }> {
+  const parts: string[] = [];
+  const warnings: string[] = [];
+  for (const rawPath of paths) {
+    const path = isAbsolute(rawPath) ? rawPath : resolve(directory, rawPath);
+    const content = await readConstitution(path);
+    if (content !== null) {
+      parts.push(content);
+    } else {
+      warnings.push(`Could not read rule file ${path}; skipping.`);
+    }
+  }
+  return { content: parts.length === 0 ? null : parts.join("\n\n"), warnings };
+}
+
 /**
  * Loads the constitution to inject for a session.
  *
  * - `off` profile never injects anything.
  * - A configured `constitution` path wins; if it cannot be read, a warning is
  *   returned and the bundled constitution is used as a fallback.
+ * - `rules` paths are appended after the constitution (bundled or custom).
  * - When the bundled constitution directory itself cannot be read, nothing is
  *   injected and a warning is returned.
  * - The bundled constitution is built from all `.md` files in `rules/`, in
@@ -85,37 +104,56 @@ export async function loadConstitution(
     return { constitution: null, source: null };
   }
 
+  const warnings: string[] = [];
+  let base: string | null = null;
+  let source: ConstitutionResult["source"] = null;
+
   if (config.constitution) {
     const customPath = isAbsolute(config.constitution)
       ? config.constitution
       : resolve(directory ?? process.cwd(), config.constitution);
     const custom = await readConstitution(customPath);
     if (custom !== null) {
-      return { constitution: custom, source: "custom" };
+      base = custom;
+      source = "custom";
+    } else {
+      base = await readConstitutionDir(BUNDLED_CONSTITUTION_DIR);
+      source = base !== null ? "bundled" : null;
+      warnings.push(
+        `Could not read configured constitution at ${customPath}; using bundled constitution.`,
+      );
     }
-    const bundled = await readConstitutionDir(BUNDLED_CONSTITUTION_DIR);
-    if (bundled !== null) {
-      return {
-        constitution: bundled,
-        source: "bundled",
-        warning: `Could not read configured constitution at ${customPath}; using bundled constitution.`,
-      };
-    }
+  } else {
+    base = await readConstitutionDir(BUNDLED_CONSTITUTION_DIR);
+    source = base !== null ? "bundled" : null;
+  }
+
+  let rulesContent: string | null = null;
+  if (config.rules && config.rules.length > 0) {
+    const rulesResult = await readRulesFiles(config.rules, directory ?? process.cwd());
+    rulesContent = rulesResult.content;
+    warnings.push(...rulesResult.warnings);
+  }
+
+  const parts: string[] = [];
+  if (base !== null) parts.push(base);
+  if (rulesContent !== null) parts.push(rulesContent);
+
+  if (parts.length === 0) {
     return {
       constitution: null,
       source: null,
-      warning: `Could not read configured constitution at ${customPath} or the bundled constitution; no constitution injected.`,
+      warning:
+        warnings.length > 0
+          ? warnings.join("\n")
+          : "Could not read the bundled constitution; no constitution injected.",
     };
   }
 
-  const bundled = await readConstitutionDir(BUNDLED_CONSTITUTION_DIR);
-  if (bundled !== null) {
-    return { constitution: bundled, source: "bundled" };
-  }
   return {
-    constitution: null,
-    source: null,
-    warning: "Could not read the bundled constitution; no constitution injected.",
+    constitution: parts.join("\n\n"),
+    source,
+    warning: warnings.length > 0 ? warnings.join("\n") : undefined,
   };
 }
 

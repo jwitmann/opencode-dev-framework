@@ -103,6 +103,42 @@ describe("loadConstitution", () => {
     expect(result.source).toBe("bundled");
     expect(result.warning).toContain("empty.md");
   });
+
+  it("appends configured rules files to the bundled constitution", async () => {
+    await writeFile(join(dir, "TEAM.md"), "# Team Rules\nDo the thing.");
+    const result = await loadConstitution(
+      resolve({ profile: "standard", rules: ["TEAM.md"] }),
+      dir,
+    );
+    expect(result.source).toBe("bundled");
+    expect(result.constitution).toContain("Quality Bar");
+    expect(result.constitution).toContain("Team Rules");
+    expect(result.constitution?.indexOf("Quality Bar")).toBeLessThan(
+      result.constitution?.indexOf("Team Rules") ?? 0,
+    );
+  });
+
+  it("appends configured rules files to a custom constitution", async () => {
+    await writeFile(join(dir, "TEAM.md"), "# Team Rules");
+    await writeFile(join(dir, "EXTRA.md"), "# Extra Rules");
+    const result = await loadConstitution(
+      resolve({ profile: "standard", constitution: "TEAM.md", rules: ["EXTRA.md"] }),
+      dir,
+    );
+    expect(result.source).toBe("custom");
+    expect(result.constitution).toContain("Team Rules");
+    expect(result.constitution).toContain("Extra Rules");
+  });
+
+  it("warns and skips missing rules files", async () => {
+    const result = await loadConstitution(
+      resolve({ profile: "standard", rules: ["missing.md"] }),
+      dir,
+    );
+    expect(result.source).toBe("bundled");
+    expect(result.warning).toContain("missing.md");
+    expect(result.constitution).toBeTruthy();
+  });
 });
 
 describe("injectConstitution", () => {

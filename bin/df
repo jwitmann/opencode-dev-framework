@@ -60,6 +60,12 @@ async function main() {
   const positional = args.slice(1).filter((arg) => !arg.startsWith("--"));
   const targetDir = resolveTargetDir(positional[0]);
 
+  if (command === "init" && flags.has("--skip-existing") && flags.has("--overwrite-existing")) {
+    console.error("Cannot use both --skip-existing and --overwrite-existing");
+    process.exitCode = 1;
+    return;
+  }
+
   if (command === "status") {
     const status = await statusTemplates(targetDir);
     console.log(`Template status for ${targetDir}:`);

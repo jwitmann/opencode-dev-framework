@@ -149,8 +149,11 @@ suite manually, or `/df-profile strict` to change the profile.
 - **Guardrails run inside OpenCode.** The `tool.execute.before` hook runs
   after OpenCode's own permission system; it adds project rules on top, it
   does not replace OpenCode permissions.
-- **Formatting is delegated.** Formatter config is contributed to OpenCode's
-  native formatter system rather than reimplemented.
+- **Formatting and linting are delegated.** The plugin does not reimplement
+  formatters or linters; you declare your formatter and linter commands in
+  `.opencode-dev-framework.yml` and the plugin runs them on edited files and
+  at the completion gate. It does not automatically rewrite `opencode.json`
+  formatter/permission fragments.
 
 ## Development
 

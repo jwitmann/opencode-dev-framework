@@ -91,7 +91,7 @@ export function buildHooks(
     },
 
     "tool.execute.before": async (input, output) => {
-      const state = getHookState();
+      const state = getHookState(getDirectoryForSession(input.sessionID) ?? undefined);
       if (!state) {
         return;
       }
@@ -162,7 +162,13 @@ export function buildHooks(
         clearSessionDirectory(event.properties.info.id);
         return;
       }
-      const state = getHookState();
+      const state = getHookState(
+        event.type === "session.idle"
+          ? (getDirectoryForSession(
+              (event as unknown as { properties: { sessionID: string } }).properties.sessionID,
+            ) ?? undefined)
+          : undefined,
+      );
       if (!state) {
         return;
       }

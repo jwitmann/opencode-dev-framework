@@ -43,11 +43,14 @@ The package may export a single default plugin or multiple named plugins. Use on
 | Module | Responsibility |
 |---|---|
 | `src/config.ts` | Load and merge `.opencode-dev-framework.yml` and `.dev-framework.yml`, resolve profile defaults, validate with Zod. |
-| `src/config-to-opencode.ts` | Translate framework config into OpenCode-native fragments: `permission`, `formatter`, `rules`. |
+| `src/config-to-opencode.ts` | Helper that translates framework config into OpenCode-native-style `permission` / `formatter` fragments. The plugin does **not** inject these automatically (it enforces guardrails in `tool.execute.before` and does not rewrite `opencode.json`); the fragments are available for users who want to copy them manually. |
 | `src/protect.ts` | Implement `tool.execute.before` guardrails for protected paths and dangerous commands. |
-| `src/lint.ts` | Implement per-edit checks on `file.edited` / `tool.execute.after`. |
-| `src/gate.ts` | Implement the `session.idle` completion gate. |
-| `src/rules.ts` | Load and inject constitution / project rules. |
+| `src/lint.ts` | Implement per-edit checks on `file.edited`. |
+| `src/gate.ts` | Implement the completion gate and changed-file tracking. |
+| `src/rules.ts` | Load and inject constitution / project rules via `experimental.chat.system.transform`. |
+| `src/tools.ts` | Custom tools (`dev_framework_init`, `dev_framework_set_profile`). |
+| `src/registry.ts` | Module-level hook state registry (avoids closure-capture issues in OpenCode's Effect runtime). |
+| `src/installer.ts` | Template copy logic used by `bin/df` and the `dev_framework_init` tool. |
 | `src/logger.ts` | Structured logging wrapper around `client.app.log()`. |
 | `src/types.ts` | Shared TypeScript types and interfaces. |
 

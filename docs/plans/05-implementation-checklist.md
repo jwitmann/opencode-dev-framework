@@ -229,6 +229,17 @@ Use this as the source of truth during implementation. Check items off as they a
 - [x] 11.9 README + plan docs updated.
 - [x] 11.10 Bump version to `0.1.7`, tag `v0.1.7`.
 
+## Phase 12 — Post-review fixes (v0.1.9)
+
+- [x] 12.1 Load and append `config.rules` files in `loadConstitution`.
+- [x] 12.2 Use session-directory mapping in `tool.execute.before` and
+  `session.idle` hooks (instead of `activeDirectory` fallback).
+- [x] 12.3 Reject conflicting `--skip-existing` / `--overwrite-existing` flags
+  in `bin/df`.
+- [x] 12.4 Correct README / architecture docs: plugin does not automatically
+  inject formatter/permission fragments into OpenCode config.
+- [x] 12.5 Bump version to `0.1.9`, tag `v0.1.9`.
+
 ## Notes for the implementer
 
 - Do all tests first; use the stub host.
