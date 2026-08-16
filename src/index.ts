@@ -58,7 +58,19 @@ export function buildHooks(
   constitution: string | null = null,
 ): HooksWithStopping {
   const directory = ctx.directory;
-  setHookState(directory, { config, log, run, tracker, constitution, blockCount: 0 });
+  // Note: hooks still close over `directory` (unlike the registry state, which
+  // exists because OpenCode's Effect runtime stripped closure captures of
+  // config/log/run in production). This is deliberate: `directory` is only
+  // used as an optional hint (cwd, path relativization), so if it were ever
+  // stripped the hooks degrade gracefully instead of crashing.
+  setHookState(directory, {
+    config,
+    log,
+    run,
+    tracker,
+    constitution,
+    blockCounts: new Map(),
+  });
 
   return {
     tool: buildTools(ctx),
@@ -103,7 +115,7 @@ export function buildHooks(
 
     "experimental.session.stopping": async (input, output) => {
       const state = getHookState(getDirectoryForSession(input.sessionID) ?? undefined);
-      if (!state?.config.gate) {
+      if (!state?.config.gate || state.config.profile === "off") {
         return;
       }
 
@@ -111,15 +123,18 @@ export function buildHooks(
       const report = await runGate(state.run, state.config, changedFiles, { cwd: directory });
       if (!report.ran || report.ok) {
         state.tracker.clearChangedFiles();
-        state.blockCount = 0;
+        state.blockCounts.delete(input.sessionID);
         return;
       }
 
       const maxBlocks = state.config.gate.max_blocks ?? 3;
-      const blockCount = (state.blockCount ?? 0) + 1;
-      state.blockCount = blockCount;
+      const blockCount = (state.blockCounts.get(input.sessionID) ?? 0) + 1;
+      state.blockCounts.set(input.sessionID, blockCount);
 
       if (blockCount > maxBlocks) {
+        // Standing down: clear the tracker so the session.idle fallback does
+        // not re-run the same failing gate commands a second time.
+        state.tracker.clearChangedFiles();
         await state.log(
           "warn",
           `completion gate has blocked ${maxBlocks} times; standing down but checks are still failing`,
@@ -179,6 +194,9 @@ export function buildHooks(
         return;
       }
       if (event.type === "session.idle") {
+        if (state.config.profile === "off") {
+          return;
+        }
         if (!state.config.gate) {
           await state.log(
             "warn",

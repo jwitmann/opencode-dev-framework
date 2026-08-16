@@ -51,6 +51,30 @@ describe("installTemplates", () => {
     const result = await installTemplates(dir, { overwriteExisting: true });
     expect(result.overwritten).toContain(".opencode-dev-framework.yml");
   });
+
+  it("applies an 'overwrite-all' prompt answer to subsequent files", async () => {
+    await installTemplates(dir, { skipExisting: true });
+    const { writeFile } = await import("node:fs/promises");
+    await writeFile(join(dir, ".opencode-dev-framework.yml"), "profile: strict\n", "utf8");
+    await writeFile(
+      join(dir, ".opencode/commands/df-verify.md"),
+      "---\ndescription: custom\n---\ncustom body\n",
+      "utf8",
+    );
+
+    let promptCalls = 0;
+    const result = await installTemplates(dir, {
+      prompt: async () => {
+        promptCalls += 1;
+        return "overwrite-all";
+      },
+    });
+
+    // Prompted once; the second differing file used the sticky decision.
+    expect(promptCalls).toBe(1);
+    expect(result.overwritten).toContain(".opencode-dev-framework.yml");
+    expect(result.overwritten).toContain(".opencode/commands/df-verify.md");
+  });
 });
 
 describe("statusTemplates", () => {

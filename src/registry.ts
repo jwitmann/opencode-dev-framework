@@ -9,8 +9,8 @@ export interface HookState {
   run: RunCommand;
   tracker: ChangedFileTracker;
   constitution: string | null;
-  /** Number of times the completion gate has blocked this session. */
-  blockCount?: number;
+  /** Per-session count of completion-gate blocks (keyed by sessionID). */
+  blockCounts: Map<string, number>;
 }
 
 /**
@@ -42,14 +42,6 @@ export function updateHookState(directory: string, updates: Partial<HookState>):
   const next = { ...state, ...updates };
   hookRegistry.set(directory, next);
   return next;
-}
-
-export function getActiveDirectory(): string | null {
-  return activeDirectory;
-}
-
-export function setActiveDirectory(directory: string | null): void {
-  activeDirectory = directory;
 }
 
 /** Map session IDs to their project directory so hooks that only receive a

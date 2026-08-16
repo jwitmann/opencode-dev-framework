@@ -1,10 +1,12 @@
 /**
  * Completion gate: run typecheck / test / lint-changed commands when the
- * session goes idle, plus the changed-file tracking that feeds it.
+ * session tries to stop, plus the changed-file tracking that feeds it.
  *
- * Architectural note: OpenCode has no agentStop hook, so the gate runs on
- * `session.idle` — after the agent's turn has already finished. The gate is
- * therefore advisory: it reports failures loudly but cannot block completion.
+ * The gate runs from two call sites:
+ * - `experimental.session.stopping` (OpenCode PR #41811): on failure, a
+ *   synthetic user message keeps the session running, up to `gate.max_blocks`.
+ * - `session.idle` (fallback on older OpenCode): advisory logging only — by
+ *   then the agent's turn has already finished, so failures cannot block.
  */
 
 import { isAbsolute, relative } from "node:path";

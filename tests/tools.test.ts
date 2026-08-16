@@ -55,4 +55,33 @@ describe("dev_framework_set_profile tool", () => {
     const result = await setProfile?.execute({ profile: "invalid" }, { directory: dir } as never);
     expect(result).toContain("Invalid profile");
   });
+
+  it("preserves comments and other keys when editing the profile", async () => {
+    const { writeFile, readFile } = await import("node:fs/promises");
+    const configPath = join(dir, ".opencode-dev-framework.yml");
+    await writeFile(
+      configPath,
+      [
+        "# project quality config",
+        "profile: standard",
+        "",
+        "# never block lint",
+        "protect_mode: warn",
+        "",
+      ].join("\n"),
+      "utf8",
+    );
+    const hooks = buildHooks(makeCtx(dir), { profile: "standard" } as never, noopLog);
+    const setProfile = hooks.tool?.dev_framework_set_profile;
+
+    const result = await setProfile?.execute({ profile: "strict" }, { directory: dir } as never);
+    expect(result).toContain('profile set to "strict"');
+
+    const content = await readFile(configPath, "utf8");
+    expect(content).toContain("# project quality config");
+    expect(content).toContain("# never block lint");
+    expect(content).toContain("protect_mode: warn");
+    expect(content).toContain("profile: strict");
+    expect(content).not.toContain("profile: standard");
+  });
 });

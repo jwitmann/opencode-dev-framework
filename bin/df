@@ -44,7 +44,7 @@ async function main() {
     return;
   }
 
-  if (command === "version") {
+  if (command === "version" || command === "--version" || command === "-v") {
     console.log(await getVersion());
     return;
   }

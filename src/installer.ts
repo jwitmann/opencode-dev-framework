@@ -6,7 +6,7 @@ import { createInterface } from "node:readline";
 /** Directory containing the project templates shipped with the package. */
 export const TEMPLATES_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "templates");
 
-export type OverwriteDecision = "overwrite" | "skip";
+export type OverwriteDecision = "overwrite" | "skip" | "overwrite-all" | "skip-all";
 
 export type PromptFn = (relativePath: string) => Promise<OverwriteDecision>;
 
@@ -88,10 +88,10 @@ async function defaultPrompt(relativePath: string): Promise<OverwriteDecision> {
       return "skip";
     }
     if (normalized === "a" || normalized === "all") {
-      return "overwrite";
+      return "overwrite-all";
     }
     if (normalized === "n" || normalized === "none") {
-      return "skip";
+      return "skip-all";
     }
     return "skip";
   } finally {
@@ -110,6 +110,8 @@ export async function installTemplates(
   const result: InstallResult = { created: [], skipped: [], overwritten: [] };
   const files = await listTemplateFiles();
   const prompt = options.prompt ?? defaultPrompt;
+  /** Sticky decision set when the user answers "all" or "none". */
+  let stickyDecision: "overwrite" | "skip" | null = null;
 
   for (const relative of files) {
     const source = join(TEMPLATES_DIR, relative);
@@ -133,12 +135,22 @@ export async function installTemplates(
     }
 
     let decision: OverwriteDecision;
-    if (options.skipExisting) {
+    if (stickyDecision !== null) {
+      decision = stickyDecision;
+    } else if (options.skipExisting) {
       decision = "skip";
     } else if (options.overwriteExisting) {
       decision = "overwrite";
     } else {
       decision = await prompt(relative);
+    }
+
+    if (decision === "overwrite-all") {
+      stickyDecision = "overwrite";
+      decision = "overwrite";
+    } else if (decision === "skip-all") {
+      stickyDecision = "skip";
+      decision = "skip";
     }
 
     if (decision === "overwrite") {

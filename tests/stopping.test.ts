@@ -59,7 +59,7 @@ describe("experimental.session.stopping", () => {
     const output = makeOutput();
     await stopping?.({ sessionID: "s1" }, output);
     expect(output.context).toEqual([]);
-    expect(getHookState(dir)?.blockCount).toBe(0);
+    expect(getHookState(dir)?.blockCounts.get("s1")).toBeUndefined();
   });
 
   it("adds blocking context when the gate fails", async () => {
@@ -76,7 +76,42 @@ describe("experimental.session.stopping", () => {
     expect(output.context.length).toBe(1);
     expect(output.context[0]).toContain("completion gate blocked");
     expect(output.context[0]).toContain("block 1/3");
-    expect(getHookState(dir)?.blockCount).toBe(1);
+    expect(getHookState(dir)?.blockCounts.get("s1")).toBe(1);
+  });
+
+  it("tracks block counts per session, not per directory", async () => {
+    const config = resolve({
+      profile: "standard",
+      commands: { test: "false" },
+      gate: { run_typecheck: false, run_tests: true, skip_unchanged: false },
+    });
+    const hooks: HooksWithStopping = buildHooks(makeCtx(dir), config, noopLog, stubRun(1));
+    const stopping = hooks["experimental.session.stopping"];
+
+    await stopping?.({ sessionID: "s1" }, makeOutput());
+    await stopping?.({ sessionID: "s1" }, makeOutput());
+
+    const other = makeOutput();
+    await stopping?.({ sessionID: "s2" }, other);
+    expect(other.context.length).toBe(1);
+    expect(other.context[0]).toContain("block 1/3");
+    expect(getHookState(dir)?.blockCounts.get("s1")).toBe(2);
+    expect(getHookState(dir)?.blockCounts.get("s2")).toBe(1);
+  });
+
+  it("does not run the gate when the profile is off", async () => {
+    const config = resolve({
+      profile: "off",
+      commands: { test: "false" },
+      gate: { run_typecheck: false, run_tests: true, skip_unchanged: false },
+    });
+    const hooks: HooksWithStopping = buildHooks(makeCtx(dir), config, noopLog, stubRun(1));
+    const stopping = hooks["experimental.session.stopping"];
+
+    const output = makeOutput();
+    await stopping?.({ sessionID: "s1" }, output);
+    expect(output.context).toEqual([]);
+    expect(getHookState(dir)?.blockCounts.size).toBe(0);
   });
 
   it("stops blocking after gate.max_blocks", async () => {
@@ -99,7 +134,7 @@ describe("experimental.session.stopping", () => {
     const third = makeOutput();
     await stopping?.({ sessionID: "s1" }, third);
     expect(third.context).toEqual([]);
-    expect(getHookState(dir)?.blockCount).toBe(3);
+    expect(getHookState(dir)?.blockCounts.get("s1")).toBe(3);
   });
 
   it("uses the session-to-directory mapping set by system.transform", async () => {
