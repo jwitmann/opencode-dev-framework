@@ -103,7 +103,7 @@ export function buildHooks(
 
     "experimental.session.stopping": async (input, output) => {
       const state = getHookState(getDirectoryForSession(input.sessionID) ?? undefined);
-      if (!state || !state.config.gate) {
+      if (!state?.config.gate) {
         return;
       }
 

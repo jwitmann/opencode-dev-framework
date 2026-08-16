@@ -9,19 +9,24 @@ reimplemented as an OpenCode-native plugin.
 
 - **Constitution injection.** Adds a project constitution (quality bar, test
   discipline, focus rules) to the system prompt at session start. Ships with a
-  bundled default; point `constitution` at your own Markdown file to override.
+  bundled default split into numbered rule files; point `constitution` at your
+  own Markdown file to override.
 - **Guardrails.** Blocks or warns on edits to protected paths (`.env` files,
   `node_modules`, vendored code, your own globs) and on dangerous shell
   commands (`git push`, `rm -rf`, `git reset --hard`, ...).
 - **Per-edit lint.** Runs your configured linter on each file the agent edits
   and reports failures loudly.
 - **Completion gate.** When the session goes idle, runs typecheck, tests, and
-  (optionally) lint on changed files, then reports the result.
-- **`/df-verify` slash-command template.** The plugin ships a
-  `commands/df-verify.md` file that you can copy into your project's
-  `.opencode/commands/` directory. Once copied, typing `/df-verify` in a session
-  prompts the agent to re-run the verification suite on demand. (OpenCode does
-  not load slash commands from plugin packages automatically.)
+  (optionally) lint on changed files. In OpenCode versions with the
+  `experimental.session.stopping` hook, gate failures keep the session running
+  (up to `gate.max_blocks` times) so the agent must fix the failures. In older
+  versions the gate reports loudly via `session.idle`.
+- **Custom tools.** `dev_framework_init` scaffolds project-level agents,
+  skills, commands, and config; `dev_framework_set_profile` changes the profile
+  in-session without restarting.
+- **Slash-command templates.** `/df-verify` and `/df-profile` are installed
+  into `.opencode/commands/` by `df init` or the `dev_framework_init` tool.
+  (OpenCode does not load slash commands from plugin packages automatically.)
 
 ## Profiles
 
@@ -45,6 +50,16 @@ Then add it to your project's `opencode.json`:
   "plugin": ["opencode-dev-framework"]
 }
 ```
+
+Finally, scaffold the project-level files (agents, skills, commands, default
+config) into your repo:
+
+```bash
+df init
+```
+
+`df init` is interactive by default: it asks before overwriting existing files.
+Use `--skip-existing` or `--overwrite-existing` for non-interactive runs.
 
 ## Local development and testing
 
@@ -115,22 +130,18 @@ complete example.
 
 ## Slash command
 
-To add the `/df-verify` command to a project, copy the bundled template into
-`.opencode/commands/`:
-
-```bash
-cp /home/jerome/opencode-dev-framework/commands/df-verify.md .opencode/commands/df-verify.md
-```
-
-Then, inside an OpenCode session, type `/df-verify` to ask the agent to run
-the configured verification suite manually.
+The `/df-verify` and `/df-profile` commands are installed by `df init` (or the
+`dev_framework_init` tool) into `.opencode/commands/`. Inside an OpenCode
+session, type `/df-verify` to ask the agent to run the configured verification
+suite manually, or `/df-profile strict` to change the profile.
 
 ## Limitations
 
-- **The completion gate is advisory, not a hard block.** OpenCode has no
-  `agentStop` hook, so the gate runs on `session.idle` and reports failures
-  loudly (error-level log) but cannot physically prevent the agent from
-  stopping. This is an architectural limitation of the plugin API.
+- **The completion gate blocks only in newer OpenCode versions.** The
+  `experimental.session.stopping` hook (PR #41811) lets the plugin keep the
+  session running until checks pass. In older OpenCode versions the gate runs
+  on `session.idle` and reports failures loudly but cannot force the agent to
+  keep working.
 - **Guardrails run inside OpenCode.** The `tool.execute.before` hook runs
   after OpenCode's own permission system; it adds project rules on top, it
   does not replace OpenCode permissions.

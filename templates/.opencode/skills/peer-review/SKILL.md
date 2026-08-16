@@ -21,11 +21,13 @@ whenever the user asks for a review of the current changes.
 ## Steps
 
 1. **Scope the change.** Determine exactly what changed:
+
    ```bash
    git --no-pager diff --staged
    git --no-pager diff
    # if the tree is clean, review the branch: git --no-pager diff main...HEAD
    ```
+
    If there is nothing to review, say so and stop.
 
 2. **Run the specialists in parallel.** Delegate each as a subagent, giving

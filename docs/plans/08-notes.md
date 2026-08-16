@@ -101,6 +101,36 @@ Keep both. The custom tool lets the agent call verification explicitly; the slas
 - **Configured `constitution` path falls back to the bundled constitution with a warning.** A typo in the config file should never silently disable the constitution; the plugin logs a warning via `client.app.log` and injects the bundled default instead.
 - **Injection is idempotent.** `injectConstitution` skips appending when the text is already present, so repeated transforms do not grow the system prompt.
 
+## Full dev-framework parity (v0.1.7)
+
+- **Constitution split into numbered rule files.** `rules/` now contains
+  `00-activation.md`, `10-quality-bar.md`, `20-match-existing-patterns.md`,
+  `30-testing-discipline.md`, and `40-delegation.md`, ported from the original
+  dev-framework and adapted for OpenCode. `loadConstitution` concatenates all
+  `.md` files in sorted order. The `constitution` config key still overrides
+  the bundled set; `rules` appends extra files.
+- **Project templates.** `templates/` contains the default config,
+  `.opencode/commands/df-verify.md`, `.opencode/commands/df-profile.md`, three
+  specialist agents, and three skills. These are copied into a project by the
+  CLI or the `dev_framework_init` tool.
+- **`bin/df` CLI.** `df init [dir]` scaffolds templates; interactive by
+  default with `[o]verwrite / [s]kip / [a]ll / [n]one` prompts. Flags
+  `--skip-existing` and `--overwrite-existing` make it non-interactive. `df
+  status [dir]` reports missing/present/different files.
+- **Custom tools.** `dev_framework_init` and `dev_framework_set_profile` are
+  registered as OpenCode plugin tools. `dev_framework_set_profile` edits
+  `.opencode-dev-framework.yml`, clears the config cache, reloads config and
+  constitution, and updates the in-memory hook registry so the change takes
+  effect immediately without restarting OpenCode.
+- **`experimental.session.stopping` gate.** The hook from OpenCode PR #41811
+  is registered with a local type assertion (`HooksWithStopping`). On gate
+  failure it pushes a concise synthetic user message and continues the loop,
+  up to `gate.max_blocks` times per session. After the max it stands down with
+  a warning. The `session.idle` hook remains as a fallback for older OpenCode.
+- **Session-to-directory mapping.** `experimental.chat.system.transform`
+  records `sessionID → directory` so the `session.stopping` hook (which only
+  receives a session ID) can look up the right hook state.
+
 ## Phase 10 release decisions
 
 - **`package-lock.json` is now committed.** Development gitignored it (AGENTS.md: no lockfiles until intentionally releasing). With 0.1.0 release prep and the first real CI run, the lockfile is tracked so `actions/setup-node`'s `cache: npm` and reproducible `npm ci` installs work.

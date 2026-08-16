@@ -54,7 +54,7 @@ already an established way to do this, and this change ignores it."
 
 Report only real drift. For each finding:
 
-```
+```text
 ## Drift: [short title]
 **Where:** path/to/file.ext:line
 **Established pattern:** what the codebase already does, with a concrete example

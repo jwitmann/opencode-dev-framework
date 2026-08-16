@@ -49,7 +49,7 @@ running the project's real commands and reading the output.
 
 ## Output
 
-```
+```text
 ## Verdict: GROUNDED | NOT GROUNDED
 **Commands run:** the exact commands and their pass/fail result
 **Test coverage of the change:** does a test fail without the change? (yes/no/uncertain,

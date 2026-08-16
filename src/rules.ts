@@ -9,7 +9,11 @@ import type { ResolvedConfig } from "./types.js";
  * runtime; during tests (ts source) it resolves the same way relative to
  * `src/`.
  */
-export const BUNDLED_CONSTITUTION_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "rules");
+export const BUNDLED_CONSTITUTION_DIR = join(
+  dirname(fileURLToPath(import.meta.url)),
+  "..",
+  "rules",
+);
 
 /**
  * Kept for backward compatibility with tests and docs. The bundled

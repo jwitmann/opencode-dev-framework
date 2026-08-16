@@ -41,10 +41,7 @@ describe("dev_framework_set_profile tool", () => {
     const setProfile = hooks.tool?.dev_framework_set_profile;
     expect(setProfile).toBeDefined();
 
-    const result = await setProfile?.execute(
-      { profile: "strict" },
-      { directory: dir } as never,
-    );
+    const result = await setProfile?.execute({ profile: "strict" }, { directory: dir } as never);
     expect(typeof result).toBe("string");
     expect(result).toContain('profile set to "strict"');
 
@@ -55,10 +52,7 @@ describe("dev_framework_set_profile tool", () => {
   it("rejects invalid profiles", async () => {
     const hooks = buildHooks(makeCtx(dir), { profile: "standard" } as never, noopLog);
     const setProfile = hooks.tool?.dev_framework_set_profile;
-    const result = await setProfile?.execute(
-      { profile: "invalid" },
-      { directory: dir } as never,
-    );
+    const result = await setProfile?.execute({ profile: "invalid" }, { directory: dir } as never);
     expect(result).toContain("Invalid profile");
   });
 });

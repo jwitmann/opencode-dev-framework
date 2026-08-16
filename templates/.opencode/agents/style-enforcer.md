@@ -53,7 +53,7 @@ Given a set of changed files, check them against — in priority order:
 Report only genuine, actionable style violations against a real rule or a clear
 local convention. For each:
 
-```
+```text
 ## Style: [short title]
 **Where:** path/to/file.ext:line
 **Rule/convention:** the documented rule or the sibling-code convention (cite where)

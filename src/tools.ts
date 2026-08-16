@@ -26,14 +26,22 @@ async function setProfileInFile(configPath: string, profile: Profile): Promise<v
   await writeFile(configPath, stringifyYaml(raw), "utf8");
 }
 
-export function buildTools(ctx: { directory: string }): NonNullable<import("@opencode-ai/plugin").Hooks["tool"]> {
+export function buildTools(_ctx: {
+  directory: string;
+}): NonNullable<import("@opencode-ai/plugin").Hooks["tool"]> {
   return {
     dev_framework_init: tool({
       description:
         "Scaffold opencode-dev-framework project files (agents, skills, commands, default config) into the current project. Missing files are created; existing files are skipped unless overwrite is true.",
       args: {
-        directory: tool.schema.string().optional().describe("Target project directory (defaults to current project)"),
-        overwrite: tool.schema.boolean().optional().describe("Overwrite existing files that differ from templates"),
+        directory: tool.schema
+          .string()
+          .optional()
+          .describe("Target project directory (defaults to current project)"),
+        overwrite: tool.schema
+          .boolean()
+          .optional()
+          .describe("Overwrite existing files that differ from templates"),
       },
       async execute(args, context) {
         const targetDir = args.directory ?? context.directory;
@@ -63,7 +71,10 @@ export function buildTools(ctx: { directory: string }): NonNullable<import("@ope
         "Change the opencode-dev-framework profile (off, advisory, standard, strict) for the current project and apply it immediately without restarting OpenCode.",
       args: {
         profile: tool.schema.string().describe("New profile: off, advisory, standard, or strict"),
-        directory: tool.schema.string().optional().describe("Project directory (defaults to current project)"),
+        directory: tool.schema
+          .string()
+          .optional()
+          .describe("Project directory (defaults to current project)"),
       },
       async execute(args, context) {
         const targetDir = args.directory ?? context.directory;

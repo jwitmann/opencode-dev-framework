@@ -5,7 +5,12 @@ import type { Hooks, PluginInput } from "@opencode-ai/plugin";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildHooks } from "../src/index";
 import type { LogFn } from "../src/logger";
-import { BUNDLED_CONSTITUTION_DIR, BUNDLED_CONSTITUTION_PATH, injectConstitution, loadConstitution } from "../src/rules";
+import {
+  BUNDLED_CONSTITUTION_DIR,
+  BUNDLED_CONSTITUTION_PATH,
+  injectConstitution,
+  loadConstitution,
+} from "../src/rules";
 import type { Config, ResolvedConfig } from "../src/types";
 import { resolveConfig } from "../src/config";
 

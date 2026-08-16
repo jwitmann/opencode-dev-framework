@@ -25,12 +25,14 @@ file, a config key, an error/logging pattern, or a third-party dependency.
    "input validation").
 
 2. **Search for prior art.** Look for existing solutions before writing:
+
    ```bash
    # by likely name/symbol
    grep -rin "parse.*duration\|duration.*parse" --include=*.<ext> .
    # by the concern's call sites
    grep -rin "retry\|backoff" --include=*.<ext> .
    ```
+
    Also read the **nearest sibling files** to the code you're changing — they
    define the local convention.
 
