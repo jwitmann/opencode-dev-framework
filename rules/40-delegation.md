@@ -46,8 +46,8 @@ checks yourself with the skills in this section.
 ## Skills
 
 For explicit, repeatable workflows you can invoke the bundled skills:
-**`peer-review`**, **`ground-in-tests`**, and **`match-patterns`**. They codify the
-steps above so you run them consistently.
+**`peer-review`**, **`code-review`**, **`ground-in-tests`**, and
+**`match-patterns`**. They codify the steps above so you run them consistently.
 
 ## Acting on feedback
 

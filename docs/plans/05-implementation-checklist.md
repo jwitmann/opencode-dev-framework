@@ -219,8 +219,8 @@ Use this as the source of truth during implementation. Check items off as they a
   them by default or appends when given `mode: append`.
 - [x] 11.3 Project templates in `templates/` (default config, `/df-verify` +
   `/df-profile` commands, agents: test-grounder / pattern-guardian /
-  style-enforcer / code-reviewer, skills: peer-review / ground-in-tests /
-  match-patterns).
+  style-enforcer / code-reviewer, skills: peer-review / code-review /
+  ground-in-tests / match-patterns).
 - [x] 11.4 `bin/df` CLI: `init` (interactive; `--skip-existing` /
   `--overwrite-existing`), `status`, `version`.
 - [x] 11.5 Custom tools: `dev_framework_init`, `dev_framework_set_profile`

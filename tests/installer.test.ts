@@ -27,6 +27,7 @@ describe("listTemplateFiles", () => {
     expect(files).toContain(".opencode/agents/style-enforcer.md");
     expect(files).toContain(".opencode/agents/code-reviewer.md");
     expect(files).toContain(".opencode/skills/peer-review/SKILL.md");
+    expect(files).toContain(".opencode/skills/code-review/SKILL.md");
   });
 });
 
