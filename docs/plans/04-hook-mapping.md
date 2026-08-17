@@ -34,8 +34,17 @@ project directory.
 
 **Purpose:** OpenCode's own permission model is the primary defense. The plugin
 reads the host's effective `permission` config at load time and respects host
- denies: when OpenCode already denies a tool/target, the plugin skips its own
-block to avoid redundant/conflicting denials.
+denies: when OpenCode already denies a tool, the plugin skips its own block to
+avoid redundant/conflicting denials.
+
+**Shape:** OpenCode's `permission` is a per-agent, tool-to-mode object (e.g.
+`{ edit: "deny", bash: "deny", read: "allow", task: { ... } }`), **not an
+array**. The plugin maps its own tool names onto OpenCode's keys — `edit`,
+`write`, `patch` map to `edit`, and `bash`, `shell` map to `bash` — and stands
+down only when that key's mode is the literal `"deny"`. OpenCode's model cannot
+express path-scoped rules (e.g. "deny writes to `.env`"), so the plugin keeps
+guarding those itself. Object-form `bash` maps and `ask`/`allow` modes are not
+treated as denials.
 
 **How:** The plugin does not rewrite `opencode.json` on disk and does not
 contribute permissions at runtime. It applies guardrails in `tool.execute.before`
@@ -57,8 +66,9 @@ and uses `command-utils.ts` helpers for command parsing.
 - `standard`/`strict` profile: throw an error with a clear message to deny the tool call.
 - If hook state cannot be resolved for a session, the hook fails closed (denies)
   rather than silently allowing the tool call.
-- When the host permission model already denies the tool/target, the plugin
-  skips its own block to avoid redundant/conflicting denials.
+- When the host permission model already denies the tool (OpenCode `permission`
+   mode `"deny"` for `edit`/`bash`), the plugin skips its own block to avoid
+   redundant/conflicting denials.
 
 ### `file.edited`
 

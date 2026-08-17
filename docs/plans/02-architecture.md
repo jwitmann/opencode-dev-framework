@@ -108,8 +108,8 @@ The plugin applies guardrails directly in `tool.execute.before`:
    globs and the dangerous-command list.
 2. The `config` hook captures the host's permission snapshot from OpenCode's
    effective config and stores it in hook state. When the host already denies a
-   tool/target, the plugin skips its own block to avoid redundant or conflicting
-   denials.
+   tool (OpenCode `permission` mode `"deny"`), the plugin skips its own block to
+   avoid redundant or conflicting denials.
 3. The hook throws a clear `[opencode-dev-framework] ...` error when the plugin
    denies a call.
 
