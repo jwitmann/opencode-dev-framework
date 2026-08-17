@@ -163,3 +163,57 @@ describe("helpers", () => {
     expect(result.decision).toBe("allow");
   });
 });
+
+describe("checkToolCall: hostPermissions tolerance", () => {
+  it("does not throw when hostPermissions is an OpenCode-style object", () => {
+    const config = resolve({ profile: "standard", protect: [".env*"] });
+    // OpenCode passes `permission` as a tool-to-mode object, not HostPermission[].
+    const openCodePermission = { bash: "deny", edit: "deny", read: "allow", task: {} };
+    expect(() =>
+      checkToolCall(
+        config,
+        "write",
+        { filePath: "/tmp/somefile.txt" },
+        "/project",
+        openCodePermission as unknown as HostPermission[],
+      ),
+    ).not.toThrow();
+  });
+
+  it("does not throw (and allows) when hostPermissions is an empty object", () => {
+    const config = resolve({ profile: "standard", protect: [".env*"] });
+    const result = checkToolCall(
+      config,
+      "write",
+      { filePath: "/tmp/somefile.txt" },
+      "/project",
+      {} as unknown as HostPermission[],
+    );
+    expect(result.decision).toBe("allow");
+  });
+
+  it("does not throw when hostPermissions is an unexpected (non-array) value", () => {
+    const config = resolve({ profile: "standard", protect: [".env*"] });
+    expect(() =>
+      checkToolCall(
+        config,
+        "bash",
+        { command: "ls" },
+        "/project",
+        "deny" as unknown as HostPermission[],
+      ),
+    ).not.toThrow();
+  });
+
+  it("still guards protected paths even when hostPermissions is a non-array", () => {
+    const config = resolve({ profile: "standard", protect: [".env*"] });
+    const result = checkToolCall(
+      config,
+      "write",
+      { filePath: ".env" },
+      "/project",
+      {} as unknown as HostPermission[],
+    );
+    expect(result.decision).toBe("deny");
+  });
+});

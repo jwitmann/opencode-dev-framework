@@ -134,7 +134,12 @@ export function buildHooks(
 
       const state = getHookState(ctx.directory);
       if (state) {
-        state.hostPermissions = typedConfig.permission ?? [];
+        // OpenCode's native `permission` is a tool-to-mode object, not our
+        // `HostPermission[]` shape. Only adopt it when it is actually an array;
+        // otherwise treat the host model as "nothing to consult" so the
+        // guardrail falls back to its own evaluation (and never crashes on a
+        // non-iterable value). See hostDenies in protect.ts.
+        state.hostPermissions = Array.isArray(typedConfig.permission) ? typedConfig.permission : [];
       }
 
       // `df-profile`, `df-verify`, `df-status`, and `df-help` are all registered
