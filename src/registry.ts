@@ -3,11 +3,16 @@ import type { RunCommand } from "./host.js";
 import type { LogFn } from "./logger.js";
 import type { ResolvedConfig } from "./types.js";
 
-export interface HostPermission {
-  permission?: string;
-  pattern?: string;
-  action?: "allow" | "deny" | "ask";
-}
+/**
+ * OpenCode's native `permission` config is a per-agent, tool-to-mode object
+ * (e.g. `{ edit: "deny", bash: "deny", read: "allow", task: {...} }`), not an
+ * array. The plugin consults it only to avoid double-blocking: when OpenCode
+ * already globally denies a tool, the guardrail stands down and lets OpenCode
+ * enforce the denial. Path-scoped rules (e.g. "deny writes to .env") are not
+ * expressible in OpenCode's permission model, so the plugin keeps guarding
+ * those itself.
+ */
+export type OpenCodePermission = Record<string, unknown>;
 
 export interface HookState {
   /** Project directory this state belongs to. Stored here (rather than
@@ -23,7 +28,7 @@ export interface HookState {
   /** Cached result of checking whether `pre-commit` is available. */
   precommitAvailable?: boolean;
   /** Snapshot of host permissions from OpenCode's effective config. */
-  hostPermissions?: HostPermission[];
+  hostPermissions?: OpenCodePermission;
   /** Show a non-chat TUI toast (used for slash-command results). */
   showToast?: (message: string, variant?: "info" | "success" | "warning" | "error") => void;
   /** mtime (ms) of the config file at last load; used to detect out-of-process

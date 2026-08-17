@@ -137,9 +137,10 @@ describe("helpers", () => {
     expect(matchDangerousCommand("git status")).toBeUndefined();
   });
 
-  it("does not block a path that the host permission model already denies", () => {
+  it("stands down when the host already denies the tool globally (edit)", () => {
     const config = resolve({ profile: "standard", protect: PROTECT });
-    const hostPermissions = [{ permission: "edit", pattern: "go.sum", action: "deny" }];
+    // OpenCode denies all edits; the plugin should not duplicate the block.
+    const hostPermissions = { edit: "deny" };
     const result = checkToolCall(
       config,
       "edit",
@@ -150,9 +151,9 @@ describe("helpers", () => {
     expect(result.decision).toBe("allow");
   });
 
-  it("does not block a shell command that the host permission model already denies", () => {
+  it("stands down when the host already denies the tool globally (bash)", () => {
     const config = resolve({ profile: "standard" });
-    const hostPermissions = [{ permission: "bash", action: "deny" }];
+    const hostPermissions = { bash: "deny" };
     const result = checkToolCall(
       config,
       "bash",
@@ -162,12 +163,25 @@ describe("helpers", () => {
     );
     expect(result.decision).toBe("allow");
   });
+
+  it("still guards protected paths when the host allows the tool", () => {
+    const config = resolve({ profile: "standard", protect: PROTECT });
+    const hostPermissions = { edit: "allow" };
+    const result = checkToolCall(
+      config,
+      "edit",
+      { filePath: "go.sum" },
+      undefined,
+      hostPermissions,
+    );
+    expect(result.decision).toBe("deny");
+  });
 });
 
 describe("checkToolCall: hostPermissions tolerance", () => {
   it("does not throw when hostPermissions is an OpenCode-style object", () => {
     const config = resolve({ profile: "standard", protect: [".env*"] });
-    // OpenCode passes `permission` as a tool-to-mode object, not HostPermission[].
+    // OpenCode passes `permission` as a tool-to-mode object, not an array.
     const openCodePermission = { bash: "deny", edit: "deny", read: "allow", task: {} };
     expect(() =>
       checkToolCall(
@@ -175,24 +189,30 @@ describe("checkToolCall: hostPermissions tolerance", () => {
         "write",
         { filePath: "/tmp/somefile.txt" },
         "/project",
-        openCodePermission as unknown as HostPermission[],
+        openCodePermission,
       ),
     ).not.toThrow();
   });
 
-  it("does not throw (and allows) when hostPermissions is an empty object", () => {
+  it("allows a non-protected write when hostPermissions is an empty object", () => {
     const config = resolve({ profile: "standard", protect: [".env*"] });
     const result = checkToolCall(
       config,
       "write",
       { filePath: "/tmp/somefile.txt" },
       "/project",
-      {} as unknown as HostPermission[],
+      {},
     );
     expect(result.decision).toBe("allow");
   });
 
-  it("does not throw when hostPermissions is an unexpected (non-array) value", () => {
+  it("still guards protected paths when hostPermissions is an empty object", () => {
+    const config = resolve({ profile: "standard", protect: [".env*"] });
+    const result = checkToolCall(config, "write", { filePath: ".env" }, "/project", {});
+    expect(result.decision).toBe("deny");
+  });
+
+  it("does not throw when hostPermissions is an unexpected (non-object) value", () => {
     const config = resolve({ profile: "standard", protect: [".env*"] });
     expect(() =>
       checkToolCall(
@@ -200,20 +220,35 @@ describe("checkToolCall: hostPermissions tolerance", () => {
         "bash",
         { command: "ls" },
         "/project",
-        "deny" as unknown as HostPermission[],
+        "deny" as unknown as Record<string, unknown>,
       ),
+    ).not.toThrow();
+    expect(() =>
+      checkToolCall(config, "bash", { command: "ls" }, "/project", ["deny"] as unknown as Record<
+        string,
+        unknown
+      >),
     ).not.toThrow();
   });
 
-  it("still guards protected paths even when hostPermissions is a non-array", () => {
-    const config = resolve({ profile: "standard", protect: [".env*"] });
+  it("keeps guarding when bash permission is an object map (ambiguous)", () => {
+    const config = resolve({ profile: "standard" });
+    const hostPermissions = { bash: { "*": "deny" } };
     const result = checkToolCall(
       config,
-      "write",
-      { filePath: ".env" },
+      "bash",
+      { command: "git push" },
       "/project",
-      {} as unknown as HostPermission[],
+      hostPermissions,
     );
+    expect(result.decision).toBe("deny");
+  });
+
+  it("does not stand down for ask/allow modes", () => {
+    const config = resolve({ profile: "standard" });
+    const result = checkToolCall(config, "bash", { command: "git push" }, "/project", {
+      bash: "ask",
+    });
     expect(result.decision).toBe("deny");
   });
 });

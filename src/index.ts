@@ -33,7 +33,7 @@ import {
   setHookState,
   setSessionDirectory,
   type HookState,
-  type HostPermission,
+  type OpenCodePermission,
 } from "./registry.js";
 import { injectConstitution, loadConstitution } from "./rules.js";
 import { buildTools } from "./tools.js";
@@ -128,18 +128,20 @@ export function buildHooks(
 
     config: async (opencodeConfig) => {
       const typedConfig = opencodeConfig as {
-        permission?: HostPermission[];
+        permission?: OpenCodePermission;
         command?: Record<string, { template?: string; description?: string }>;
       };
 
       const state = getHookState(ctx.directory);
       if (state) {
-        // OpenCode's native `permission` is a tool-to-mode object, not our
-        // `HostPermission[]` shape. Only adopt it when it is actually an array;
-        // otherwise treat the host model as "nothing to consult" so the
-        // guardrail falls back to its own evaluation (and never crashes on a
-        // non-iterable value). See hostDenies in protect.ts.
-        state.hostPermissions = Array.isArray(typedConfig.permission) ? typedConfig.permission : [];
+        // OpenCode's native `permission` is a per-agent tool-to-mode object
+        // (e.g. `{ edit: "deny", bash: "deny" }`), not an array. Adopt it when
+        // it is a plain object; anything else (array, string, undefined) is
+        // ignored so the guardrail falls back to its own evaluation. See
+        // hostDenies in protect.ts.
+        const perm = typedConfig.permission;
+        state.hostPermissions =
+          perm !== undefined && typeof perm === "object" && !Array.isArray(perm) ? perm : undefined;
       }
 
       // `df-profile`, `df-verify`, `df-status`, and `df-help` are all registered
