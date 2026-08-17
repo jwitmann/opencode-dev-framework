@@ -123,14 +123,21 @@ function permissionMatchesTool(permission: string, tool: string): boolean {
   return false;
 }
 
-/** Check whether the host OpenCode config already denies this tool/target. */
+/**
+ * Check whether the host OpenCode config already denies this tool/target.
+ *
+ * OpenCode's native `permission` config is a tool-to-mode object (e.g.
+ * `{ bash: "deny", edit: "deny" }`), not an array of `HostPermission`. Guard
+ * against any non-array input so a host config we cannot interpret never
+ * crashes the guardrail (it just means we fall back to our own evaluation).
+ */
 function hostDenies(
   tool: string,
   target: string,
   directory: string | undefined,
   hostPermissions: HostPermission[] | undefined,
 ): boolean {
-  if (!hostPermissions || hostPermissions.length === 0) {
+  if (!Array.isArray(hostPermissions) || hostPermissions.length === 0) {
     return false;
   }
   for (const perm of hostPermissions) {
