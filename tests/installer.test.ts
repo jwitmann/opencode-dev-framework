@@ -25,6 +25,7 @@ describe("listTemplateFiles", () => {
     expect(files).not.toContain(".opencode-dev-framework.yml");
     expect(files).toContain(".opencode/agents/test-grounder.md");
     expect(files).toContain(".opencode/agents/style-enforcer.md");
+    expect(files).toContain(".opencode/agents/code-reviewer.md");
     expect(files).toContain(".opencode/skills/peer-review/SKILL.md");
   });
 });
