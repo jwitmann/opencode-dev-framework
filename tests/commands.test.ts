@@ -46,13 +46,18 @@ describe("config hook", () => {
     expect(config.command?.["df-help"]).toBeUndefined();
   });
 
-  it("captures host permissions into hook state", async () => {
+  it("captures host permissions (OpenCode object shape) into hook state", async () => {
+    const hooks = buildHooks(makeCtx(dir), makeConfig(), noopLog);
+    const config = { permission: { edit: "deny", bash: "allow" } };
+    await hooks.config?.(config as never);
+    expect(getHookState(dir)?.hostPermissions).toEqual({ edit: "deny", bash: "allow" });
+  });
+
+  it("ignores non-object host permissions", async () => {
     const hooks = buildHooks(makeCtx(dir), makeConfig(), noopLog);
     const config = { permission: [{ permission: "edit", pattern: "**/*.md", action: "deny" }] };
     await hooks.config?.(config as never);
-    expect(getHookState(dir)?.hostPermissions).toEqual([
-      { permission: "edit", pattern: "**/*.md", action: "deny" },
-    ]);
+    expect(getHookState(dir)?.hostPermissions).toBeUndefined();
   });
 });
 

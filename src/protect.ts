@@ -6,7 +6,7 @@
 
 import { basename, isAbsolute, relative } from "node:path";
 import picomatch from "picomatch";
-import type { HostPermission } from "./registry.js";
+import type { OpenCodePermission } from "./registry.js";
 import type { ResolvedConfig } from "./types.js";
 
 export type GuardDecision = "allow" | "warn" | "deny";
@@ -110,57 +110,37 @@ export function matchDangerousCommand(command: string): DangerousCommand | undef
   return DANGEROUS_COMMANDS.find(({ pattern }) => pattern.test(command));
 }
 
-function permissionMatchesTool(permission: string, tool: string): boolean {
-  if (permission === "*" || permission === tool) {
-    return true;
-  }
-  if (permission === "edit" && FILE_TOOLS.has(tool)) {
-    return true;
-  }
-  if (permission === "bash" && SHELL_TOOLS.has(tool)) {
-    return true;
-  }
-  return false;
-}
-
 /**
- * Check whether the host OpenCode config already denies this tool/target.
+ * Check whether the host OpenCode config already denies this tool.
  *
  * OpenCode's native `permission` config is a tool-to-mode object (e.g.
- * `{ bash: "deny", edit: "deny" }`), not an array of `HostPermission`. Guard
- * against any non-array input so a host config we cannot interpret never
- * crashes the guardrail (it just means we fall back to our own evaluation).
+ * `{ edit: "deny", bash: "deny" }`). The plugin consults it only to avoid
+ * double-blocking: if OpenCode already globally denies the tool a call
+ * targets, the plugin stands down and lets OpenCode enforce the denial itself.
+ *
+ * The mapping from this plugin's tool names to OpenCode's permission keys is:
+ * - file tools (edit/write/patch) -> `edit`
+ * - shell tools (bash/shell) -> `bash`
+ *
+ * Only a literal `"deny"` mode stands the plugin down. OpenCode's `bash` may
+ * instead be an object map (per-command), whose keys are ambiguous, so we
+ * conservatively keep guarding there — at worst redundant noise, never a
+ * crash or a missed block. Any non-object input (array, string, undefined) is
+ * ignored, falling back to the plugin's own evaluation.
  */
-function hostDenies(
-  tool: string,
-  target: string,
-  directory: string | undefined,
-  hostPermissions: HostPermission[] | undefined,
-): boolean {
-  if (!Array.isArray(hostPermissions) || hostPermissions.length === 0) {
+function hostDenies(tool: string, hostPermissions: OpenCodePermission | undefined): boolean {
+  if (
+    hostPermissions === undefined ||
+    typeof hostPermissions !== "object" ||
+    Array.isArray(hostPermissions)
+  ) {
     return false;
   }
-  for (const perm of hostPermissions) {
-    if (perm.action !== "deny") {
-      continue;
-    }
-    if (perm.permission && !permissionMatchesTool(perm.permission, tool)) {
-      continue;
-    }
-    if (perm.pattern) {
-      const matcher = picomatch(perm.pattern, { dot: true });
-      let candidate = target;
-      if (directory !== undefined && isAbsolute(target)) {
-        candidate = relative(directory, target);
-      }
-      candidate = candidate.replace(/^\.\//, "");
-      if (!matcher(candidate) && !matcher(basename(candidate))) {
-        continue;
-      }
-    }
-    return true;
+  const key = FILE_TOOLS.has(tool) ? "edit" : SHELL_TOOLS.has(tool) ? "bash" : undefined;
+  if (key === undefined) {
+    return false;
   }
-  return false;
+  return hostPermissions[key] === "deny";
 }
 
 function enforce(config: ResolvedConfig, reason: string, matchedPattern: string): GuardResult {
@@ -182,7 +162,7 @@ export function checkToolCall(
   tool: string,
   args: unknown,
   directory?: string,
-  hostPermissions?: HostPermission[],
+  hostPermissions?: OpenCodePermission,
 ): GuardResult {
   if (config.profile === "off" || config.protect_off) {
     return { decision: "allow" };
@@ -193,9 +173,9 @@ export function checkToolCall(
     if (filePath === undefined) {
       return { decision: "allow" };
     }
-    // If the host permission model already denies this path, do not duplicate
+    // If the host permission model already denies this tool, do not duplicate
     // the block here.
-    if (hostDenies(tool, filePath, directory, hostPermissions)) {
+    if (hostDenies(tool, hostPermissions)) {
       return { decision: "allow" };
     }
     const pattern = matchProtectedPath(config, filePath, directory);
@@ -214,7 +194,7 @@ export function checkToolCall(
     if (command === undefined) {
       return { decision: "allow" };
     }
-    if (hostDenies(tool, command, directory, hostPermissions)) {
+    if (hostDenies(tool, hostPermissions)) {
       return { decision: "allow" };
     }
     const dangerous = matchDangerousCommand(command);
