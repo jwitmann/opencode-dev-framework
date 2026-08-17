@@ -20,6 +20,10 @@ a description and ask them to report findings; do not ask them to edit product c
 - **`test-grounder`** — audits whether your claims are backed by evidence: is there a
   test that fails without the change? do the cited commands actually pass? did you
   verify the edge cases? Use it before declaring a task done.
+- **`code-reviewer`** — checks changed code for correctness defects: logic errors,
+  unsafe edge cases, security issues, and concurrency/resource leaks. Use it after
+  a batch of edits, alongside `style-enforcer` and `pattern-guardian`, before the
+  completion gate. (Investigation-only, like the others.)
 
 You may also ask the built-in review or planning agents for a general high-signal
 second opinion — the best moment is after planning, before implementing, and again
