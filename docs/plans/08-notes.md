@@ -145,9 +145,16 @@ Keep both. The custom tool lets the agent call verification explicitly; the slas
 - **`injectConstitution` appends to the last system entry** instead of adding a
   new array element, keeping the system prompt compact.
 - **Host permissions are respected.** The `config` hook captures
-  `opencodeConfig.permission` and stores it in hook state. Guardrails skip their
-  own block when the host permission model already denies the same tool/target,
-  avoiding redundant/conflicting blocks.
+   `opencodeConfig.permission` and stores it in hook state. Guardrails skip their
+   own block when the host permission model already denies the tool (OpenCode
+   `permission` mode `"deny"`), avoiding redundant/conflicting blocks.
+- **Host-permission crash fixed (root cause of "{} is not iterable").** OpenCode's
+   `permission` is a tool-to-mode object, not the `HostPermission[]` shape the
+   guardrail originally assumed. The old code assigned it verbatim and iterated
+   it with `for...of`, throwing `{} is not iterable` on every `write`/`edit`/`bash`
+   call for any non-`off` profile. Fixed by consuming the real shape in
+   `protect.ts` `hostDenies` (map tool names to `edit`/`bash`; stand down only on
+   `"deny"`). Regression tests added in `tests/protect.test.ts`.
 - **`/df-help` and unknown `/df-*` handling added.** `/df-help` lists the three
   supported commands; unrecognized `/df-*` commands return a hint.
 - **Config load errors are surfaced.** If `.opencode-dev-framework.yml` is
