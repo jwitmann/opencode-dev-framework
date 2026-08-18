@@ -431,7 +431,7 @@ Keep both. The custom tool lets the agent call verification explicitly; the slas
   (`~/.cache/opencode/packages/opencode-dev-framework*`), restart OpenCode, and
   test `/df-status` (modal) and bare `/df-profile` (picker).
 
-## v0.1.27 release decisions (seamless off → standard transition)
+## v0.1.28 release decisions (seamless off → standard transition)
 
 - **Root cause of `state.log is not a function` on a runtime profile switch.**
   Before this change, `devFramework` early-returned `{}` (no hooks) for
