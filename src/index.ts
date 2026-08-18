@@ -23,7 +23,7 @@ import {
 } from "./gate.js";
 import { runCommand, type RunCommand } from "./host.js";
 import { detectPreCommitAvailability, isLintFailure, lintFile, summarizeLint } from "./lint.js";
-import { createLogger, type LogFn } from "./logger.js";
+import { createLogger, type LogFn, type LogLevel } from "./logger.js";
 import { checkToolCall } from "./protect.js";
 import {
   clearSessionDirectory,
@@ -50,6 +50,25 @@ export interface HooksWithStopping extends Hooks {
     input: { sessionID: string },
     output: { context: string[] },
   ) => Promise<void>;
+}
+
+/**
+ * Module-level fallback logger, captured at plugin init. `safeLog` uses it when
+ * a hook's `HookState.log` is missing or was stripped, so a logging failure can
+ * never crash a hook. The original `state.log is not a function` error (seen when
+ * switching `off` -> `standard` at runtime) happened because a hook fired against
+ * a `HookState` whose `log` was never populated.
+ */
+let fallbackLog: LogFn = async () => {};
+
+function safeLog(
+  state: HookState,
+  level: LogLevel,
+  message: string,
+  extra?: Record<string, unknown>,
+): Promise<void> {
+  const fn = typeof state.log === "function" ? state.log : fallbackLog;
+  return fn(level, message, extra);
 }
 
 /**
@@ -160,9 +179,12 @@ export function buildHooks(
       if (input.sessionID) {
         setSessionDirectory(input.sessionID, state.directory);
       }
+      if (state.config.profile === "off") {
+        return;
+      }
       const next = injectConstitution(output.system, state.constitution);
       if (next !== output.system) {
-        await state.log("info", "constitution injected into system prompt");
+        await safeLog(state, "info", "constitution injected into system prompt");
         output.system = next;
       }
     },
@@ -175,6 +197,9 @@ export function buildHooks(
         );
       }
       await reloadConfigIfChanged(state);
+      if (state.config.profile === "off") {
+        return;
+      }
       const result = checkToolCall(
         state.config,
         input.tool,
@@ -192,10 +217,10 @@ export function buildHooks(
         pattern: result.matchedPattern,
       };
       if (result.decision === "warn") {
-        await state.log("warn", message, extra);
+        await safeLog(state, "warn", message, extra);
         return;
       }
-      await state.log("error", message, extra);
+      await safeLog(state, "error", message, extra);
       throw new Error(`[opencode-dev-framework] ${message}`);
     },
 
@@ -225,7 +250,8 @@ export function buildHooks(
         // Standing down: clear the tracker so the session.idle fallback does
         // not re-run the same failing gate commands a second time.
         state.tracker.clearChangedFiles();
-        await state.log(
+        await safeLog(
+          state,
           "warn",
           `completion gate has blocked ${maxBlocks} times; standing down but checks are still failing`,
           { failedSteps: report.failedSteps.map((step) => step.name) },
@@ -234,7 +260,7 @@ export function buildHooks(
       }
 
       const summary = summarizeGate(report);
-      await state.log("error", summary, {
+      await safeLog(state, "error", summary, {
         failedSteps: report.failedSteps.map((step) => step.name),
       });
 
@@ -261,6 +287,9 @@ export function buildHooks(
         return;
       }
       await reloadConfigIfChanged(state);
+      if (state.config.profile === "off") {
+        return;
+      }
       if (event.type === "file.edited") {
         const filePath = event.properties.file;
         state.tracker.add(filePath, state.directory);
@@ -276,15 +305,18 @@ export function buildHooks(
           precommitAvailable: state.precommitAvailable,
         });
         if (outcome.skipped) {
-          await state.log("debug", summarizeLint(outcome), { filePath, reason: outcome.reason });
+          await safeLog(state, "debug", summarizeLint(outcome), {
+            filePath,
+            reason: outcome.reason,
+          });
           return;
         }
         if (!isLintFailure(outcome)) {
-          await state.log("info", summarizeLint(outcome), { filePath });
+          await safeLog(state, "info", summarizeLint(outcome), { filePath });
           return;
         }
         const summary = summarizeLint(outcome);
-        await state.log("error", summary, {
+        await safeLog(state, "error", summary, {
           filePath,
           command: outcome.command?.join(" "),
           stdout: outcome.result?.stdout,
@@ -299,11 +331,9 @@ export function buildHooks(
         return;
       }
       if (event.type === "session.idle") {
-        if (state.config.profile === "off") {
-          return;
-        }
         if (!state.config.gate) {
-          await state.log(
+          await safeLog(
+            state,
             "warn",
             "plugin config is incomplete (missing gate section), skipping completion gate",
             { directory: state.directory },
@@ -317,17 +347,17 @@ export function buildHooks(
         state.tracker.clearChangedFiles();
         const summary = summarizeGate(report);
         if (!report.ran) {
-          await state.log("debug", summary);
+          await safeLog(state, "debug", summary);
           return;
         }
         if (report.ok) {
-          await state.log("info", summary);
+          await safeLog(state, "info", summary);
           return;
         }
         // The gate cannot physically block on session.idle (the turn already
         // ended), so failure visibility is the enforcement mechanism.
         const level = state.config.gate.block_on_failure ? "error" : "warn";
-        await state.log(level, summary, {
+        await safeLog(state, level, summary, {
           failedSteps: report.failedSteps.map((step) => ({
             name: step.name,
             command: step.command?.join(" "),
@@ -343,6 +373,7 @@ export function buildHooks(
 
 export const devFramework: Plugin = async (ctx) => {
   const log = createLogger(ctx.client);
+  fallbackLog = log;
 
   let config: ResolvedConfig;
   try {
@@ -366,11 +397,12 @@ export const devFramework: Plugin = async (ctx) => {
     return {};
   }
 
-  // The off profile registers no hooks at all.
-  if (config.profile === "off") {
-    return {};
-  }
-
+  // Hooks are now registered for every profile; each enforcement hook gates its
+  // own behavior by `state.config.profile` (off => no-op). Registering always
+  // guarantees HookState.log is populated at init, so a runtime `off` -> `standard`
+  // switch (via /df-profile) takes effect on the next hook call via
+  // reloadConfigIfChanged — no restart required — and a hook can never crash on a
+  // missing `log` (see safeLog).
   setBaseDirectory(ctx.directory);
 
   const { constitution, warning } = await loadConstitution(config, ctx.directory);

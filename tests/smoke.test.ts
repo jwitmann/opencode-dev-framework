@@ -35,10 +35,20 @@ describe("plugin entry point", () => {
     expect(devFramework).toBe(namedDevFramework);
   });
 
-  it("registers no hooks when no config exists (off profile)", async () => {
+  it("registers hooks even for the off profile (behavior is gated by profile, not registration)", async () => {
+    writeFileSync(join(dir, ".opencode-dev-framework.yml"), "profile: off\n");
     const { ctx } = stubCtx(dir);
     const hooks = await devFramework(ctx);
-    expect(hooks).toEqual({});
+    // Hooks are always registered now; the off profile only makes them no-ops,
+    // so a runtime off -> standard switch takes effect without a restart.
+    expect(typeof hooks["experimental.chat.system.transform"]).toBe("function");
+    expect(typeof hooks["tool.execute.before"]).toBe("function");
+    const output: { system: string[] } = { system: ["base"] };
+    await hooks["experimental.chat.system.transform"]?.(
+      { sessionID: "off-s1" } as never,
+      output as never,
+    );
+    expect(output.system).toEqual(["base"]);
   });
 
   it("registers the guardrail hook when configured", async () => {
@@ -57,7 +67,10 @@ describe("plugin entry point", () => {
     const hooks = await devFramework(ctx);
     const guardHook = hooks["tool.execute.before"];
     await expect(
-      guardHook?.({ tool: "edit", sessionID: "s1", callID: "c1" }, { args: { filePath: ".env" } }),
+      guardHook?.(
+        { tool: "edit", sessionID: "strict-s1", callID: "c1" },
+        { args: { filePath: ".env" } },
+      ),
     ).rejects.toThrow(/protected path/);
     expect(logged.some((entry) => entry.level === "error")).toBe(true);
   });
@@ -71,7 +84,7 @@ describe("plugin entry point", () => {
     const hooks = await devFramework(ctx);
     const guardHook = hooks["tool.execute.before"];
     await guardHook?.(
-      { tool: "edit", sessionID: "s1", callID: "c1" },
+      { tool: "edit", sessionID: "adv-s1", callID: "c1" },
       { args: { filePath: ".env" } },
     );
     expect(logged.some((entry) => entry.level === "warn")).toBe(true);

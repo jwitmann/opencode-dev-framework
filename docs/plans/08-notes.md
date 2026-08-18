@@ -431,6 +431,60 @@ Keep both. The custom tool lets the agent call verification explicitly; the slas
   (`~/.cache/opencode/packages/opencode-dev-framework*`), restart OpenCode, and
   test `/df-status` (modal) and bare `/df-profile` (picker).
 
+## v0.1.27 release decisions (seamless off → standard transition)
+
+- **Root cause of `state.log is not a function` on a runtime profile switch.**
+  Before this change, `devFramework` early-returned `{}` (no hooks) for
+  `profile: off`. Because the per-hook `HookState` (which carries `log`) was
+  only populated inside `buildHooks` for non-`off` profiles, switching from
+  `off` to `standard` at runtime via `/df-profile` left a hook that was
+  registered against a `HookState` whose `log` was `undefined`. The next
+  enforcement hook call threw `TypeError: state.log is not a function`. A full
+  OpenCode restart worked because the plugin re-ran `devFramework` with the new
+  profile and populated `HookState.log` correctly.
+- **Fix: always register hooks, gate by profile (seamless transition).**
+  `devFramework` no longer early-returns for `off`; it always runs
+  `setBaseDirectory` and `setHookState` (populating `log` at init). Each
+  enforcement hook now performs its own `if (state.config.profile === "off") return;`
+  guard right after `reloadConfigIfChanged(state)`:
+  - `experimental.chat.system.transform` (before constitution injection),
+  - `tool.execute.before` (before `checkToolCall`),
+  - `event` (before `file.edited` / `session.idle` processing).
+  `experimental.session.stopping` already bailed on `off`. This makes the
+  behavior driven by the live config, not by registration, so an
+  out-of-process `/df-profile` write is picked up on the next hook call via
+  `reloadConfigIfChanged` — no restart required.
+- **Defensive `safeLog` fallback.** Added a module-level `fallbackLog` (set to
+  the real `createLogger(ctx.client)` inside `devFramework`) and a `safeLog`
+  helper that calls `state.log` when it is a function, otherwise `fallbackLog`.
+  This guarantees a hook can never crash on a missing `log` even if
+  `HookState.log` is somehow undefined (e.g. direct `buildHooks` callers in
+  tests that pass no logger). `buildHooks` is the composition root and is used
+  directly by tests; in production it is always reached through `devFramework`,
+  which always sets `fallbackLog`.
+- **Test contamination gotcha (same-file, module-level `sessionToDirectory`).**
+  `sessionToDirectory` is a module-level `Map` keyed by `sessionID`. Once a test
+  registers the `experimental.chat.system.transform` hook and calls it with a
+  given `sessionID`, that `sessionID` is pinned to the test's project directory
+  for the lifetime of the test file. Reusing `sessionID: "s1"` across tests
+  (one with `off`, later ones with `strict`/`advisory`) made the later tests'
+  `tool.execute.before` resolve the `off` state and no-op. Fixed by giving every
+  test a unique `sessionID` (`off-s1`, `strict-s1`, `adv-s1`, `tx1`–`tx5`). This
+  is a test-only concern; real OpenCode sessions use a stable, unique `sessionID`
+  within a session and do not collide.
+- **`tool.execute.before` reads `output.args`, not `input.args`.** Confirmed the
+  hook reads tool arguments from `output.args` (matching the documented OpenCode
+  `tool.execute.before` signature in this file's Phase-3 notes). The transition
+  regression tests previously passed args in `input.args`; corrected to
+  `output.args` so the guardrail actually evaluates them.
+- **New regression tests.** `tests/transition.test.ts` (5 tests) covers the
+  off→standard transition (inject after switch), off no-inject, off `tool.execute`
+  no-op, strict still blocks, and the missing-`log` `safeLog` fallback.
+  `tests/smoke.test.ts` now asserts hooks are registered even for `off` (the
+  off-guard is what makes them inert), and its strict/advisory guardrail tests
+  use unique session IDs.
+- **Validation:** 180 tests pass; format/lint/lint:md/typecheck/build all green.
+
 ## References
 
 - OpenCode plugin docs: <https://opencode.ai/docs/plugins>
