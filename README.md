@@ -202,11 +202,15 @@ itself).
 
 ## Limitations
 
-- **The completion gate blocks only in newer OpenCode versions.** The
-  `experimental.session.stopping` hook (PR #41811) lets the plugin keep the
-  session running until checks pass. In older OpenCode versions the gate runs
-  on `session.idle` and reports failures loudly but cannot force the agent to
-  keep working.
+- **The completion gate blocks only in newer OpenCode versions.** Newer
+  builds support the `session.stopping` hook (OpenCode PR #44712) and
+  the earlier `experimental.session.stopping` hook (PR #41811); either
+  lets the plugin keep the session running until checks pass. The new
+  hook uses a fail-closed `{ stop, message }` contract and applies only
+  to natural loop exits; OpenCode core also caps continuations at 3
+  regardless of `gate.max_blocks`. In older OpenCode versions the gate
+  runs on `session.idle` and reports failures loudly but cannot force
+  the agent to keep working.
 - **Guardrails run inside OpenCode.** The `tool.execute.before` hook runs
   after OpenCode's own permission system; it adds project rules on top, it
   does not replace OpenCode permissions.

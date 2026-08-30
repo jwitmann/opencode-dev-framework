@@ -106,3 +106,12 @@ export function getDirectoryForSession(sessionID: string): string | null {
 export function clearSessionDirectory(sessionID: string): void {
   sessionToDirectory.delete(sessionID);
 }
+
+/** Reset all in-memory registries. Intended for test cleanup between
+ *  test runs so stale session-to-directory mappings do not bleed
+ *  `getStateForSession` into the next test. */
+export function resetRegistry(): void {
+  sessionToDirectory.clear();
+  hookRegistry.clear();
+  activeDirectory = null;
+}

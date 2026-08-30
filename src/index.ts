@@ -7,6 +7,7 @@
  * - event (session.idle) -> completion gate fallback (advisory logging)
  * - experimental.chat.system.transform -> constitution injection + session mapping
  * - experimental.session.stopping -> blocking completion gate (OpenCode >= PR #41811)
+ * - session.stopping -> same blocking gate, new contract (OpenCode PR #44712)
  * - config hook -> registers /df-profile and /df-verify prompt commands
  * - command.execute.before -> handles /df-profile, /df-verify, and unknown /df-*
  */
@@ -40,15 +41,26 @@ import { buildTools } from "./tools.js";
 import type { ResolvedConfig } from "./types.js";
 
 /**
- * The `experimental.session.stopping` hook was added in OpenCode PR #41811
- * and is not yet in the published `@opencode-ai/plugin` types. We define it
- * locally so the plugin compiles and automatically uses the hook when the
- * runtime supports it.
+ * OpenCode exposes two competing "loop continuation" hooks that are not yet in
+ * the published `@opencode-ai/plugin` types, so we declare both locally and use
+ * whichever the runtime supports:
+ *
+ * - `experimental.session.stopping` (OpenCode PR #41811): plugin pushes text
+ *   into `output.context`; presence keeps the session running.
+ * - `session.stopping` (OpenCode PR #44712): fail-closed contract. The default
+ *   `stop: true` lets the session end; setting `stop: false` with a non-empty
+ *   `message` injects a synthetic user turn and continues the loop. The hook
+ *   fires only on natural loop exit and OpenCode core enforces its own
+ *   re-entry cap (3) regardless of `gate.max_blocks`.
  */
 export interface HooksWithStopping extends Hooks {
   "experimental.session.stopping"?: (
     input: { sessionID: string },
     output: { context: string[] },
+  ) => Promise<void>;
+  "session.stopping"?: (
+    input: { sessionID: string },
+    output: { stop: boolean; message?: string },
   ) => Promise<void>;
 }
 
@@ -93,6 +105,73 @@ async function reloadConfigIfChanged(state: HookState): Promise<void> {
   } catch {
     // Config file missing/unreadable — keep the current state.
   }
+}
+
+/**
+ * Result of running the completion gate from a loop-continuation hook.
+ * - `pass`: gate passed (or not applicable) — let the session stop.
+ * - `standdown`: gate keeps failing but `gate.max_blocks` was reached — let
+ *   the session stop with a warning (do not keep blocking).
+ * - `blocked`: gate failed within budget — the adapter injects a synthetic
+ *   message to keep the loop running.
+ */
+type StoppingVerdict =
+  | { decision: "pass" }
+  | { decision: "standdown"; failedSteps: string[] }
+  | { decision: "blocked"; summary: string; blockCount: number; maxBlocks: number };
+
+/**
+ * Shared completion-gate runner for the two loop-continuation hooks
+ * (`experimental.session.stopping` and `session.stopping`). The two hooks
+ * differ only in how they signal continuation to the runtime, so all gate and
+ * block-counting logic lives here and each hook translates the verdict into its
+ * own output contract. `state` must already be resolved and have had
+ * `reloadConfigIfChanged` applied by the caller.
+ */
+async function runStoppingGate(state: HookState, sessionID: string): Promise<StoppingVerdict> {
+  if (!state.config.gate || state.config.profile === "off") {
+    return { decision: "pass" };
+  }
+
+  const changedFiles = state.tracker.getChangedFiles();
+  const report = await runGate(state.run, state.config, changedFiles, { cwd: state.directory });
+  if (!report.ran || report.ok) {
+    state.tracker.clearChangedFiles();
+    state.blockCounts.delete(sessionID);
+    return { decision: "pass" };
+  }
+
+  const maxBlocks = state.config.gate.max_blocks ?? 3;
+  const blockCount = (state.blockCounts.get(sessionID) ?? 0) + 1;
+  state.blockCounts.set(sessionID, blockCount);
+
+  if (blockCount > maxBlocks) {
+    // Standing down: clear the tracker so the session.idle fallback does
+    // not re-run the same failing gate commands a second time.
+    state.tracker.clearChangedFiles();
+    await safeLog(
+      state,
+      "warn",
+      `completion gate has blocked ${maxBlocks} times; standing down but checks are still failing`,
+      { failedSteps: report.failedSteps.map((step) => step.name) },
+    );
+    return { decision: "standdown", failedSteps: report.failedSteps.map((step) => step.name) };
+  }
+
+  const summary = summarizeGate(report);
+  await safeLog(state, "error", summary, {
+    failedSteps: report.failedSteps.map((step) => step.name),
+  });
+  return { decision: "blocked", summary, blockCount, maxBlocks };
+}
+
+/** The continuation message both stopping hooks inject on a gate block. */
+function stoppingMessage(verdict: Extract<StoppingVerdict, { decision: "blocked" }>): string {
+  return (
+    `opencode-dev-framework completion gate blocked you from finishing (block ${verdict.blockCount}/${verdict.maxBlocks}). ` +
+    `The following checks failed:\n\n${verdict.summary}\n\n` +
+    `Fix the underlying cause and continue. Do NOT disable, skip, or weaken these checks to make them pass.`
+  );
 }
 
 /**
@@ -230,45 +309,27 @@ export function buildHooks(
         return;
       }
       await reloadConfigIfChanged(state);
-      if (!state.config.gate || state.config.profile === "off") {
+      const verdict = await runStoppingGate(state, input.sessionID);
+      if (verdict.decision !== "blocked") {
         return;
       }
+      output.context.push(stoppingMessage(verdict));
+    },
 
-      const changedFiles = state.tracker.getChangedFiles();
-      const report = await runGate(state.run, state.config, changedFiles, { cwd: state.directory });
-      if (!report.ran || report.ok) {
-        state.tracker.clearChangedFiles();
-        state.blockCounts.delete(input.sessionID);
+    "session.stopping": async (input, output) => {
+      const state = getStateForSession(input.sessionID);
+      if (!state) {
         return;
       }
-
-      const maxBlocks = state.config.gate.max_blocks ?? 3;
-      const blockCount = (state.blockCounts.get(input.sessionID) ?? 0) + 1;
-      state.blockCounts.set(input.sessionID, blockCount);
-
-      if (blockCount > maxBlocks) {
-        // Standing down: clear the tracker so the session.idle fallback does
-        // not re-run the same failing gate commands a second time.
-        state.tracker.clearChangedFiles();
-        await safeLog(
-          state,
-          "warn",
-          `completion gate has blocked ${maxBlocks} times; standing down but checks are still failing`,
-          { failedSteps: report.failedSteps.map((step) => step.name) },
-        );
+      await reloadConfigIfChanged(state);
+      const verdict = await runStoppingGate(state, input.sessionID);
+      if (verdict.decision !== "blocked") {
         return;
       }
-
-      const summary = summarizeGate(report);
-      await safeLog(state, "error", summary, {
-        failedSteps: report.failedSteps.map((step) => step.name),
-      });
-
-      output.context.push(
-        `opencode-dev-framework completion gate blocked you from finishing (block ${blockCount}/${maxBlocks}). ` +
-          `The following checks failed:\n\n${summary}\n\n` +
-          `Fix the underlying cause and continue. Do NOT disable, skip, or weaken these checks to make them pass.`,
-      );
+      // Fail-closed contract: leave `stop: true` on pass/standdown; only a
+      // real block sets `stop: false` with a continuation message.
+      output.stop = false;
+      output.message = stoppingMessage(verdict);
     },
 
     event: async ({ event }) => {

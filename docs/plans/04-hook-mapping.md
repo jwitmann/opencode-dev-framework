@@ -107,12 +107,26 @@ and uses `command-utils.ts` helpers for command parsing.
 
 **Limitation:** By the time `session.idle` fires, the agent has already finished its turn. We cannot force it to continue. The best we can do is make the failure impossible to miss.
 
-**Update (v0.1.7):** PR #41811 adds `experimental.session.stopping`, which fires
-after the assistant turn is persisted but before the session goes idle. The
-plugin registers this hook (via a local `HooksWithStopping` interface) and, on
-gate failure in `standard`/`strict`, pushes a concise synthetic user message up
-to `gate.max_blocks` times before standing down. `session.idle` remains the
-fallback on older OpenCode versions.
+**Update (v0.1.7):** PR #41811 adds `experimental.session.stopping`,
+which fires after the assistant turn is persisted but before the
+session goes idle. The plugin registers this hook (via a local
+`HooksWithStopping` interface) and, on gate failure in
+`standard`/`strict`, pushes a concise synthetic user message up to
+`gate.max_blocks` times before standing down. `session.idle` remains
+the fallback on older OpenCode versions.
+
+**Update (v0.1.8):** PR #44712 adds a second, first-class
+`session.stopping` hook with a different contract:
+`{ stop: boolean; message?: string }` with a fail-closed default of
+`stop: true` (the plugin sets `stop: false` plus a non-empty message to
+continue). It fires only on a genuine natural loop exit and is
+awaited; non-natural exits (provider/tool error, blocked, retry
+exhausted, compaction) skip the hook. OpenCode core also enforces a
+hard `SESSION_STOPPING_REENTRY_CAP = 3` re-entry ceiling regardless of
+`gate.max_blocks`. The plugin registers *both* hooks (the new one is
+also declared locally since it is not yet in the published
+`@opencode-ai/plugin` types) and shares a single gate runner so the
+same block count applies to either hook.
 
 ### `/df-verify`, `/df-profile`, `/df-status`, `/df-help` custom commands
 
