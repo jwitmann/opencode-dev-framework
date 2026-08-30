@@ -41,7 +41,12 @@
     "lint:fix": "biome lint --write .",
     "format:check": "biome format .",
     "format:fix": "biome format --write .",
-    "lint:md": "markdownlint-cli2 \"**/*.md\""
+    "lint:md": "markdownlint-cli2 \"**/*.md\"",
+    "release": "./scripts/release.sh",
+    "release:patch": "./scripts/release.sh patch",
+    "release:minor": "./scripts/release.sh minor",
+    "release:major": "./scripts/release.sh major",
+    "dev:clean": "rm -rf ~/.cache/opencode/packages/opencode-dev-framework* && npm run build"
   },
   "keywords": [
     "opencode",

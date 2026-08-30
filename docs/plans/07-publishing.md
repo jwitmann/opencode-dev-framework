@@ -120,7 +120,11 @@ Point OpenCode at the local repository root in the project's `opencode.json`:
 ```
 
 OpenCode loads `dist/index.js`, so run `npm run build` after every source
-change.
+change. To clear the OpenCode plugin cache and rebuild in one step:
+
+```bash
+npm run dev:clean
+```
 
 Caveats:
 
@@ -165,12 +169,25 @@ Follow SemVer:
 
 Release steps:
 
-1. Update `CHANGELOG.md` (optional).
-2. Bump version in `package.json`.
-3. Commit: `git commit -am "Release v0.1.0"`.
-4. Tag: `git tag -a v0.1.0 -m "Release v0.1.0"`.
-5. Push: `git push origin main --tags`.
-6. CI validates and publishes automatically.
+1. Run the release script, which handles everything:
+
+   ```bash
+   npm run release          # default: patch bump
+   npm run release:minor    # minor bump
+   npm run release:major    # major bump
+   ```
+
+   The script runs the full validation suite, bumps the version in both
+   `package.json` and `package-lock.json` via `npm version`, commits, and
+   creates a git tag.
+
+2. Push the tag:
+
+   ```bash
+   git push origin main --tags
+   ```
+
+3. CI validates and publishes automatically.
 
 ## Pre-publish checklist
 
