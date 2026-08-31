@@ -121,15 +121,15 @@ Keep both. The custom tool lets the agent call verification explicitly; the slas
   `.opencode-dev-framework.yml`, clears the config cache, reloads config and
   constitution, and updates the in-memory hook registry so the change takes
   effect immediately without restarting OpenCode.
-- **`experimental.session.stopping` gate.** The hook from OpenCode PR #41811
-  is registered with a local type assertion (`HooksWithStopping`). On gate
-  failure it pushes a concise synthetic user message and continues the loop,
-  up to `gate.max_blocks` times per session. After the max it stands down with
-  a warning. The `session.idle` hook remains as a fallback for older OpenCode.
-- **`session.stopping` gate (PR #44712).** A second, first-class loop-continuation
-  hook registered alongside the experimental one. It uses the fail-closed
-  contract `{ stop: boolean; message?: string }` (default `stop: true`; the
-  plugin sets `stop: false` plus a message to continue). It fires only on
+- **`session.stopping` gate (PR #44712).** A first-class loop-continuation
+  hook registered via a local `HooksWithStopping` type assertion. It uses the
+  fail-closed contract `{ stop: boolean; message?: string }` (default
+  `stop: true`; the plugin sets `stop: false` plus a message to continue).
+  It fires only on natural loop exits and OpenCode core enforces a hard
+  re-entry cap of 3. On gate failure in `standard`/`strict`, it pushes a
+  concise synthetic user message up to `gate.max_blocks` times before
+  standing down. The `session.idle` hook remains as a fallback for older
+  OpenCode.
   genuine natural loop exit and is awaited by OpenCode core; provider/tool
   errors, blocked stops, retry exhaustion, and compaction skip it. OpenCode
   core enforces its own hard `SESSION_STOPPING_REENTRY_CAP = 3` ceiling
@@ -422,7 +422,7 @@ Keep both. The custom tool lets the agent call verification explicitly; the slas
   helper in `src/index.ts` that stats the config file and, on mtime change,
   clears the config cache and reloads config + constitution via
   `loadConfig`/`loadConstitution`. Wired into every enforcement hook
-  (`tool.execute.before`, `event`, `experimental.session.stopping`,
+  (`tool.execute.before`, `event`,
   `experimental.chat.system.transform`). This removes the need for a plugin
   restart after a `/df-profile` change.
 - **`package.json` gained `pretypecheck`/`pretest` scripts (`npm run build`).**
@@ -460,7 +460,7 @@ Keep both. The custom tool lets the agent call verification explicitly; the slas
   - `experimental.chat.system.transform` (before constitution injection),
   - `tool.execute.before` (before `checkToolCall`),
   - `event` (before `file.edited` / `session.idle` processing).
-  `experimental.session.stopping` already bailed on `off`. This makes the
+  `session.stopping` already bailed on `off`. This makes the
   behavior driven by the live config, not by registration, so an
   out-of-process `/df-profile` write is picked up on the next hook call via
   `reloadConfigIfChanged` — no restart required.

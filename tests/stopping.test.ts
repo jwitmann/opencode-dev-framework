@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildHooks, type HooksWithStopping } from "../src/index";
 import type { CommandResult, RunCommand } from "../src/host";
 import type { LogFn } from "../src/logger";
-import { getDirectoryForSession, getHookState, resetRegistry } from "../src/registry";
+import { getHookState, resetRegistry } from "../src/registry";
 import type { Config, ResolvedConfig } from "../src/types";
 import { resolveConfig } from "../src/config";
 
@@ -41,141 +41,6 @@ function stubRun(exitCode: number): RunCommand {
     timedOut: false,
   });
 }
-
-function makeOutput(): { context: string[] } {
-  return { context: [] };
-}
-
-describe("experimental.session.stopping", () => {
-  it("does not add context when the gate passes", async () => {
-    const config = resolve({
-      profile: "standard",
-      commands: { test: "true" },
-      gate: { run_typecheck: false, run_tests: true, skip_unchanged: false },
-    });
-    const hooks: HooksWithStopping = buildHooks(makeCtx(dir), config, noopLog, stubRun(0));
-    const stopping = hooks["experimental.session.stopping"];
-    expect(stopping).toBeDefined();
-
-    const output = makeOutput();
-    await stopping?.({ sessionID: "s1" }, output);
-    expect(output.context).toEqual([]);
-    expect(getHookState(dir)?.blockCounts.get("s1")).toBeUndefined();
-  });
-
-  it("adds blocking context when the gate fails", async () => {
-    const config = resolve({
-      profile: "standard",
-      commands: { test: "false" },
-      gate: { run_typecheck: false, run_tests: true, skip_unchanged: false },
-    });
-    const hooks: HooksWithStopping = buildHooks(makeCtx(dir), config, noopLog, stubRun(1));
-    const stopping = hooks["experimental.session.stopping"];
-
-    const output = makeOutput();
-    await stopping?.({ sessionID: "s1" }, output);
-    expect(output.context.length).toBe(1);
-    expect(output.context[0]).toContain("completion gate blocked");
-    expect(output.context[0]).toContain("block 1/3");
-    expect(getHookState(dir)?.blockCounts.get("s1")).toBe(1);
-  });
-
-  it("tracks block counts per session, not per directory", async () => {
-    const config = resolve({
-      profile: "standard",
-      commands: { test: "false" },
-      gate: { run_typecheck: false, run_tests: true, skip_unchanged: false },
-    });
-    const hooks: HooksWithStopping = buildHooks(makeCtx(dir), config, noopLog, stubRun(1));
-    const stopping = hooks["experimental.session.stopping"];
-
-    await stopping?.({ sessionID: "s1" }, makeOutput());
-    await stopping?.({ sessionID: "s1" }, makeOutput());
-
-    const other = makeOutput();
-    await stopping?.({ sessionID: "s2" }, other);
-    expect(other.context.length).toBe(1);
-    expect(other.context[0]).toContain("block 1/3");
-    expect(getHookState(dir)?.blockCounts.get("s1")).toBe(2);
-    expect(getHookState(dir)?.blockCounts.get("s2")).toBe(1);
-  });
-
-  it("does not run the gate when the profile is off", async () => {
-    const config = resolve({
-      profile: "off",
-      commands: { test: "false" },
-      gate: { run_typecheck: false, run_tests: true, skip_unchanged: false },
-    });
-    const hooks: HooksWithStopping = buildHooks(makeCtx(dir), config, noopLog, stubRun(1));
-    const stopping = hooks["experimental.session.stopping"];
-
-    const output = makeOutput();
-    await stopping?.({ sessionID: "s1" }, output);
-    expect(output.context).toEqual([]);
-    expect(getHookState(dir)?.blockCounts.size).toBe(0);
-  });
-
-  it("stops blocking after gate.max_blocks", async () => {
-    const config = resolve({
-      profile: "standard",
-      commands: { test: "false" },
-      gate: { run_typecheck: false, run_tests: true, skip_unchanged: false, max_blocks: 2 },
-    });
-    const hooks: HooksWithStopping = buildHooks(makeCtx(dir), config, noopLog, stubRun(1));
-    const stopping = hooks["experimental.session.stopping"];
-
-    const first = makeOutput();
-    await stopping?.({ sessionID: "s1" }, first);
-    expect(first.context.length).toBe(1);
-
-    const second = makeOutput();
-    await stopping?.({ sessionID: "s1" }, second);
-    expect(second.context.length).toBe(1);
-
-    const third = makeOutput();
-    await stopping?.({ sessionID: "s1" }, third);
-    expect(third.context).toEqual([]);
-    expect(getHookState(dir)?.blockCounts.get("s1")).toBe(3);
-  });
-
-  it("uses the session-to-directory mapping set by system.transform", async () => {
-    const config = resolve({
-      profile: "standard",
-      commands: { test: "false" },
-      gate: { run_typecheck: false, run_tests: true, skip_unchanged: false },
-    });
-    const hooks: HooksWithStopping = buildHooks(makeCtx(dir), config, noopLog, stubRun(1));
-
-    const transform = hooks["experimental.chat.system.transform"];
-    expect(transform).toBeDefined();
-    await transform?.({ sessionID: "s1", model: {} as never }, { system: [] });
-
-    const stopping = hooks["experimental.session.stopping"];
-    const output = makeOutput();
-    await stopping?.({ sessionID: "s1" }, output);
-    expect(output.context.length).toBe(1);
-  });
-
-  it("clears the session-directory mapping on session.deleted", async () => {
-    const hooks: HooksWithStopping = buildHooks(
-      makeCtx(dir),
-      resolve({ profile: "standard" }),
-      noopLog,
-    );
-    const transform = hooks["experimental.chat.system.transform"];
-    await transform?.({ sessionID: "s9", model: {} as never }, { system: [] });
-    expect(getDirectoryForSession("s9")).toBe(dir);
-
-    const eventHook = hooks.event;
-    await eventHook?.({
-      event: {
-        type: "session.deleted",
-        properties: { info: { id: "s9" } },
-      },
-    } as never);
-    expect(getDirectoryForSession("s9")).toBeNull();
-  });
-});
 
 describe("session.stopping", () => {
   function makeStoppingOutput(): { stop: boolean; message?: string } {
@@ -274,28 +139,6 @@ describe("session.stopping", () => {
     expect(third.stop).toBe(true);
     expect(third.message).toBeUndefined();
     expect(getHookState(dir)?.blockCounts.get("s1")).toBe(3);
-  });
-
-  it("shares blockCounts with experimental.session.stopping", async () => {
-    const config = resolve({
-      profile: "standard",
-      commands: { test: "false" },
-      gate: { run_typecheck: false, run_tests: true, skip_unchanged: false },
-    });
-    const hooks: HooksWithStopping = buildHooks(makeCtx(dir), config, noopLog, stubRun(1));
-
-    const experimental = hooks["experimental.session.stopping"];
-    const experimentalOutput = makeOutput();
-    await experimental?.({ sessionID: "s1" }, experimentalOutput);
-    expect(experimentalOutput.context.length).toBe(1);
-    expect(getHookState(dir)?.blockCounts.get("s1")).toBe(1);
-
-    const session = hooks["session.stopping"];
-    const sessionOutput = makeStoppingOutput();
-    await session?.({ sessionID: "s1" }, sessionOutput);
-    // Second consecutive block -> block 2/3
-    expect(sessionOutput.stop).toBe(false);
-    expect(getHookState(dir)?.blockCounts.get("s1")).toBe(2);
   });
 
   it("uses the session-to-directory mapping set by system.transform", async () => {

@@ -278,6 +278,6 @@ The README and docs must clearly state:
 - This is a community project, not affiliated with OpenCode or the original
   dev-framework team.
 - The completion gate blocks finishing on OpenCode builds that support
-  `experimental.session.stopping`; on older builds it is advisory/loud.
+  `session.stopping` (PR #44712); on older builds it is advisory/loud.
 - Some features rely on OpenCode native config (`permission`, `formatter`),
   which may evolve.

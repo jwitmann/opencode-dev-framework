@@ -14,8 +14,7 @@ The plugin provides:
 - Per-edit lint feedback, with optional `pre-commit` delegation.
 - A completion gate (tests / type-check / lint) that runs when the session goes
   idle and, on newer OpenCode builds, blocks the session from finishing via
-  `experimental.session.stopping` or `session.stopping` (PR #44712) up to
-  `gate.max_blocks` times.
+  `session.stopping` (PR #44712) up to `gate.max_blocks` times.
 
 On older OpenCode builds without the stopping hook, the completion gate is
 **advisory/loud**, not a hard physical block. This is a documented
@@ -105,10 +104,9 @@ OpenCode loads the plugin via Bun at runtime, but all development and CI on this
 
 - Don't rewrite `opencode.json` automatically from the plugin.
 - Don't claim the completion gate can hard-block OpenCode from finishing. The
-  `experimental.session.stopping` hook (PR #41811) and the newer
   `session.stopping` hook (PR #44712) can keep the session running,
-  but both are opt-in and bounded: the new hook fires only on natural
-  loop exit and OpenCode core enforces a hard re-entry cap of 3.
+  but it is opt-in and bounded: the hook fires only on natural
+  loop exit and OpenCode core enforces a hard re-entry cap of 3,
   running up to `gate.max_blocks` times, but it is opt-in and bounded — not an
   unconditional block.
 - Don't add heavy dependencies without discussing.

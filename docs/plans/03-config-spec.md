@@ -105,12 +105,12 @@ gate:
 |---|---|---|---|
 | `run_typecheck` | `boolean` | `true` | Run `commands.typecheck` at the gate. |
 | `run_tests` | `boolean` | `true` | Run `commands.test` at the gate. |
-| `block_on_failure` | `boolean` | profile-based | If true, emit failure loudly and (with PR #41811) keep the session running. |
+| `block_on_failure` | `boolean` | profile-based | If true, emit failure loudly and (with PR #44712) keep the session running. |
 | `skip_unchanged` | `boolean` | `true` | Skip gate if no files changed. |
 | `scope` | `string` | `all` | `all` runs `commands.test`; `changed` runs `commands.test_changed`. |
 | `lint_changed` | `boolean` | `true` in `strict` | Lint each changed file at the gate. |
 | `timeout` | `number` | — | Per-command timeout in seconds. |
-| `max_blocks` | `number` | `3` | Max synthetic keep-alive turns via `experimental.session.stopping` before the gate stands down. Ignored on older OpenCode versions (advisory `session.idle` only). |
+| `max_blocks` | `number` | `3` | Max synthetic keep-alive turns via `session.stopping` (PR #44712) before the gate stands down. Ignored on older OpenCode versions (advisory `session.idle` only). |
 
 ### `on_edit`
 

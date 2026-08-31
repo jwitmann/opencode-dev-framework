@@ -12,7 +12,7 @@
 | Protected-path guardrail | `preToolUse` | Native `permission` config + `tool.execute.before` | Yes (permission) / Yes (hook throw) | Native `permission` is the primary defense; plugin hook adds clearer messaging. |
 | Format on edit | `postToolUse` | OpenCode native `formatter` config + `file.edited` | Indirectly | OpenCode's formatter runs automatically when enabled. Plugin supplements with project-specific commands. |
 | Lint on edit | `postToolUse` | `file.edited` | No (advisory) | Run linter and feed output back. Can delegate to `pre-commit run --files`. |
-| Completion gate | `agentStop` | `experimental.session.stopping` + `session.idle` | **Bounded** | PR #41811 adds a blocking hook; older builds fall back to loud `session.idle`. |
+| Completion gate | `agentStop` | `session.stopping` (PR #44712) + `session.idle` | **Bounded** | PR #44712 adds a blocking hook; older builds fall back to loud `session.idle`. |
 | Specialist agents | `agents/` subagents | OpenCode subagents / custom tools | N/A | Out of MVP scope. |
 | Workflows / skills | `skills/` | Custom commands / custom tools | N/A | Out of MVP scope. |
 
@@ -107,24 +107,15 @@ and uses `command-utils.ts` helpers for command parsing.
 
 **Limitation:** By the time `session.idle` fires, the agent has already finished its turn. We cannot force it to continue. The best we can do is make the failure impossible to miss.
 
-**Update (v0.1.7):** PR #41811 adds `experimental.session.stopping`,
-which fires after the assistant turn is persisted but before the
-session goes idle. The plugin registers this hook (via a local
-`HooksWithStopping` interface) and, on gate failure in
-`standard`/`strict`, pushes a concise synthetic user message up to
-`gate.max_blocks` times before standing down. `session.idle` remains
-the fallback on older OpenCode versions.
-
-**Update (v0.1.8):** PR #44712 adds a second, first-class
-`session.stopping` hook with a different contract:
+**Update (v0.1.8):** PR #44712 adds a first-class
+`session.stopping` hook with the contract:
 `{ stop: boolean; message?: string }` with a fail-closed default of
 `stop: true` (the plugin sets `stop: false` plus a non-empty message to
 continue). It fires only on a genuine natural loop exit and is
 awaited; non-natural exits (provider/tool error, blocked, retry
 exhausted, compaction) skip the hook. OpenCode core also enforces a
 hard `SESSION_STOPPING_REENTRY_CAP = 3` re-entry ceiling regardless of
-`gate.max_blocks`. The plugin registers *both* hooks (the new one is
-also declared locally since it is not yet in the published
+`gate.max_blocks`. The plugin registers this hook (declared locally since it is not yet in the published
 `@opencode-ai/plugin` types) and shares a single gate runner so the
 same block count applies to either hook.
 
@@ -220,7 +211,7 @@ choosing to call a tool.
 ## Anti-patterns to avoid
 
 - Do not claim the gate unconditionally blocks completion. Document the bounded
-  blocking via `experimental.session.stopping` and the advisory fallback on
+  blocking via `session.stopping` (PR #44712) and the advisory fallback on
   older OpenCode builds.
 - Do not rewrite `opencode.json` automatically. Generate suggestions, not silent mutations.
 - Do not run network-dependent commands during `file.edited` unless explicitly configured.

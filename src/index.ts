@@ -6,8 +6,7 @@
  * - event (file.edited)  -> per-edit lint + changed-file tracking
  * - event (session.idle) -> completion gate fallback (advisory logging)
  * - experimental.chat.system.transform -> constitution injection + session mapping
- * - experimental.session.stopping -> blocking completion gate (OpenCode >= PR #41811)
- * - session.stopping -> same blocking gate, new contract (OpenCode PR #44712)
+ * - session.stopping -> blocking completion gate (OpenCode PR #44712)
  * - config hook -> registers /df-profile and /df-verify prompt commands
  * - command.execute.before -> handles /df-profile, /df-verify, and unknown /df-*
  */
@@ -41,23 +40,12 @@ import { buildTools } from "./tools.js";
 import type { ResolvedConfig } from "./types.js";
 
 /**
- * OpenCode exposes two competing "loop continuation" hooks that are not yet in
- * the published `@opencode-ai/plugin` types, so we declare both locally and use
- * whichever the runtime supports:
- *
- * - `experimental.session.stopping` (OpenCode PR #41811): plugin pushes text
- *   into `output.context`; presence keeps the session running.
- * - `session.stopping` (OpenCode PR #44712): fail-closed contract. The default
- *   `stop: true` lets the session end; setting `stop: false` with a non-empty
- *   `message` injects a synthetic user turn and continues the loop. The hook
- *   fires only on natural loop exit and OpenCode core enforces its own
- *   re-entry cap (3) regardless of `gate.max_blocks`.
+ * OpenCode exposes a `session.stopping` hook (PR #44712) that is not yet in the
+ * published `@opencode-ai/plugin` types, so we declare it locally. The hook
+ * fires only on natural loop exit and OpenCode core enforces a re-entry cap (3)
+ * regardless of `gate.max_blocks`.
  */
 export interface HooksWithStopping extends Hooks {
-  "experimental.session.stopping"?: (
-    input: { sessionID: string },
-    output: { context: string[] },
-  ) => Promise<void>;
   "session.stopping"?: (
     input: { sessionID: string },
     output: { stop: boolean; message?: string },
@@ -121,12 +109,10 @@ type StoppingVerdict =
   | { decision: "blocked"; summary: string; blockCount: number; maxBlocks: number };
 
 /**
- * Shared completion-gate runner for the two loop-continuation hooks
- * (`experimental.session.stopping` and `session.stopping`). The two hooks
- * differ only in how they signal continuation to the runtime, so all gate and
- * block-counting logic lives here and each hook translates the verdict into its
- * own output contract. `state` must already be resolved and have had
- * `reloadConfigIfChanged` applied by the caller.
+ * Shared completion-gate runner for the `session.stopping` hook (PR #44712).
+ * The adapter translates the verdict into the hook's own output contract.
+ * `state` must already be resolved and have had `reloadConfigIfChanged`
+ * applied by the caller.
  */
 async function runStoppingGate(state: HookState, sessionID: string): Promise<StoppingVerdict> {
   if (!state.config.gate || state.config.profile === "off") {
@@ -301,19 +287,6 @@ export function buildHooks(
       }
       await safeLog(state, "error", message, extra);
       throw new Error(`[opencode-dev-framework] ${message}`);
-    },
-
-    "experimental.session.stopping": async (input, output) => {
-      const state = getStateForSession(input.sessionID);
-      if (!state) {
-        return;
-      }
-      await reloadConfigIfChanged(state);
-      const verdict = await runStoppingGate(state, input.sessionID);
-      if (verdict.decision !== "blocked") {
-        return;
-      }
-      output.context.push(stoppingMessage(verdict));
     },
 
     "session.stopping": async (input, output) => {

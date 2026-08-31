@@ -20,8 +20,8 @@ It is an OpenCode plugin that enforces a project-specific quality bar on AI codi
 - Formats and lints edited files, with optional `pre-commit` delegation.
 - Runs a completion gate (tests / type-check / lint) when the session goes idle.
 
-On OpenCode builds with PR #41811, the gate blocks finishing via
-`experimental.session.stopping` up to `gate.max_blocks` times. On older builds,
+On OpenCode builds with PR #44712, the gate blocks finishing via
+`session.stopping` up to `gate.max_blocks` times. On older builds,
 without that hook, the gate is **advisory/loud**, not a hard physical block.
 
 ## Key decisions already made

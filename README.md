@@ -20,7 +20,7 @@ reimplemented as an OpenCode-native plugin.
   `pre-commit run --files` when `precommit: auto` is set.
 - **Completion gate.** When the session goes idle, runs typecheck, tests, and
   (optionally) lint on changed files. In OpenCode versions with the
-  `experimental.session.stopping` hook, gate failures keep the session running
+  `session.stopping` hook (PR #44712), gate failures keep the session running
   (up to `gate.max_blocks` times) so the agent must fix the failures. In older
   versions the gate reports loudly via `session.idle`.
 - **Custom tools.** `dev_framework_init` scaffolds project-level agents,
@@ -203,10 +203,9 @@ itself).
 ## Limitations
 
 - **The completion gate blocks only in newer OpenCode versions.** Newer
-  builds support the `session.stopping` hook (OpenCode PR #44712) and
-  the earlier `experimental.session.stopping` hook (PR #41811); either
-  lets the plugin keep the session running until checks pass. The new
-  hook uses a fail-closed `{ stop, message }` contract and applies only
+  builds support the `session.stopping` hook (OpenCode PR #44712);
+  it lets the plugin keep the session running until checks pass. The hook
+  uses a fail-closed `{ stop, message }` contract and applies only
   to natural loop exits; OpenCode core also caps continuations at 3
   regardless of `gate.max_blocks`. In older OpenCode versions the gate
   runs on `session.idle` and reports failures loudly but cannot force

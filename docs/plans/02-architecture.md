@@ -28,7 +28,7 @@ export const devFramework: Plugin = async (ctx) => {
     event: async ({ event }) => {
       /* file.edited -> lint; session.idle -> gate; session.deleted -> cleanup */
     },
-    "experimental.session.stopping": async (input, output) => {
+    "session.stopping": async (input, output) => {
       /* blocking completion gate on supported OpenCode builds */
     },
     tool: {
@@ -125,7 +125,7 @@ On `session.idle`:
 3. Run `typecheck`, `test`, and `lint` commands as configured.
 4. If any command fails, log a structured error with the full output and add a user-facing note that the gate failed.
 
-On OpenCode builds with PR #41811, the `experimental.session.stopping` hook can
+On OpenCode builds with PR #44712, the `session.stopping` hook can
 push a synthetic user message on failure, keeping the session running up to
 `gate.max_blocks` times before standing down. Without it, the gate falls back
 to `session.idle` and is advisory. Make the failure message extremely visible.

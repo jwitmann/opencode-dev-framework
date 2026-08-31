@@ -225,12 +225,11 @@ Use this as the source of truth during implementation. Check items off as they a
   `--overwrite-existing`), `status`, `version`.
 - [x] 11.5 Custom tools: `dev_framework_init`, `dev_framework_set_profile`
   (immediate in-session effect via hook-state registry in `src/registry.ts`).
-- [x] 11.6 `experimental.session.stopping` gate hook (PR #41811) with
+- [x] 11.6 `session.stopping` gate hook (PR #44712) with
   `gate.max_blocks` synthetic keep-alive turns + `session.idle` fallback.
-- [x] 11.11 Dual-hook adapter for `session.stopping` (PR #44712): shared
-  `runStoppingGate` runner behind both `experimental.session.stopping`
-  (`{ context: string[] }`) and `session.stopping`
-  (`{ stop: boolean; message?: string }`) contracts, with tests and
+- [x] 11.11 `session.stopping` adapter (PR #44712): shared
+  `runStoppingGate` runner behind `session.stopping`
+  (`{ stop: boolean; message?: string }`) contract, with tests and
   docs updated.
 - [x] 11.7 Session-to-directory mapping via `experimental.chat.system.transform`.
 - [x] 11.8 Tests for installer, tools, stopping hook (117/117 passing).

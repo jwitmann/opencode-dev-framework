@@ -3,8 +3,8 @@
  * session tries to stop, plus the changed-file tracking that feeds it.
  *
  * The gate runs from two call sites:
- * - `experimental.session.stopping` (OpenCode PR #41811): on failure, a
- *   synthetic user message keeps the session running, up to `gate.max_blocks`.
+ * - `session.stopping` (OpenCode PR #44712): on failure, the adapter sets
+ *   `stop: false` with a continuation message, up to `gate.max_blocks`.
  * - `session.idle` (fallback on older OpenCode): advisory logging only — by
  *   then the agent's turn has already finished, so failures cannot block.
  */

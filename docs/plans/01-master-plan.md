@@ -12,7 +12,7 @@ Build and publish `opencode-dev-framework`, an OpenCode plugin that brings dev-f
 ## Non-goals
 
 - Do not implement an unconditional "agent cannot finish" block. OpenCode has no
-  native `agentStop` hook; the `experimental.session.stopping` hook (PR #41811)
+  native `agentStop` hook; the `session.stopping` hook (PR #44712)
   can keep a session running up to `gate.max_blocks` times, then stands down.
 - ~~Do not build a CLI launcher like `bin/df`.~~ **Superseded in v0.1.7+:** the
   user explicitly requested a `df` CLI. It now scaffolds templates (`init`),
@@ -50,7 +50,7 @@ Teams or individuals who:
 - [x] Protected-path edits are denied in `standard`/`strict` profiles.
 - [x] Formatters and linters run on edited files.
 - [x] Completion gate runs on `session.idle` and reports failures.
-- [x] Blocking gate works via `experimental.session.stopping` on supported OpenCode builds.
+- [x] Blocking gate works via `session.stopping` (PR #44712) on supported OpenCode builds.
 - [x] Unit tests cover config loading, guardrails, gate logic, rules, lint, and installer.
 - [x] CI runs tests on every PR and publishes to npm on tagged releases.
 
