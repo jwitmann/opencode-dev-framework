@@ -24,88 +24,114 @@ export default Plugin.define({
       return process.cwd();
     };
 
-    try {
-      (ctx as unknown as { keymap?: { layer: (fn: () => unknown) => void } }).keymap?.layer?.(() => ({
-        commands: [
-          {
-            id: "df-status",
-            title: "dev-framework status",
-            description: "Show the current dev-framework configuration",
-            slash: { name: "df-status" },
-            run: () => {
-              const dir = getDirectory();
-              const config = loadConfig(dir);
-              void ctx.ui.dialog.alert({
-                title: "opencode-dev-framework status",
-                message: renderConfigStatus(config),
-              });
-            },
-          },
-          {
-            id: "df-help",
-            title: "dev-framework help",
-            description: "List available dev-framework commands",
-            slash: { name: "df-help" },
-            run: () => {
-              void ctx.ui.dialog.alert({
-                title: "dev-framework commands",
-                message: renderHelp(),
-              });
-            },
-          },
-          {
-            id: "df-profile",
-            title: "dev-framework profile",
-            description: "Change the active dev-framework profile",
-            slash: { name: "df-profile", arguments: true },
-            run: async (input) => {
-              const dir = getDirectory();
-              const raw = (input ?? "").trim();
-              const arg = raw === "df-profile" ? "" : raw;
-              if (arg && (PROFILES as string[]).includes(arg)) {
-                const message = await changeProfile(dir, arg as Profile);
-                ctx.ui.toast.show({ message, variant: "success" });
-                return;
-              }
-              if (arg) {
-                ctx.ui.toast.show({
-                  message: `Usage: /df-profile <${PROFILES.join("|")}>`,
-                  variant: "warning",
-                });
-                return;
-              }
-              const selected = await ctx.ui.dialog.select({
-                title: "dev-framework profile",
-                options: PROFILES.map((p) => ({ title: p, value: p })),
-              });
-              if (selected) {
-                const message = await changeProfile(dir, selected as Profile);
-                ctx.ui.toast.show({ message, variant: "success" });
-              }
-            },
-          },
-          {
-            id: "df-verify",
-            title: "dev-framework verify",
-            description: "Run the dev-framework completion gate",
-            slash: { name: "df-verify" },
-            run: async () => {
-              const dir = getDirectory();
-              const config = loadConfig(dir);
-              const { summary, report } = await verifyGate(runCommand, dir, config);
-              await ctx.ui.dialog.alert({
-                title: report.ok ? "dev-framework gate passed" : "dev-framework gate failed",
-                message: summary,
-              });
-              ctx.ui.toast.show({ message: summary, variant: report.ok ? "success" : "error" });
-            },
-          },
-        ],
-      }));
-    } catch (e) {
+    // V2 TUI requires keymap registration inside a slot render (Solid component)
+    // where Keymap.Provider is available. Calling ctx.keymap.layer directly in
+    // setup throws "Keymap.Provider is missing" (seen in standalone logs).
+    // The DCP reference (lib/v2/tui.tsx) uses ctx.ui.slot({append:"app",render(){...}}).
+    const register = () => {
       try {
-        console.warn("[opencode-dev-framework:tui] keymap not available, skipping slash registration:", String(e));
-      } catch {}
+        (ctx as unknown as { keymap?: { layer: (fn: () => unknown) => void } }).keymap?.layer?.(() => ({
+          commands: [
+            {
+              id: "df-status",
+              title: "dev-framework status",
+              description: "Show the current dev-framework configuration",
+              slash: { name: "df-status" },
+              run: () => {
+                const dir = getDirectory();
+                const config = loadConfig(dir);
+                void ctx.ui.dialog.alert({
+                  title: "opencode-dev-framework status",
+                  message: renderConfigStatus(config),
+                });
+              },
+            },
+            {
+              id: "df-help",
+              title: "dev-framework help",
+              description: "List available dev-framework commands",
+              slash: { name: "df-help" },
+              run: () => {
+                void ctx.ui.dialog.alert({
+                  title: "dev-framework commands",
+                  message: renderHelp(),
+                });
+              },
+            },
+            {
+              id: "df-profile",
+              title: "dev-framework profile",
+              description: "Change the active dev-framework profile",
+              slash: { name: "df-profile", arguments: true },
+              run: async (input) => {
+                const dir = getDirectory();
+                const raw = (input ?? "").trim();
+                const arg = raw === "df-profile" ? "" : raw;
+                if (arg && (PROFILES as string[]).includes(arg)) {
+                  const message = await changeProfile(dir, arg as Profile);
+                  ctx.ui.toast.show({ message, variant: "success" });
+                  return;
+                }
+                if (arg) {
+                  ctx.ui.toast.show({
+                    message: `Usage: /df-profile <${PROFILES.join("|")}>`,
+                    variant: "warning",
+                  });
+                  return;
+                }
+                const selected = await ctx.ui.dialog.select({
+                  title: "dev-framework profile",
+                  options: PROFILES.map((p) => ({ title: p, value: p })),
+                });
+                if (selected) {
+                  const message = await changeProfile(dir, selected as Profile);
+                  ctx.ui.toast.show({ message, variant: "success" });
+                }
+              },
+            },
+            {
+              id: "df-verify",
+              title: "dev-framework verify",
+              description: "Run the dev-framework completion gate",
+              slash: { name: "df-verify" },
+              run: async () => {
+                const dir = getDirectory();
+                const config = loadConfig(dir);
+                const { summary, report } = await verifyGate(runCommand, dir, config);
+                await ctx.ui.dialog.alert({
+                  title: report.ok ? "dev-framework gate passed" : "dev-framework gate failed",
+                  message: summary,
+                });
+                ctx.ui.toast.show({ message: summary, variant: report.ok ? "success" : "error" });
+              },
+            },
+          ],
+        }));
+      } catch (e) {
+        try {
+          console.warn("[opencode-dev-framework:tui] keymap registration failed:", String(e));
+        } catch {}
+      }
+    };
+
+    // Try slot-based registration (correct V2 way). Fallback to direct layer if slot unavailable.
+    try {
+      const slot = (ctx.ui as unknown as { slot?: (claim: { append: string; render: () => unknown }) => void }).slot;
+      if (typeof slot === "function") {
+        slot({
+          append: "app",
+          render() {
+            register();
+            return null as unknown as ReturnType<typeof slot> extends void ? null : never;
+          },
+        });
+        return;
+      }
+    } catch {
+      // ignore, fallback below
     }
+
+    // Fallback: direct registration (works in tests where slot is mocked)
+    register();
   },
 });

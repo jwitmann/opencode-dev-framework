@@ -11,9 +11,9 @@ Build and publish `opencode-dev-framework`, an OpenCode plugin that brings dev-f
 
 ## Non-goals
 
-- Do not implement an unconditional "agent cannot finish" block. OpenCode has no
-  native `agentStop` hook; the `session.stopping` hook (PR #44712)
-  can keep a session running up to `gate.max_blocks` times, then stands down.
+- Do not implement an unconditional "agent cannot finish" block. OpenCode V2 has no
+  `session.stopping` veto — the gate re-prompts via `session.prompt` on
+  `session.idle`/`session.status:idle` up to `gate.max_blocks` (plugin-owned) then stands down.
 - ~~Do not build a CLI launcher like `bin/df`.~~ **Superseded in v0.1.7+:** the
   user explicitly requested a `df` CLI. It now scaffolds templates (`init`),
   auto-detects project commands, switches profile (`profile`), reports status,
@@ -30,13 +30,13 @@ Teams or individuals who:
 
 ## Distribution
 
-- npm package: `opencode-dev-framework`
-- Users add it to their `opencode.json` plugin array:
+- npm package: `opencode-dev-framework` (`@opencode/plugin` V2)
+- Users add it to their `opencode.json` `plugins` array:
 
   ```json
   {
     "$schema": "https://opencode.ai/config.json",
-    "plugin": ["opencode-dev-framework"]
+    "plugins": ["opencode-dev-framework"]
   }
   ```
 
@@ -49,8 +49,8 @@ Teams or individuals who:
 - [x] `.dev-framework.yml` is read as a fallback for compatibility.
 - [x] Protected-path edits are denied in `standard`/`strict` profiles.
 - [x] Formatters and linters run on edited files.
-- [x] Completion gate runs on `session.idle` and reports failures.
-- [x] Blocking gate works via `session.stopping` (PR #44712) on supported OpenCode builds.
+- [x] Completion gate runs on `session.idle`/`session.status:idle` and reports failures.
+- [x] Blocking gate re-prompts via `session.prompt` on idle inside `gate.max_blocks` (V2 async, no `session.stopping`).
 - [x] Unit tests cover config loading, guardrails, gate logic, rules, lint, and installer.
 - [x] CI runs tests on every PR and publishes to npm on tagged releases.
 

@@ -2,6 +2,20 @@
 
 Use this file to capture anything that comes up during implementation that future sessions need to know.
 
+## V2 migration (0.2.0) — `@opencode/plugin` ^2
+
+**V1 is dead.** `opencode v2.0.11` requires `@opencode/plugin` (`Plugin.define` + `Context`). Key changes:
+
+- `plugin` → `plugins` in `opencode.json` (`{package, options}` object, not tuple).
+- `src/index.ts`: `Plugin = async (ctx:PluginInput)=>Hooks` → `Plugin.define({id, setup: async (ctx:Context)=>...})` with `ctx.session.hook("context")`, `ctx.tool.hook("execute.before")`, `ctx.event.subscribe()`, `ctx.tool.transform()`. No `config` hook, no `experimental.chat.system.transform`, no `session.stopping`.
+- Gate: `session.stopping` (sync `output.stop=false`) removed. V2 re-prompts via `ctx.event.subscribe` on `session.idle`/`session.status:idle` → `ctx.session.prompt({sessionID, text: stoppingMessage})` inside `gate.max_blocks` (plugin-owned, no core 3-cap). `filesystem.changed` replaces `file.edited`.
+- TUI: `api.keymap.registerLayer` in `setup` → `ctx.ui.slot({append:"app",render(){ ctx.keymap.layer(()=>({commands:[{id, slash:{name}}]})) }})` via `@opencode/plugin/tui` + `solid-js` peer. Direct `keymap.layer` in `setup` throws `Keymap.Provider is missing` when called on server.
+- Tools: `tool()` helper + `zod` args → `tool.transform` with JSON Schema, `editor.add({name,input,execute})`.
+- `src/logger.ts`: `client.app.log` → `stderr` + file fallback; V1 `client` kept for tests.
+- `package.json` dev `solid-js`, `tui.tsx` still ships as source via `exports "./tui"`.
+
+Historical V1 notes below remain for context but are no longer runtime-relevant.
+
 ## Validated against `@opencode-ai/plugin` v1.18 (Phase 3)
 
 Findings from reading the installed plugin/SDK type definitions:

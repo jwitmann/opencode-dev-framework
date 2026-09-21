@@ -8,29 +8,25 @@ Context file for AI agents working on the `opencode-dev-framework` project.
 
 The plugin provides:
 
-- Constitution / rule injection at session start, with local override and
+- Constitution / rule injection per model request (`session.hook("context")`), with local override and
   style-guide auto-discovery.
-- Protected-path guardrails and dangerous-command blocking.
-- Per-edit lint feedback, with optional `pre-commit` delegation.
-- A completion gate (tests / type-check / lint) that runs when the session goes
-  idle and, on newer OpenCode builds, blocks the session from finishing via
-  `session.stopping` (PR #44712) up to `gate.max_blocks` times.
+- Protected-path guardrails and dangerous-command blocking (`tool.hook("execute.before")`).
+- Per-edit lint feedback, with optional `pre-commit` delegation (`event.subscribe` on `filesystem.changed`).
+- A completion gate (tests / type-check / lint) that runs on `session.idle`/`session.status:idle` and, on failure inside `gate.max_blocks`, re-prompts the session via `session.prompt` (V2 async replacement for `session.stopping`).
 
-On older OpenCode builds without the stopping hook, the completion gate is
-**advisory/loud**, not a hard physical block. This is a documented
-architectural limitation.
+In V2 there is no synchronous `session.stopping` veto — the gate is **async re-injection**, not a hard block. `gate.max_blocks` is plugin-owned (no core 3-cap). See `docs/plans/08-notes.md`.
 
 ## Tech stack
 
 - **Language:** TypeScript
-- **Runtime target:** Bun (OpenCode uses Bun to load plugins)
+- **Runtime target:** Bun (OpenCode uses Bun to load plugins; V2 `tui.tsx` via Solid)
 - **Development runtime:** Node.js v22 + npm (Bun is not installed on this box)
 - **Package manager:** npm for development; npm publishing
 - **Build output:** `dist/`
 - **Test runner:** vitest
 - **Formatter & Linter:** Biome (dev dependency)
 - **Markdown linter:** markdownlint-cli2
-- **Plugin API:** `@opencode-ai/plugin`
+- **Plugin API:** `@opencode/plugin` `^2` (`@opencode/plugin/tui` for TUI, `solid-js` peer)
 
 ## Linting and formatting
 
@@ -103,12 +99,11 @@ OpenCode loads the plugin via Bun at runtime, but all development and CI on this
 ### Don't
 
 - Don't rewrite `opencode.json` automatically from the plugin.
-- Don't claim the completion gate can hard-block OpenCode from finishing. The
-  `session.stopping` hook (PR #44712) can keep the session running,
-  but it is opt-in and bounded: the hook fires only on natural
-  loop exit and OpenCode core enforces a hard re-entry cap of 3,
-  running up to `gate.max_blocks` times, but it is opt-in and bounded — not an
-  unconditional block.
+- Don't claim the completion gate can hard-block OpenCode from finishing. In V2
+  there is no `session.stopping` veto — the gate re-prompts via `session.prompt`
+  on `session.idle`/`session.status:idle` up to `gate.max_blocks` (plugin-owned,
+  no core 3-cap), but it is **async re-injection**, not a hard veto — the user
+  can still close the session.
 - Don't add heavy dependencies without discussing.
 - Don't commit `dist/`, `node_modules/`, or lockfiles unless intentionally releasing.
 - **Never push to remote.** Commit changes locally only. Pushing releases or changes is a deliberate user action, not an agent action.
@@ -134,7 +129,7 @@ opencode-dev-framework/
 │   ├── host.ts             # Host abstraction
 │   ├── logger.ts           # Structured logging
 │   └── types.ts            # Shared types
-├── tui.tsx                 # TUI plugin module (slash-command modal dialogs)
+├── tui.tsx                 # TUI plugin (Plugin.define via @opencode/plugin/tui, slot+keymap.layer)
 ├── bin/
 │   └── df                  # df init / profile / status / version CLI
 ├── templates/              # Project scaffolding templates
