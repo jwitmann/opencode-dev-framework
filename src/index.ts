@@ -602,4 +602,3 @@ const plugin = Plugin.define({
 });
 
 export default plugin;
-
