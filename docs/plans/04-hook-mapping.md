@@ -23,6 +23,7 @@
 **Purpose:** Inject constitution per model request.
 
 **Actions:**
+
 1. `reloadConfigIfChanged` via `stat` mtime.
 2. If `off`, no-op.
 3. `loadConstitution` (bundled/local/`rules`/`style_guide`).
@@ -89,6 +90,6 @@ Server `tool.transform` provides `dev_framework_*` tools; no `config` hook.
 
 ## Anti-patterns to avoid
 
-- Do not claim the gate hard-blocks. V2 is async re-prompt up to `max_blocks`, not a veto.
-- Do not rewrite `opencode.json` automatically.
-- Do not run network commands during `filesystem.changed` unless configured.
+* Do not claim the gate hard-blocks. V2 is async re-prompt up to `max_blocks`, not a veto.
+* Do not rewrite `opencode.json` automatically.
+* Do not run network commands during `filesystem.changed` unless configured.

@@ -66,7 +66,7 @@ export default Plugin.define({
               group: "dev-framework",
               palette: true,
               slash: { name: "df-profile", arguments: true },
-              run: async (input) => {
+              run: async (input?: string) => {
                 const dir = getDirectory();
                 const raw = (input ?? "").trim();
                 const arg = raw === "df-profile" ? "" : raw;
