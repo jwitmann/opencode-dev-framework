@@ -227,6 +227,12 @@ Use this as the source of truth during implementation. Check items off as they a
   (immediate in-session effect via hook-state registry in `src/registry.ts`).
 - [x] 11.6 `session.stopping` gate hook (PR #44712) with
   `gate.max_blocks` synthetic keep-alive turns + `session.idle` fallback.
+  **Correction (v0.2.3):** PR #44712 was never merged into core (still open;
+  the earlier PR #41811 was closed unmerged), and the V2 rewrite (0.2.x)
+  dropped the adapter. Post-flight enforcement is the `session.idle`
+  re-prompt fallback; the plugin now registers `session.stopping`
+  defensively and upgrades to a hard stop automatically on builds that
+  dispatch it. See Phase 19 and `08-notes.md`.
 - [x] 11.11 `session.stopping` adapter (PR #44712): shared
   `runStoppingGate` runner behind `session.stopping`
   (`{ stop: boolean; message?: string }`) contract, with tests and
@@ -330,6 +336,39 @@ Use this as the source of truth during implementation. Check items off as they a
   `DialogAlert` modal. `/df-profile` and `/df-verify` remain server-side.
 - [x] 18.13 Run full validation suite and have the user test `/df-status` locally
   before tagging v0.1.22.
+
+## Phase 19 — Pre/post-flight enforcement harness (v0.2.3)
+
+Motivation: peer review never happened automatically and the gate could
+silently skip (event-shape mismatch → empty tracker → `skip_unchanged`).
+Ground truth established against the v2.0.12 source: `SessionHooks` has no
+`stopping` veto (PR #44712 open, PR #41811 closed unmerged), so post-flight
+hard stops require core support that does not yet exist; pre-flight can be a
+true hard gate via `tool.execute.before`.
+
+- [x] 19.1 `src/harness.ts`: artifact inspection (review + pre-flight),
+  `git status --porcelain` changed-file fallback (`parseGitStatusPorcelain`,
+  `gitChangedFiles`, `mergeChangedFiles`), `preflightBlockReason` edit-gate
+  decision, and `evaluateCompletion` — one shared verdict runner (gate +
+  review requirement + block counting + loud stand-down) consumed by both the
+  `session.stopping` and `session.idle` call sites.
+- [x] 19.2 Config: `preflight:` task list (native YAML list or multi-line
+  string; flat key `preflight` for `.dev-framework.yml`), `gate.require_review`
+  (flat `gate_require_review`), defaulting on for every profile except `off`.
+- [x] 19.3 `src/index.ts`: register `session.stopping` defensively (capability
+  probe; `stopHookSupported` flips on first dispatch and shows in
+  `/df-status`); pre-flight deny/warn in `tool.execute.before` (artifact path
+  itself always writable); idle handler uses the shared verdict runner;
+  gate pass/skip/stand-down verdicts logged at info level.
+- [x] 19.4 `src/format-status.ts` + `src/registry.ts`: status shows
+  `require_review`, pre-flight tasks, and hard-stop mode.
+- [x] 19.5 Tests: `tests/harness.test.ts` (artifact states, porcelain parsing,
+  pre-flight gate decisions, verdict runner incl. stand-down and advisory),
+  config tests for the new keys. 166 tests pass.
+- [x] 19.6 Docs: README (completion gate + pre-flight bullets, profiles table,
+  config example, limitations), `08-notes.md`, corrected the false 11.6/11.11
+  `session.stopping` claims, AGENTS.md enforcement caveat updated.
+- [ ] 19.7 Bump version and tag (user action).
 
 ## Notes for the implementer
 

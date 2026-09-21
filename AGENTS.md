@@ -99,11 +99,16 @@ OpenCode loads the plugin via Bun at runtime, but all development and CI on this
 ### Don't
 
 - Don't rewrite `opencode.json` automatically from the plugin.
-- Don't claim the completion gate can hard-block OpenCode from finishing. In V2
-  there is no `session.stopping` veto — the gate re-prompts via `session.prompt`
-  on `session.idle`/`session.status:idle` up to `gate.max_blocks` (plugin-owned,
-  no core 3-cap), but it is **async re-injection**, not a hard veto — the user
-  can still close the session.
+- Don't claim the completion gate can hard-block OpenCode from finishing on
+  current v2 releases. Up to v2.0.12 there is no `session.stopping` veto in
+  core (PR #44712 open, PR #41811 closed unmerged) — the gate re-prompts via
+  `session.prompt` on `session.idle`/`session.status:idle` up to
+  `gate.max_blocks` (plugin-owned, no core 3-cap), but it is **async
+  re-injection**, not a hard veto — the user can still close the session. The
+  plugin registers `session.stopping` defensively and upgrades to a hard stop
+  automatically on builds that dispatch it (see `/df-status`). The
+  **pre-flight** gate, by contrast, genuinely hard-blocks: it denies edit
+  tools in `tool.execute.before` before the edit lands.
 - Don't add heavy dependencies without discussing.
 - Don't commit `dist/`, `node_modules/`, or lockfiles unless intentionally releasing.
 - **Never push to remote.** Commit changes locally only. Pushing releases or changes is a deliberate user action, not an agent action.
@@ -120,6 +125,7 @@ opencode-dev-framework/
 │   ├── protect.ts          # Guardrail logic
 │   ├── lint.ts             # Per-edit lint runner
 │   ├── gate.ts             # Completion gate
+│   ├── harness.ts          # Pre/post-flight harness (artifacts, git changed-files, verdict runner)
 │   ├── rules.ts            # Constitution injection
 │   ├── registry.ts         # Per-project hook state registry
 │   ├── tools.ts            # Custom tools (dev_framework_init / set_profile / status)

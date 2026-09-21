@@ -35,9 +35,14 @@ export interface GateConfig {
   skip_unchanged: boolean;
   scope: GateScope;
   lint_changed: boolean;
+  /**
+   * When true (standard/strict default), a session that changed files must
+   * also produce a peer-review artifact before the completion gate passes.
+   */
+  require_review: boolean;
   /** Per-command timeout in seconds. */
   timeout?: number;
-  /** Reserved for future use; advisory mode currently ignores this. */
+  /** Maximum number of times a failing gate may re-block before standing down. */
   max_blocks: number;
 }
 
@@ -71,6 +76,12 @@ export interface Config {
   style_guide?: string;
   /** Use pre-commit for per-file linting when available (`auto`) or never (`off`). */
   precommit?: "auto" | "off";
+  /**
+   * Pre-flight task list: knowledge/state-building tasks that must be
+   * completed (and written to the pre-flight artifact) before edit tools
+   * are allowed. Empty (default) disables pre-flight enforcement.
+   */
+  preflight?: string[];
 }
 
 /**
@@ -91,4 +102,5 @@ export interface ResolvedConfig {
   rules?: RulesConfig;
   style_guide?: string;
   precommit: "auto" | "off";
+  preflight: string[];
 }

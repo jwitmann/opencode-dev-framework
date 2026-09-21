@@ -94,6 +94,10 @@ describe("loadConfig (.dev-framework.yml fallback)", () => {
         "format_on_edit: false",
         "gate_scope: changed",
         "gate_timeout: 300",
+        "gate_require_review: false",
+        "preflight: |",
+        "  Load recent backtest results",
+        "  Summarize the current strategy config",
         "protect: .env* go.sum",
         "protect_mode: warn",
         "",
@@ -109,6 +113,11 @@ describe("loadConfig (.dev-framework.yml fallback)", () => {
     expect(config.on_edit.format).toBe(false);
     expect(config.gate.scope).toBe("changed");
     expect(config.gate.timeout).toBe(300);
+    expect(config.gate.require_review).toBe(false);
+    expect(config.preflight).toEqual([
+      "Load recent backtest results",
+      "Summarize the current strategy config",
+    ]);
     expect(config.protect).toEqual([".env*", "go.sum"]);
     expect(config.protect_mode).toBe("warn");
   });
@@ -120,6 +129,8 @@ describe("profile defaults", () => {
     expect(config.profile).toBe("off");
     expect(config.on_edit).toEqual({ format: false, lint: false });
     expect(config.gate.block_on_failure).toBe(false);
+    expect(config.gate.require_review).toBe(false);
+    expect(config.preflight).toEqual([]);
     expect(config.protect).toEqual(DEFAULT_PROTECT);
   });
 
@@ -129,6 +140,7 @@ describe("profile defaults", () => {
     expect(config.profile).toBe("standard");
     expect(config.protect_mode).toBe("deny");
     expect(config.gate.block_on_failure).toBe(true);
+    expect(config.gate.require_review).toBe(true);
   });
 
   it("applies advisory defaults", () => {
@@ -136,6 +148,7 @@ describe("profile defaults", () => {
     const config = loadConfig(dir);
     expect(config.protect_mode).toBe("warn");
     expect(config.gate.block_on_failure).toBe(false);
+    expect(config.gate.require_review).toBe(true);
     expect(config.on_edit).toEqual({ format: true, lint: true });
   });
 
@@ -143,7 +156,35 @@ describe("profile defaults", () => {
     write(".opencode-dev-framework.yml", "profile: strict\n");
     const config = loadConfig(dir);
     expect(config.gate.lint_changed).toBe(true);
+    expect(config.gate.require_review).toBe(true);
     expect(config.protect_mode).toBe("deny");
+  });
+
+  it("loads a native preflight task list and honors gate.require_review overrides", () => {
+    write(
+      ".opencode-dev-framework.yml",
+      [
+        "profile: strict",
+        "gate:",
+        "  require_review: false",
+        "preflight:",
+        "  - Task one",
+        "  - Task two",
+        "",
+      ].join("\n"),
+    );
+    const config = loadConfig(dir);
+    expect(config.gate.require_review).toBe(false);
+    expect(config.preflight).toEqual(["Task one", "Task two"]);
+  });
+
+  it("accepts preflight as a single multi-line string", () => {
+    write(
+      ".opencode-dev-framework.yml",
+      ["preflight: |", "  Task one", "  Task two", ""].join("\n"),
+    );
+    const config = loadConfig(dir);
+    expect(config.preflight).toEqual(["Task one", "Task two"]);
   });
 
   it("lets explicit keys override profile defaults", () => {

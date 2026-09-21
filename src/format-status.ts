@@ -68,11 +68,23 @@ export function renderConfigStatus(config: ResolvedConfig): string {
   lines.push(`  run_typecheck: ${config.gate.run_typecheck}`);
   lines.push(`  run_tests: ${config.gate.run_tests}`);
   lines.push(`  lint_changed: ${config.gate.lint_changed}`);
+  lines.push(`  require_review: ${config.gate.require_review}`);
   lines.push(`  block_on_failure: ${config.gate.block_on_failure}`);
   lines.push(`  skip_unchanged: ${config.gate.skip_unchanged}`);
   lines.push(`  scope: ${config.gate.scope}`);
   lines.push(`  timeout: ${config.gate.timeout ?? "(default)"}`);
   lines.push(`  max_blocks: ${config.gate.max_blocks}`);
+  lines.push("");
+  lines.push("Pre-flight:");
+  if (config.preflight.length === 0) {
+    lines.push("  (disabled — no preflight tasks configured)");
+  } else {
+    lines.push(`  artifact: .opencode/opencode-dev-framework/preflight.md`);
+    lines.push("  tasks:");
+    for (const task of config.preflight) {
+      lines.push(`    - ${task}`);
+    }
+  }
   lines.push("");
   lines.push("Commands:");
   lines.push("  typecheck:");
@@ -121,6 +133,11 @@ export function renderStatus(config: ResolvedConfig, state?: HookState | null): 
   const lines: string[] = [renderConfigStatus(config)];
 
   if (state) {
+    lines.push("");
+    lines.push(
+      `Hard stop (session.stopping): ${state.stopHookSupported ? "active — gate vetoes loop exit" : "not dispatched by this OpenCode build — idle re-prompt fallback"}`,
+    );
+
     if (config.precommit === "auto") {
       lines.push(
         `  pre-commit binary available: ${state.precommitAvailable === true ? "yes" : state.precommitAvailable === false ? "no" : "not checked yet"}`,

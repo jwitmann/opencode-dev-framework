@@ -97,20 +97,36 @@ gate:
   skip_unchanged: true
   scope: all          # all | changed
   lint_changed: false
+  require_review: true  # standard/strict default; see below
   timeout: 300        # seconds per command
-  max_blocks: 3       # max times session.stopping may keep the loop running
+  max_blocks: 3       # max times a failing gate may re-block before standing down
 ```
 
 | Key | Type | Default | Description |
 |---|---|---|---|
 | `run_typecheck` | `boolean` | `true` | Run `commands.typecheck` at the gate. |
 | `run_tests` | `boolean` | `true` | Run `commands.test` at the gate. |
-| `block_on_failure` | `boolean` | profile-based | If true, emit failure loudly and (with PR #44712) keep the session running. |
-| `skip_unchanged` | `boolean` | `true` | Skip gate if no files changed. |
+| `block_on_failure` | `boolean` | profile-based | If true, block completion on failure: veto loop exit when `session.stopping` is dispatched by core, otherwise re-prompt from `session.idle`. |
+| `skip_unchanged` | `boolean` | `true` | Skip gate if no files changed. Changed files come from edit events cross-checked against `git status --porcelain`. |
 | `scope` | `string` | `all` | `all` runs `commands.test`; `changed` runs `commands.test_changed`. |
 | `lint_changed` | `boolean` | `true` in `strict` | Lint each changed file at the gate. |
+| `require_review` | `boolean` | `true` (every profile except `off`) | Sessions that changed files must produce a peer-review artifact at `.opencode/opencode-dev-framework/review.md` before the gate passes. In advisory this is warned, not blocked. |
 | `timeout` | `number` | — | Per-command timeout in seconds. |
-| `max_blocks` | `number` | `3` | Max synthetic keep-alive turns via `session.stopping` (PR #44712) before the gate stands down. Ignored on older OpenCode versions (advisory `session.idle` only). |
+| `max_blocks` | `number` | `3` | Max times a failing gate may block before standing down loudly. |
+
+### `preflight`
+
+- Type: `string[]` (or a multi-line string)
+- Default: `[]` (disabled)
+
+Pre-flight task list: knowledge/state-building tasks that must be completed
+before the agent may edit product code. When non-empty, edit tools
+(`edit`/`write`/`patch`) are **denied** in `standard`/`strict` (warned in
+`advisory`) until the agent writes its findings to
+`.opencode/opencode-dev-framework/preflight.md`. Read-only tools stay open,
+and the artifact path itself is always writable. This is a true hard gate on
+every OpenCode build because it runs in `tool.execute.before`, before the
+edit lands.
 
 ### `on_edit`
 
@@ -261,8 +277,10 @@ When reading `.dev-framework.yml` as fallback, map flat keys to the native struc
 | `gate_skip_unchanged` | `gate.skip_unchanged` |
 | `gate_scope` | `gate.scope` |
 | `gate_lint_changed` | `gate.lint_changed` |
+| `gate_require_review` | `gate.require_review` |
 | `gate_timeout` | `gate.timeout` |
 | `gate_max_blocks` | `gate.max_blocks` |
+| `preflight` | `preflight` (multi-line string, one task per line) |
 | `protect_off` | `protect_off` |
 | `protect_mode` | `protect_mode` |
 | `protect` | `protect` (split on whitespace) |

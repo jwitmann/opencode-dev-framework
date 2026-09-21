@@ -19,16 +19,18 @@ import type { Context } from "@opencode/plugin/promise/plugin";
 import { stat } from "node:fs/promises";
 import { join } from "node:path";
 import { clearConfigCache, loadConfig } from "./config.js";
+import { type ChangedFileTracker, createChangedFileTracker } from "./gate.js";
 import {
-  type ChangedFileTracker,
-  createChangedFileTracker,
-  runGate,
-  summarizeGate,
-} from "./gate.js";
+  artifactState,
+  evaluateCompletion,
+  PREFLIGHT_ARTIFACT_REL,
+  preflightBlockReason,
+  type CompletionVerdict,
+} from "./harness.js";
 import { runCommand, type RunCommand } from "./host.js";
-import { detectPreCommitAvailability, isLintFailure, lintFile, summarizeLint } from "./lint.js";
+import { lintFile, detectPreCommitAvailability, isLintFailure, summarizeLint } from "./lint.js";
 import { createLogger, type LogFn, type LogLevel } from "./logger.js";
-import { checkToolCall } from "./protect.js";
+import { checkToolCall, extractFilePath } from "./protect.js";
 import { loadConstitution } from "./rules.js";
 import type { ResolvedConfig } from "./types.js";
 
@@ -49,6 +51,12 @@ export interface HookState {
   blockCounts: Map<string, number>;
   precommitAvailable?: boolean;
   configMtime?: number;
+  /**
+   * Set once the `session.stopping` hook has actually been invoked by core —
+   * i.e. this OpenCode build supports pre-break gate vetoes (hard stops).
+   * Until then the idle re-prompt fallback is the only post-flight lever.
+   */
+  stopHookSupported?: boolean;
 }
 
 let activeState: HookState | null = null;
@@ -98,50 +106,54 @@ async function reloadConfigIfChanged(state: HookState): Promise<void> {
   }
 }
 
-type StoppingVerdict =
-  | { decision: "pass" }
-  | { decision: "standdown"; failedSteps: string[] }
-  | { decision: "blocked"; summary: string; blockCount: number; maxBlocks: number };
+type StoppingOutput = { stop?: boolean; message?: string };
 
-async function runGateVerdict(state: HookState, _sessionID: string): Promise<StoppingVerdict> {
-  if (!state.config.gate || state.config.profile === "off") {
-    return { decision: "pass" };
-  }
-  const changedFiles = state.tracker.getChangedFiles();
-  const report = await runGate(state.run, state.config, changedFiles, { cwd: state.directory });
-  if (!report.ran || report.ok) {
-    state.tracker.clearChangedFiles();
-    state.blockCounts.delete(_sessionID);
-    return { decision: "pass" };
-  }
-  const maxBlocks = state.config.gate.max_blocks ?? 3;
-  const blockCount = (state.blockCounts.get(_sessionID) ?? 0) + 1;
-  state.blockCounts.set(_sessionID, blockCount);
-
-  if (blockCount > maxBlocks) {
-    state.tracker.clearChangedFiles();
-    await safeLog(
-      state,
-      "warn",
-      `completion gate has blocked ${maxBlocks} times; standing down but checks are still failing`,
-      {
-        failedSteps: report.failedSteps.map((s) => s.name),
-      },
-    );
-    return { decision: "standdown", failedSteps: report.failedSteps.map((s) => s.name) };
-  }
-
-  const summary = summarizeGate(report);
-  await safeLog(state, "error", summary, { failedSteps: report.failedSteps.map((s) => s.name) });
-  return { decision: "blocked", summary, blockCount, maxBlocks };
+/**
+ * Turn a completion verdict into the continuation message fed back to the
+ * agent when blocked. Shared by the `session.stopping` hard-stop path and
+ * the `session.idle` re-prompt fallback so wording (and block counting) is
+ * identical on either core support level.
+ */
+function continuationMessage(verdict: Extract<CompletionVerdict, { decision: "blocked" }>): string {
+  const why =
+    verdict.reason === "review"
+      ? "the peer-review requirement is unmet"
+      : "the repo's checks are failing";
+  return (
+    `opencode-dev-framework completion gate blocked you from finishing because ${why} ` +
+    `(block ${verdict.blockCount}/${verdict.maxBlocks}).\n\n${verdict.summary}\n\n` +
+    `Fix the underlying cause and continue. Do NOT disable, skip, or weaken these checks to ` +
+    `get past the gate. If a failure is pre-existing and unrelated to your work, prove it ` +
+    `(show it fails on a clean tree) and report it to the user.`
+  );
 }
 
-function stoppingMessage(verdict: Extract<StoppingVerdict, { decision: "blocked" }>): string {
-  return (
-    `opencode-dev-framework completion gate blocked you from finishing (block ${verdict.blockCount}/${verdict.maxBlocks}). ` +
-    `The following checks failed:\n\n${verdict.summary}\n\n` +
-    `Fix the underlying cause and continue. Do NOT disable, skip, or weaken these checks to make them pass.`
-  );
+/** Log pass/standdown verdicts; returns the continuation message when blocked. */
+async function actOnVerdict(state: HookState, verdict: CompletionVerdict): Promise<string | null> {
+  if (verdict.decision === "pass") {
+    if (verdict.note) {
+      await safeLog(state, "info", verdict.note, { changedFiles: verdict.changedFiles });
+    }
+    return null;
+  }
+  if (verdict.decision === "standdown") {
+    // evaluateCompletion already logged the stand-down loudly.
+    return null;
+  }
+  return continuationMessage(verdict);
+}
+
+/** Assemble the completion verdict with the state's live dependencies. */
+function runCompletion(state: HookState, sessionID: string): Promise<CompletionVerdict> {
+  return evaluateCompletion({
+    run: state.run,
+    config: state.config,
+    directory: state.directory,
+    sessionID,
+    tracker: state.tracker,
+    blockCounts: state.blockCounts,
+    log: (level, message, extra) => safeLog(state, level, message, extra),
+  });
 }
 
 // Helpers to normalize V2 event shapes (data vs properties vs direct)
@@ -287,6 +299,51 @@ const plugin = Plugin.define({
       );
     }
 
+    // 1b) Hard-stop completion gate — `session.stopping` (OpenCode PR #44712).
+    // Fires before the agent loop breaks on natural exit: a blocked verdict
+    // sets stop=false + message and the loop re-enters, so gate failures
+    // physically prevent completion. Registered defensively: on builds
+    // without core support the hook is simply never dispatched, and the
+    // session.idle fallback below provides re-prompt enforcement instead.
+    // The first invocation flips `stopHookSupported` so /df-status can show
+    // which enforcement level is active.
+    try {
+      // biome-ignore lint/suspicious/noExplicitAny: V2 hook names are not yet typed for session.stopping
+      await (ctx.session as any).hook(
+        "stopping",
+        // biome-ignore lint/suspicious/noExplicitAny: core may dispatch (input, output) or a single mutable event
+        async (input: any, output?: StoppingOutput) => {
+          if (!activeState) return;
+          const out: StoppingOutput = output ?? input ?? {};
+          const sessionID: string =
+            input?.sessionID ??
+            (out as { sessionID?: string }).sessionID ??
+            getEventSessionID(input) ??
+            "unknown";
+          activeState.stopHookSupported = true;
+          await reloadConfigIfChanged(activeState);
+          if (activeState.config.profile === "off") return;
+          const verdict = await runCompletion(activeState, sessionID);
+          const message = await actOnVerdict(activeState, verdict);
+          if (message !== null) {
+            out.stop = false;
+            out.message = message;
+          }
+        },
+      );
+      await safeLog(
+        state,
+        "info",
+        "registered session.stopping hook; if this OpenCode build dispatches it, gate failures become hard stops before loop exit",
+      );
+    } catch {
+      await safeLog(
+        state,
+        "warn",
+        "could not register session.stopping hook; using session.idle re-prompt fallback only",
+      );
+    }
+
     // 2) Guardrails — tool execution blocking (V1: tool.execute.before -> V2: ctx.tool.hook("execute.before", ...))
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     await (ctx.tool as any).hook(
@@ -303,6 +360,29 @@ const plugin = Plugin.define({
         const toolName = (event as { tool: string }).tool;
         const input = (event as { input: unknown }).input;
         const sessionID = (event as { sessionID: string }).sessionID;
+
+        // Pre-flight harness: when `preflight:` tasks are configured, file
+        // edits are denied (standard/strict) until the pre-flight artifact
+        // exists. This is a true hard gate — it runs before the edit lands.
+        if (activeState.config.preflight.length > 0) {
+          const artifact = await artifactState(activeState.directory, PREFLIGHT_ARTIFACT_REL);
+          const reason = preflightBlockReason(
+            activeState.config,
+            toolName,
+            extractFilePath(input),
+            artifact,
+          );
+          if (reason !== null) {
+            const extra = { tool: toolName, sessionID, artifact: PREFLIGHT_ARTIFACT_REL };
+            if (activeState.config.profile === "advisory") {
+              await safeLog(activeState, "warn", reason, extra);
+            } else {
+              await safeLog(activeState, "error", reason, extra);
+              throw new Error(`[opencode-dev-framework] ${reason}`);
+            }
+          }
+        }
+
         // hostPermissions: not available in V2 permission model; pass undefined (conservative — still guard)
         const result = checkToolCall(
           activeState.config,
@@ -544,14 +624,15 @@ const plugin = Plugin.define({
             const sessionID = getEventSessionID(event);
             if (!sessionID) continue;
 
-            const verdict = await runGateVerdict(activeState, sessionID);
-            if (verdict.decision === "pass") continue;
-            if (verdict.decision === "standdown") {
-              // already logged in runGateVerdict; do not re-prompt
-              continue;
-            }
-            // blocked -> re-prompt the session (V2 replacement for session.stopping output.stop=false)
-            const message = stoppingMessage(verdict);
+            const verdict = await runCompletion(activeState, sessionID);
+            const message = await actOnVerdict(activeState, verdict);
+            if (message === null) continue;
+            const blockInfo =
+              verdict.decision === "blocked"
+                ? ` (block ${verdict.blockCount}/${verdict.maxBlocks})`
+                : "";
+            // blocked -> re-prompt the session (fallback when session.stopping
+            // is not dispatched by this OpenCode build)
             try {
               // Prefer prompt (creates a user turn and wakes the agent); fallback to synthetic if prompt not available
               if (typeof ctx.session.prompt === "function") {
@@ -568,7 +649,7 @@ const plugin = Plugin.define({
               await safeLog(
                 activeState,
                 "info",
-                `completion gate re-prompted session ${sessionID} (block ${verdict.blockCount}/${verdict.maxBlocks})`,
+                `completion gate re-prompted session ${sessionID}${blockInfo}`,
               );
             } catch (err) {
               await safeLog(

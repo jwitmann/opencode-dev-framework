@@ -19,9 +19,20 @@ reimplemented as an OpenCode-native plugin.
   and reports failures loudly. Optionally delegates per-file linting to
   `pre-commit run --files` when `precommit: auto` is set.
 - **Completion gate.** When the session goes idle (`session.idle`/`session.status:idle`),
-  runs typecheck, tests, and (optionally) lint on changed files. On failure inside
-  `gate.max_blocks` the plugin re-prompts the session with the failure summary,
-  keeping the agent loop alive (V2 async replacement for `session.stopping`).
+  runs typecheck, tests, and (optionally) lint on changed files — changed files are
+  tracked from edit events and cross-checked against `git status`, so the gate cannot
+  silently skip due to an event-shape mismatch. In `standard`/`strict`, sessions that
+  changed files must also produce a **peer-review artifact**
+  (`.opencode/opencode-dev-framework/review.md`) covering the delegation rule's review
+  cadence. On failure inside `gate.max_blocks` the plugin re-prompts the session with
+  the failure summary. On OpenCode builds that dispatch the `session.stopping` hook
+  (PR #44712) the same verdict vetoes loop exit *before* the agent stops — a true hard
+  stop; `/df-status` shows which mode is active.
+- **Pre-flight gate (optional).** When a `preflight:` task list is configured, edit
+  tools are **denied** (standard/strict) until the agent writes its pre-flight findings
+  to `.opencode/opencode-dev-framework/preflight.md`. Use it for work that requires
+  establishing baseline state/knowledge first (e.g. research on an existing strategy).
+  Read-only tools stay open; the block lifts automatically once the artifact exists.
 - **Custom tools.** `dev_framework_init` scaffolds project-level agents,
   skills, local rules directory, and config; `dev_framework_set_profile` changes the profile
   in-session without restarting; `dev_framework_status` reports the current
@@ -42,12 +53,12 @@ reimplemented as an OpenCode-native plugin.
 
 ## Profiles
 
-| Profile    | Guardrails | Gate failures | Lint on edit | Notes |
-| ---------- | ---------- | ------------- | ------------ | ----- |
-| `off`      | disabled   | not reported  | no           | Plugin registers no hooks at all. |
-| `advisory` | warn       | warn          | yes          | Nothing blocks; everything is logged. |
-| `standard` | deny       | error         | yes          | The default when a config file exists. |
-| `strict`   | deny       | error         | yes          | Also lints changed files in the gate and throws on per-edit lint failures. |
+| Profile    | Guardrails | Gate failures | Lint on edit | Pre-flight | Review required | Notes |
+| ---------- | ---------- | ------------- | ------------ | ---------- | --------------- | ----- |
+| `off`      | disabled   | not reported  | no           | no         | no              | Plugin registers no hooks at all. |
+| `advisory` | warn       | warn          | yes          | warn only  | warned, not blocked | Nothing blocks; everything is logged. |
+| `standard` | deny       | error         | yes          | deny edits | blocks completion | The default when a config file exists. |
+| `strict`   | deny       | error         | yes          | deny edits | blocks completion | Also lints changed files in the gate and throws on per-edit lint failures. |
 
 ## Install
 
@@ -145,6 +156,17 @@ gate:
   run_typecheck: true
   run_tests: true
   block_on_failure: true
+  # standard/strict default: sessions that changed files must produce a
+  # peer-review artifact (.opencode/opencode-dev-framework/review.md)
+  # before the completion gate passes.
+  require_review: true
+
+# Optional: pre-flight task list. When set, edit tools are denied
+# (standard/strict) until the agent writes its findings to
+# .opencode/opencode-dev-framework/preflight.md.
+# preflight:
+#   - "Summarize the current strategy configuration and its intent"
+#   - "Load the most recent backtest results and record headline metrics"
 
 on_edit:
   lint: true
@@ -191,12 +213,16 @@ itself).
 
 ## Limitations
 
-- **The completion gate in V2 re-prompts instead of vetoing.** `session.stopping`
-  (`PR #44712`) was removed in the V2 plugin API. On failure inside `gate.max_blocks`
-  the plugin now calls `ctx.session.prompt()` from the `session.idle`/`session.status`
-  event, waking the agent with the failure summary — same UX, async instead of a
-  synchronous `stop=false` veto. Standing down after `max_blocks` is plugin-owned
-  (no core 3-re-entry cap). There is no synchronous hard block in V2.
+- **Post-flight enforcement depends on core support.** OpenCode v2.0.12 has no
+  `session.stopping` veto (PR #44712 is open; the earlier PR #41811 was never merged),
+  so on failure inside `gate.max_blocks` the plugin re-prompts via
+  `ctx.session.prompt()` from the `session.idle` event. The plugin still registers the
+  `session.stopping` hook defensively: on builds that dispatch it, the same verdict
+  vetoes loop exit before the agent stops — a true hard stop. `/df-status` shows which
+  mode is active. Until then, the user can always close the session, so treat the gate
+  as the strongest available enforcement, not an unbreakable lock. The **pre-flight**
+  gate, by contrast, is a genuine hard block on every build: it denies edit tools in
+  `tool.execute.before`, before the edit lands.
 - **Guardrails run inside OpenCode.** The `tool.execute.before` hook runs
   after OpenCode's own permission system; it adds project rules on top, it
   does not replace OpenCode permissions.

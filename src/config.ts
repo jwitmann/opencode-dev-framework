@@ -56,10 +56,12 @@ const configSchema = z.object({
       skip_unchanged: z.boolean().optional(),
       scope: z.enum(["all", "changed"]).optional(),
       lint_changed: z.boolean().optional(),
+      require_review: z.boolean().optional(),
       timeout: z.number().positive().optional(),
       max_blocks: z.number().int().positive().optional(),
     })
     .optional(),
+  preflight: z.union([z.array(z.string()), z.string()]).optional(),
   on_edit: z
     .object({
       format: z.boolean().optional(),
@@ -210,6 +212,9 @@ export function mapFlatConfig(flat: Record<string, unknown>): Config {
       case "gate_lint_changed":
         gate.lint_changed = toBoolean(value);
         break;
+      case "gate_require_review":
+        gate.require_review = toBoolean(value);
+        break;
       case "gate_timeout":
         gate.timeout = toNumber(value);
         break;
@@ -236,6 +241,16 @@ export function mapFlatConfig(flat: Record<string, unknown>): Config {
         break;
       case "precommit":
         config.precommit = value === "auto" || value === true ? "auto" : "off";
+        break;
+      case "preflight":
+        if (Array.isArray(value)) {
+          config.preflight = value.map(String).filter((t) => t.trim() !== "");
+        } else if (typeof value === "string") {
+          config.preflight = value
+            .split("\n")
+            .map((t) => t.trim())
+            .filter((t) => t !== "" && !t.startsWith("#"));
+        }
         break;
       default:
         // Unknown flat keys are ignored for forward compatibility.
@@ -300,6 +315,7 @@ export function resolveConfig(raw: Config, configPath?: string): ResolvedConfig 
       skip_unchanged: raw.gate?.skip_unchanged ?? true,
       scope: raw.gate?.scope ?? "all",
       lint_changed: raw.gate?.lint_changed ?? defaults.lint_changed,
+      require_review: raw.gate?.require_review ?? profile !== "off",
       timeout: raw.gate?.timeout,
       max_blocks: raw.gate?.max_blocks ?? 3,
     },
@@ -311,6 +327,7 @@ export function resolveConfig(raw: Config, configPath?: string): ResolvedConfig 
     rules: Array.isArray(raw.rules) ? { mode: "replace", files: raw.rules } : raw.rules,
     style_guide: raw.style_guide,
     precommit: raw.precommit ?? "off",
+    preflight: raw.preflight ?? [],
   };
 }
 
@@ -322,7 +339,16 @@ function validateConfig(data: unknown, configPath: string): Config {
       .join("\n");
     throw new Error(`Invalid configuration in ${configPath}:\n${issues}`);
   }
-  return result.data;
+  const config = result.data;
+  // Normalize the preflight union to a plain string list.
+  const preflight =
+    typeof config.preflight === "string"
+      ? config.preflight
+          .split("\n")
+          .map((t) => t.trim())
+          .filter((t) => t !== "")
+      : config.preflight;
+  return { ...config, preflight };
 }
 
 const configCache = new Map<string, ResolvedConfig>();

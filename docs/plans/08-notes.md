@@ -2,6 +2,42 @@
 
 Use this file to capture anything that comes up during implementation that future sessions need to know.
 
+## Pre/post-flight enforcement harness (v0.2.3)
+
+**Ground truth on hard stops (verified against the v2.0.12 tag source,
+2026-09-21):** `packages/plugin/src/promise/session.ts` `SessionHooks` has no
+`stopping` entry. PR #44712 (fail-closed `session.stopping`) is still **open**;
+the earlier PR #41811 (`experimental.session.stopping`) was **closed unmerged**.
+The 0.1.x README/checklist claims about a working `session.stopping` adapter
+(11.6/11.11 below) were therefore aspirational — the V2 rewrite (0.2.x) dropped
+the adapter, which silently weakened post-flight enforcement to advisory.
+
+**What shipped instead (`src/harness.ts`):**
+
+- One shared verdict runner, `evaluateCompletion`, consumed by BOTH the
+  `session.stopping` hook (registered defensively; if a future core dispatches
+  it, blocked verdicts set `stop=false` + message — a true hard stop) and the
+  `session.idle` fallback (re-prompt via `ctx.session.prompt`). Block counts
+  are shared so the budget applies across either path.
+- Changed files = union of the edit-event tracker and
+  `git status --porcelain=v1` (`gitChangedFiles`), so an event-shape mismatch
+  can no longer silently empty the tracker and let `skip_unchanged` swallow
+  the gate.
+- `gate.require_review` (default on for every profile except `off`): sessions
+  that changed files must write `.opencode/opencode-dev-framework/review.md`.
+  Standard/strict block (counted, loud stand-down after `max_blocks`); advisory
+  warns. Wording ported from the original `stop-gate.sh`, including the
+  "prove pre-existing failures on a clean tree" escape clause.
+- `preflight:` task list: **the one true hard gate on every build** — edit
+  tools are denied in `tool.execute.before` (before the edit lands) until
+  `.opencode/opencode-dev-framework/preflight.md` exists. The artifact path
+  itself is always writable; read-only tools are never blocked.
+- `/df-status` shows the active enforcement mode via `stopHookSupported`
+  (flips the first time core actually dispatches `session.stopping`).
+
+**Tracking:** watch opencode PR #44712. When a release dispatches
+`session.stopping`, the plugin upgrades automatically with no config change.
+
 ## V2 migration (0.2.0) — `@opencode/plugin` ^2
 
 **V1 is dead.** `opencode v2.0.11` requires `@opencode/plugin` (`Plugin.define` + `Context`). Key changes:

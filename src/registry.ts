@@ -34,6 +34,8 @@ export interface HookState {
   /** mtime (ms) of the config file at last load; used to detect out-of-process
    * edits (e.g. a `/df-profile` change made from the TUI module). */
   configMtime?: number;
+  /** True once core has actually dispatched `session.stopping` (hard stops active). */
+  stopHookSupported?: boolean;
 }
 
 /**
