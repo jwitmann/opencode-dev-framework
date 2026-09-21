@@ -1,7 +1,8 @@
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { Hooks, PluginInput } from "@opencode-ai/plugin";
+type PluginInput = { directory: string };
+type Hooks = Record<string, unknown>;
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildHooks } from "../src/index";
 import type { LogFn } from "../src/logger";

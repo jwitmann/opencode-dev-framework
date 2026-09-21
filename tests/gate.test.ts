@@ -1,4 +1,5 @@
-import type { Hooks, PluginInput } from "@opencode-ai/plugin";
+type PluginInput = { directory: string };
+type Hooks = Record<string, unknown>;
 import { describe, expect, it } from "vitest";
 import { resolveConfig } from "../src/config";
 import {

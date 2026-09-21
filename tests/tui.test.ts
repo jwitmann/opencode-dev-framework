@@ -1,117 +1,149 @@
 import { describe, expect, it } from "vitest";
-import type { TuiPluginModule } from "@opencode-ai/plugin/tui";
 import tuiModule from "../tui.tsx";
 
-type TuiApi = Parameters<TuiPluginModule["tui"]>[0];
-
-function makeApi(overrides: Partial<TuiApi> = {}): TuiApi {
-  return {
-    state: { path: { directory: "/project" } },
-    ui: {
-      DialogAlert: ((props: { title: string; message: string; onConfirm?: () => void }) =>
-        props) as unknown as TuiApi["ui"]["DialogAlert"],
-      DialogSelect: ((props: { title: string; options: unknown[]; onSelect?: () => void }) =>
-        props) as unknown as TuiApi["ui"]["DialogSelect"],
-      dialog: {
-        replace: () => {},
-        clear: () => {},
-      },
-    },
-    ...overrides,
-  } as unknown as TuiApi;
-}
-
-async function registeredCommands(api: TuiApi) {
-  const layers: Array<{ commands: Array<{ name: string; slashName: string; run: () => void }> }> =
-    [];
-  const withLayer = makeApi({
-    ...api,
-    keymap: {
-      registerLayer: (layer: unknown) => layers.push(layer as never),
-    } as never,
-  });
-  await tuiModule.tui(withLayer, undefined, { id: "test" } as never);
-  return layers[0]?.commands ?? [];
-}
-
 describe("TUI plugin module", () => {
-  it("registers all four /df-* commands via keymap.registerLayer with slashName", async () => {
-    const commands = await registeredCommands(makeApi());
+  it("exports a V2 plugin with id opencode-dev-framework", () => {
+    const mod = tuiModule as unknown as { id: string; setup: unknown };
+    expect(mod.id).toBe("opencode-dev-framework");
+    expect(typeof mod.setup).toBe("function");
+  });
+
+  it("registers all four /df-* commands via keymap.layer with slash name", async () => {
+    const layers: Array<{
+      commands?: Array<{ id: string; slash?: { name: string }; run: unknown }>;
+    }> = [];
+    const ctx: Record<string, unknown> = {
+      location: { directory: "/project" },
+      data: { location: { default: () => ({ directory: "/project" }) } },
+      keymap: {
+        layer: (fn: () => { commands: unknown[] }) => {
+          layers.push(fn() as never);
+        },
+      },
+      ui: {
+        dialog: {
+          alert: async () => {},
+          select: async () => undefined,
+          show: () => {},
+          clear: () => {},
+        },
+        toast: { show: () => {} },
+      },
+    };
+    const mod = tuiModule as unknown as { setup: (c: unknown) => Promise<void> };
+    await mod.setup(ctx);
+    expect(layers).toHaveLength(1);
+    const commands = layers[0].commands ?? [];
     expect(commands).toHaveLength(4);
-    const names = commands.map((c) => c.name).sort();
-    expect(names).toEqual(["df-help", "df-profile", "df-status", "df-verify"]);
-    for (const command of commands) {
-      expect(command.slashName).toBe(command.name);
-      expect(command.run).toBeTypeOf("function");
+    const ids = commands.map((c) => c.id).sort();
+    expect(ids).toEqual(["df-help", "df-profile", "df-status", "df-verify"]);
+    for (const c of commands) {
+      expect(c.slash?.name).toBe(c.id);
+      expect(c.run).toBeTypeOf("function");
     }
   });
 
-  it("falls back to the legacy api.command registration when keymap is unavailable", async () => {
-    let registered: unknown = null;
-    const api = makeApi({
-      command: {
-        register: (fn: () => unknown) => {
-          registered = fn();
-        },
-      } as never,
-    });
-    await expect(tuiModule.tui(api, undefined, { id: "test" } as never)).resolves.toBeUndefined();
-    expect(registered).not.toBeNull();
-    expect(Array.isArray(registered)).toBe(true);
-    expect((registered as Array<{ slash?: { name: string } }>).length).toBe(4);
-  });
-
-  it("is a no-op (and does not throw) when neither keymap nor api.command is available", async () => {
-    const api = makeApi({ command: undefined });
-    await expect(tuiModule.tui(api, undefined, { id: "test" } as never)).resolves.toBeUndefined();
-  });
-
   it("opens a status dialog when /df-status runs", async () => {
-    const replaceCalls: Array<() => unknown> = [];
-    const commands = await registeredCommands(
-      makeApi({
-        ui: {
-          DialogAlert: ((props: { title: string; message: string; onConfirm?: () => void }) =>
-            props) as unknown as TuiApi["ui"]["DialogAlert"],
-          DialogSelect: ((props: { title: string; options: unknown[]; onSelect?: () => void }) =>
-            props) as unknown as TuiApi["ui"]["DialogSelect"],
-          dialog: {
-            replace: (render: () => unknown) => {
-              replaceCalls.push(render);
-            },
-            clear: () => {},
-          },
+    let alertCalled = false;
+    const layers: Array<{ commands?: Array<{ id: string; run: unknown }> }> = [];
+    const ctx: Record<string, unknown> = {
+      location: { directory: "/project" },
+      data: { location: { default: () => ({ directory: "/project" }) } },
+      keymap: {
+        layer: (fn: () => { commands: unknown[] }) => {
+          layers.push(fn() as never);
         },
-      }),
-    );
-    const runStatus = commands.find((c) => c.name === "df-status")?.run;
-    runStatus?.();
-    expect(replaceCalls).toHaveLength(1);
+      },
+      ui: {
+        dialog: {
+          alert: async () => {
+            alertCalled = true;
+          },
+          select: async () => undefined,
+          show: () => {},
+          clear: () => {},
+        },
+        toast: { show: () => {} },
+      },
+    };
+    const mod = tuiModule as unknown as { setup: (c: unknown) => Promise<void> };
+    await mod.setup(ctx);
+    const cmd = layers[0].commands?.find((c) => c.id === "df-status") as
+      | { run: () => unknown }
+      | undefined;
+    await cmd?.run();
+    expect(alertCalled).toBe(true);
   });
 
   it("opens a profile picker when /df-profile runs without an argument", async () => {
-    const replaceCalls: Array<() => unknown> = [];
-    const commands = await registeredCommands(
-      makeApi({
-        ui: {
-          DialogAlert: ((props: { title: string; message: string; onConfirm?: () => void }) =>
-            props) as unknown as TuiApi["ui"]["DialogAlert"],
-          DialogSelect: ((props: { title: string; options: unknown[]; onSelect?: () => void }) =>
-            props) as unknown as TuiApi["ui"]["DialogSelect"],
-          dialog: {
-            replace: (render: () => unknown) => {
-              replaceCalls.push(render);
-            },
-            clear: () => {},
+    let selectCalled = false;
+    const layers: Array<{ commands?: Array<{ id: string; run: unknown }> }> = [];
+    const ctx: Record<string, unknown> = {
+      location: { directory: "/project" },
+      data: { location: { default: () => ({ directory: "/project" }) } },
+      keymap: {
+        layer: (fn: () => { commands: unknown[] }) => {
+          layers.push(fn() as never);
+        },
+      },
+      ui: {
+        dialog: {
+          alert: async () => {},
+          select: async () => {
+            selectCalled = true;
+            return undefined;
+          },
+          show: () => {},
+          clear: () => {},
+        },
+        toast: { show: () => {} },
+      },
+    };
+    const mod = tuiModule as unknown as { setup: (c: unknown) => Promise<void> };
+    await mod.setup(ctx);
+    const cmd = layers[0].commands?.find((c) => c.id === "df-profile") as
+      | { run: (i?: string) => unknown }
+      | undefined;
+    await cmd?.run("");
+    expect(selectCalled).toBe(true);
+  });
+
+  it("handles /df-profile with invalid argument via toast without dialog", async () => {
+    let selectCalled = false;
+    let toastMessage = "";
+    const layers: Array<{ commands?: Array<{ id: string; run: unknown }> }> = [];
+    const ctx: Record<string, unknown> = {
+      location: { directory: "/project" },
+      data: { location: { default: () => ({ directory: "/project" }) } },
+      keymap: {
+        layer: (fn: () => { commands: unknown[] }) => {
+          layers.push(fn() as never);
+        },
+      },
+      ui: {
+        dialog: {
+          alert: async () => {},
+          select: async () => {
+            selectCalled = true;
+            return undefined;
+          },
+          show: () => {},
+          clear: () => {},
+        },
+        toast: {
+          show: (opts: { message: string }) => {
+            toastMessage = opts.message;
           },
         },
-      }),
-    );
-    const runProfile = commands.find((c) => c.name === "df-profile")?.run;
-    runProfile?.();
-    expect(replaceCalls).toHaveLength(1);
-    const rendered = replaceCalls[0]?.() as { title: string; options: unknown[] };
-    expect(rendered.title).toContain("profile");
-    expect(rendered.options).toHaveLength(4);
+      },
+    };
+    const mod = tuiModule as unknown as { setup: (c: unknown) => Promise<void> };
+    await mod.setup(ctx);
+    const cmd = layers[0].commands?.find((c) => c.id === "df-profile") as
+      | { run: (i?: string) => unknown }
+      | undefined;
+    await cmd?.run("invalid-profile");
+    expect(toastMessage).toContain("Usage");
+    expect(selectCalled).toBe(false);
   });
 });

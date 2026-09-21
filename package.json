@@ -63,7 +63,6 @@
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.8",
-    "@opencode-ai/plugin": "^1.18.31",
     "@opentui/core": "^0.5.10",
     "@opentui/keymap": "^0.5.11",
     "@opentui/solid": "^0.5.11",

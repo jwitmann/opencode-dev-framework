@@ -1,4 +1,9 @@
-import { tool } from "@opencode-ai/plugin";
+/**
+ * Legacy tool definitions for test helpers. Production tools are now
+ * registered via ctx.tool.transform in src/index.ts (V2). This file is kept
+ * for the buildHooks test adapter and does not depend on @opencode-ai/plugin.
+ */
+
 import { loadConfig, clearConfigCache } from "./config.js";
 import { installTemplates, writeDetectedConfig } from "./installer.js";
 import { getHookState, updateHookState } from "./registry.js";
@@ -13,32 +18,36 @@ function isProfile(value: string): value is Profile {
   return PROFILES.includes(value as Profile);
 }
 
-export function buildTools(_ctx: {
-  directory: string;
-}): NonNullable<import("@opencode-ai/plugin").Hooks["tool"]> {
+export interface ToolDef {
+  description: string;
+  args?: Record<string, unknown>;
+  execute: (args: Record<string, unknown>, context: { directory: string }) => Promise<string>;
+}
+
+export function buildTools(_ctx: { directory: string }): Record<string, ToolDef> {
   return {
-    dev_framework_init: tool({
+    dev_framework_init: {
       description:
         "Scaffold opencode-dev-framework project files (agents, skills, commands, default config) into the current project. Missing files are created; existing files are skipped unless overwrite is true.",
       args: {
-        directory: tool.schema
-          .string()
-          .optional()
-          .describe("Target project directory (defaults to current project)"),
-        overwrite: tool.schema
-          .boolean()
-          .optional()
-          .describe("Overwrite existing files that differ from templates"),
+        directory: {
+          type: "string",
+          description: "Target project directory (defaults to current project)",
+        },
+        overwrite: {
+          type: "boolean",
+          description: "Overwrite existing files that differ from templates",
+        },
       },
       async execute(args, context) {
-        const targetDir = args.directory ?? context.directory;
+        const targetDir = (args.directory as string | undefined) ?? context.directory;
         const result = await installTemplates(targetDir, {
-          overwriteExisting: args.overwrite ?? false,
-          skipExisting: !(args.overwrite ?? false),
+          overwriteExisting: (args.overwrite as boolean | undefined) ?? false,
+          skipExisting: !((args.overwrite as boolean | undefined) ?? false),
         });
         const configResult = await writeDetectedConfig(targetDir, {
-          overwriteExisting: args.overwrite ?? false,
-          skipExisting: !(args.overwrite ?? false),
+          overwriteExisting: (args.overwrite as boolean | undefined) ?? false,
+          skipExisting: !((args.overwrite as boolean | undefined) ?? false),
         });
 
         const lines = [
@@ -56,24 +65,25 @@ export function buildTools(_ctx: {
         }
         return lines.join("\n");
       },
-    }),
+    },
 
-    dev_framework_set_profile: tool({
+    dev_framework_set_profile: {
       description:
         "Change the opencode-dev-framework profile (off, advisory, standard, strict) for the current project and apply it immediately without restarting OpenCode.",
       args: {
-        profile: tool.schema.string().describe("New profile: off, advisory, standard, or strict"),
-        directory: tool.schema
-          .string()
-          .optional()
-          .describe("Project directory (defaults to current project)"),
+        profile: { type: "string", description: "New profile: off, advisory, standard, or strict" },
+        directory: {
+          type: "string",
+          description: "Project directory (defaults to current project)",
+        },
       },
       async execute(args, context) {
-        const targetDir = args.directory ?? context.directory;
-        const profile = args.profile.trim().toLowerCase();
+        const targetDir = (args.directory as string | undefined) ?? context.directory;
+        const raw = String(args.profile ?? "");
+        const profile = raw.trim().toLowerCase();
 
         if (!isProfile(profile)) {
-          return `Invalid profile "${args.profile}". Valid values: ${PROFILES.join(", ")}.`;
+          return `Invalid profile "${raw}". Valid values: ${PROFILES.join(", ")}.`;
         }
 
         const message = await changeProfile(targetDir, profile);
@@ -90,23 +100,23 @@ export function buildTools(_ctx: {
 
         return `${message} Change applied immediately.`;
       },
-    }),
+    },
 
-    dev_framework_status: tool({
+    dev_framework_status: {
       description:
         "Show the current opencode-dev-framework state for the project: active profile, guardrails, completion gate, on-edit behavior, tracked changed files, and block counts.",
       args: {
-        directory: tool.schema
-          .string()
-          .optional()
-          .describe("Project directory (defaults to current project)"),
+        directory: {
+          type: "string",
+          description: "Project directory (defaults to current project)",
+        },
       },
       async execute(args, context) {
-        const targetDir = args.directory ?? context.directory;
+        const targetDir = (args.directory as string | undefined) ?? context.directory;
         const state = getHookState(targetDir);
         const config = state?.config ?? loadConfig(targetDir);
-        return renderStatus(config, state);
+        return renderStatus(config, state as unknown as Parameters<typeof renderStatus>[1]);
       },
-    }),
+    },
   };
 }

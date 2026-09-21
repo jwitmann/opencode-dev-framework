@@ -1,7 +1,7 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { PluginInput } from "@opencode-ai/plugin";
+type PluginInput = { directory: string };
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { buildHooks } from "../src/index";
 import { updateHookState } from "../src/registry";
