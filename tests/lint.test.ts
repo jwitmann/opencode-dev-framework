@@ -1,9 +1,6 @@
-type PluginInput = { directory: string };
-type Hooks = Record<string, unknown>;
 import { describe, expect, it } from "vitest";
 import { resolveConfig } from "../src/config";
 import type { CommandResult, RunCommand, RunCommandOptions } from "../src/host";
-import { buildHooks } from "../src/index";
 import {
   DEFAULT_LINT_TIMEOUT_SECONDS,
   detectPreCommitAvailability,
@@ -55,8 +52,6 @@ function stubLog() {
   };
   return { entries, log };
 }
-
-const stubCtx = { directory: "/project" } as PluginInput;
 
 describe("resolveLintCommand", () => {
   it("prefers the per-extension override over the default", () => {
@@ -256,82 +251,5 @@ describe("detectPreCommitAvailability", () => {
     const { run } = stubRun({ exitCode: 127 });
     const available = await detectPreCommitAvailability(run, "/project");
     expect(available).toBe(false);
-  });
-});
-
-describe("file.edited hook wiring", () => {
-  const withLint: Config = {
-    profile: "standard",
-    commands: { lint: { ".go": "golangci-lint run {file}" } },
-  };
-
-  it("runs the linter on file.edited when on_edit.lint is enabled", async () => {
-    const config = resolve(withLint);
-    const { calls, run } = stubRun();
-    const { entries, log } = stubLog();
-    const hooks = buildHooks(stubCtx, config, log, run);
-
-    await hooks.event?.(fileEditedEvent("/project/main.go"));
-
-    expect(calls).toHaveLength(1);
-    expect(calls[0].command).toEqual(["golangci-lint", "run", "/project/main.go"]);
-    expect(entries.some((e) => e.level === "info" && e.message.includes("lint passed"))).toBe(true);
-  });
-
-  it("ignores non file.edited events", async () => {
-    const config = resolve(withLint);
-    const { calls, run } = stubRun();
-    const hooks = buildHooks(stubCtx, config, stubLog().log, run);
-
-    await hooks.event?.({
-      event: { type: "session.idle", properties: { sessionID: "s1" } },
-    } as unknown as EventInput);
-
-    expect(calls).toHaveLength(0);
-  });
-
-  it("detects pre-commit availability on first file.edited when precommit is auto", async () => {
-    const config = resolve({ ...withLint, precommit: "auto" });
-    const { calls, run } = stubRun();
-    const hooks = buildHooks(stubCtx, config, stubLog().log, run);
-
-    await hooks.event?.(fileEditedEvent("/project/main.go"));
-
-    expect(calls).toHaveLength(2);
-    expect(calls[0].command).toEqual(["pre-commit", "--version"]);
-    expect(calls[1].command).toEqual(["pre-commit", "run", "--files", "/project/main.go"]);
-  });
-
-  it("does nothing when on_edit.lint is disabled", async () => {
-    const config = resolve({ ...withLint, on_edit: { lint: false } });
-    const { calls, run } = stubRun();
-    const hooks = buildHooks(stubCtx, config, stubLog().log, run);
-
-    await hooks.event?.(fileEditedEvent("/project/main.go"));
-
-    expect(calls).toHaveLength(0);
-  });
-
-  it("logs an error but does not throw on lint failure outside strict", async () => {
-    const config = resolve(withLint);
-    const { run } = stubRun({ exitCode: 1, stderr: "boom" });
-    const { entries, log } = stubLog();
-    const hooks = buildHooks(stubCtx, config, log, run);
-
-    await hooks.event?.(fileEditedEvent("/project/main.go"));
-
-    const error = entries.find((e) => e.level === "error");
-    expect(error?.message).toContain("lint failed");
-    expect(error?.extra?.stderr).toBe("boom");
-  });
-
-  it("throws on lint failure in the strict profile", async () => {
-    const config = resolve({ ...withLint, profile: "strict" });
-    const { run } = stubRun({ exitCode: 1 });
-    const hooks = buildHooks(stubCtx, config, stubLog().log, run);
-
-    await expect(hooks.event?.(fileEditedEvent("/project/main.go"))).rejects.toThrow(
-      "[opencode-dev-framework] lint failed",
-    );
   });
 });

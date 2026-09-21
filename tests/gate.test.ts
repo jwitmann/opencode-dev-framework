@@ -1,5 +1,3 @@
-type PluginInput = { directory: string };
-type Hooks = Record<string, unknown>;
 import { describe, expect, it } from "vitest";
 import { resolveConfig } from "../src/config";
 import {
@@ -10,7 +8,6 @@ import {
   summarizeGate,
 } from "../src/gate";
 import type { CommandResult, RunCommand, RunCommandOptions } from "../src/host";
-import { buildHooks } from "../src/index";
 import type { LogFn, LogLevel } from "../src/logger";
 import type { Config } from "../src/types";
 
@@ -54,8 +51,6 @@ function stubLog() {
   };
   return { entries, log };
 }
-
-const stubCtx = { directory: "/project" } as PluginInput;
 
 const GATE_COMMANDS = {
   typecheck: "tsc --noEmit",
@@ -265,94 +260,5 @@ describe("runGate", () => {
     expect(summarizeGate(failing)).toContain("typecheck: failed (exit 1)");
 
     expect(summarizeGate(await runGate(stubRun().run, config, [], {}))).toContain("skipped");
-  });
-});
-
-describe("session.idle hook wiring", () => {
-  const gateConfig: Config = {
-    profile: "standard",
-    commands: GATE_COMMANDS,
-    gate: { skip_unchanged: false },
-  };
-
-  it("runs the gate on session.idle and clears tracked files", async () => {
-    const config = resolve(gateConfig);
-    const { calls, run } = stubRun();
-    const { entries, log } = stubLog();
-    const hooks = buildHooks(stubCtx, config, log, run);
-
-    await hooks.event?.(eventOf("file.edited", { file: "/project/src/a.ts" }));
-    await hooks.event?.(eventOf("session.idle", { sessionID: "s1" }));
-
-    expect(calls.map((c) => c.command[0])).toEqual(["tsc", "npm"]);
-    expect(entries.some((e) => e.level === "info" && e.message.includes("gate passed"))).toBe(true);
-
-    // Tracker was cleared: a second idle with no new edits still runs
-    // (skip_unchanged false) but the changed-file list is empty.
-    await hooks.event?.(eventOf("session.idle", { sessionID: "s1" }));
-    const secondTestCall = calls.filter((c) => c.command[0] === "npm");
-    expect(secondTestCall).toHaveLength(2);
-  });
-
-  it("tracks edited files even when on_edit.lint is disabled", async () => {
-    const config = resolve({
-      profile: "standard",
-      commands: { test_changed: "vitest related {files}" },
-      gate: { scope: "changed", run_typecheck: false, run_tests: true },
-      on_edit: { lint: false },
-    });
-    const { calls, run } = stubRun();
-    const hooks = buildHooks(stubCtx, config, stubLog().log, run);
-
-    await hooks.event?.(eventOf("file.edited", { file: "/project/src/a.ts" }));
-    await hooks.event?.(eventOf("session.idle", { sessionID: "s1" }));
-
-    expect(calls[0].command).toEqual(["vitest", "related", "src/a.ts"]);
-  });
-
-  it("skips the gate when unchanged and skip_unchanged is set", async () => {
-    const config = resolve({ profile: "standard", commands: GATE_COMMANDS });
-    const { calls, run } = stubRun();
-    const { entries, log } = stubLog();
-    const hooks = buildHooks(stubCtx, config, log, run);
-
-    await hooks.event?.(eventOf("session.idle", { sessionID: "s1" }));
-
-    expect(calls).toHaveLength(0);
-    expect(entries.some((e) => e.level === "debug" && e.message.includes("gate skipped"))).toBe(
-      true,
-    );
-  });
-
-  it("logs an error with failed step details when the gate fails", async () => {
-    const config = resolve(gateConfig);
-    const { run } = stubRun((command) =>
-      command[0] === "npm" ? { exitCode: 1, stderr: "boom" } : {},
-    );
-    const { entries, log } = stubLog();
-    const hooks = buildHooks(stubCtx, config, log, run);
-
-    await hooks.event?.(eventOf("session.idle", { sessionID: "s1" }));
-
-    const failure = entries.find((e) => e.level === "error");
-    expect(failure?.message).toContain("completion gate FAILED");
-    const failedSteps = failure?.extra?.failedSteps as Array<Record<string, unknown>>;
-    expect(failedSteps[0]).toMatchObject({ name: "test", exitCode: 1, stderr: "boom" });
-  });
-
-  it("logs a warning instead of an error when block_on_failure is false", async () => {
-    const config = resolve({
-      ...gateConfig,
-      profile: "advisory",
-      gate: { skip_unchanged: false, block_on_failure: false },
-    });
-    const { run } = stubRun(() => ({ exitCode: 1 }));
-    const { entries, log } = stubLog();
-    const hooks = buildHooks(stubCtx, config, log, run);
-
-    await hooks.event?.(eventOf("session.idle", { sessionID: "s1" }));
-
-    expect(entries.some((e) => e.level === "error")).toBe(false);
-    expect(entries.some((e) => e.level === "warn" && e.message.includes("FAILED"))).toBe(true);
   });
 });

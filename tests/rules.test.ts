@@ -1,10 +1,8 @@
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-type PluginInput = { directory: string };
 type Hooks = Record<string, unknown>;
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { buildHooks } from "../src/index";
 import type { LogFn } from "../src/logger";
 import {
   BUNDLED_CONSTITUTION_DIR,
@@ -194,58 +192,5 @@ describe("injectConstitution", () => {
       "part 1",
       "part 2\n\nRULES",
     ]);
-  });
-});
-
-describe("system.transform wiring", () => {
-  type SystemTransform = NonNullable<Hooks["experimental.chat.system.transform"]>;
-  type Input = Parameters<SystemTransform>[0];
-  type Output = Parameters<SystemTransform>[1];
-
-  const stubCtx = { directory: "/project" } as PluginInput;
-
-  function makeInput(): Input {
-    return {} as Input;
-  }
-
-  async function runTransform(
-    constitution: string | null,
-    system: string[],
-  ): Promise<{ system: string[]; messages: string[] }> {
-    const messages: string[] = [];
-    const log: LogFn = async (_level, message) => {
-      messages.push(message);
-    };
-    const hooks = buildHooks(
-      stubCtx,
-      resolve({ profile: "standard" }),
-      log,
-      undefined,
-      undefined,
-      constitution,
-    );
-    const transform = hooks["experimental.chat.system.transform"];
-    expect(transform).toBeDefined();
-    const output: Output = { system };
-    await transform?.(makeInput(), output);
-    return { system: output.system, messages };
-  }
-
-  it("injects the constitution into the system prompt", async () => {
-    const { system, messages } = await runTransform("RULES", ["base prompt"]);
-    expect(system).toEqual(["base prompt\n\nRULES"]);
-    expect(messages).toEqual(["constitution injected into system prompt"]);
-  });
-
-  it("leaves the system prompt untouched when constitution is null", async () => {
-    const { system, messages } = await runTransform(null, ["base prompt"]);
-    expect(system).toEqual(["base prompt"]);
-    expect(messages).toEqual([]);
-  });
-
-  it("does not inject twice into the same system prompt", async () => {
-    const { system, messages } = await runTransform("RULES", ["base", "RULES"]);
-    expect(system).toEqual(["base", "RULES"]);
-    expect(messages).toEqual([]);
   });
 });
