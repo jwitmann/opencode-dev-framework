@@ -24,18 +24,17 @@ export default Plugin.define({
       return process.cwd();
     };
 
-    // V2 TUI requires keymap registration inside a slot render (Solid component)
-    // where Keymap.Provider is available. Calling ctx.keymap.layer directly in
-    // setup throws "Keymap.Provider is missing" (seen in standalone logs).
-    // The DCP reference (lib/v2/tui.tsx) uses ctx.ui.slot({append:"app",render(){...}}).
     const register = () => {
       try {
         (ctx as unknown as { keymap?: { layer: (fn: () => unknown) => void } }).keymap?.layer?.(() => ({
+          mode: "global",
           commands: [
             {
               id: "df-status",
               title: "dev-framework status",
               description: "Show the current dev-framework configuration",
+              group: "dev-framework",
+              palette: true,
               slash: { name: "df-status" },
               run: () => {
                 const dir = getDirectory();
@@ -51,6 +50,8 @@ export default Plugin.define({
               title: "dev-framework help",
               description: "List available dev-framework commands",
               slash: { name: "df-help" },
+              group: "dev-framework",
+              palette: true,
               run: () => {
                 void ctx.ui.dialog.alert({
                   title: "dev-framework commands",
@@ -62,6 +63,8 @@ export default Plugin.define({
               id: "df-profile",
               title: "dev-framework profile",
               description: "Change the active dev-framework profile",
+              group: "dev-framework",
+              palette: true,
               slash: { name: "df-profile", arguments: true },
               run: async (input) => {
                 const dir = getDirectory();
@@ -93,6 +96,8 @@ export default Plugin.define({
               id: "df-verify",
               title: "dev-framework verify",
               description: "Run the dev-framework completion gate",
+              group: "dev-framework",
+              palette: true,
               slash: { name: "df-verify" },
               run: async () => {
                 const dir = getDirectory();
@@ -114,7 +119,6 @@ export default Plugin.define({
       }
     };
 
-    // Try slot-based registration (correct V2 way). Fallback to direct layer if slot unavailable.
     try {
       const slot = (ctx.ui as unknown as { slot?: (claim: { append: string; render: () => unknown }) => void }).slot;
       if (typeof slot === "function") {
@@ -122,7 +126,7 @@ export default Plugin.define({
           append: "app",
           render() {
             register();
-            return null as unknown as ReturnType<typeof slot> extends void ? null : never;
+            return null as unknown as null;
           },
         });
         return;
@@ -131,7 +135,6 @@ export default Plugin.define({
       // ignore, fallback below
     }
 
-    // Fallback: direct registration (works in tests where slot is mocked)
     register();
   },
 });
