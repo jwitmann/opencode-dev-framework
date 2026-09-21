@@ -18,11 +18,10 @@ reimplemented as an OpenCode-native plugin.
 - **Per-edit lint.** Runs your configured linter on each file the agent edits
   and reports failures loudly. Optionally delegates per-file linting to
   `pre-commit run --files` when `precommit: auto` is set.
-- **Completion gate.** When the session goes idle, runs typecheck, tests, and
-  (optionally) lint on changed files. In OpenCode versions with the
-  `session.stopping` hook (PR #44712), gate failures keep the session running
-  (up to `gate.max_blocks` times) so the agent must fix the failures. In older
-  versions the gate reports loudly via `session.idle`.
+- **Completion gate.** When the session goes idle (`session.idle`/`session.status:idle`),
+  runs typecheck, tests, and (optionally) lint on changed files. On failure inside
+  `gate.max_blocks` the plugin re-prompts the session with the failure summary,
+  keeping the agent loop alive (V2 async replacement for `session.stopping`).
 - **Custom tools.** `dev_framework_init` scaffolds project-level agents,
   skills, local rules directory, and config; `dev_framework_set_profile` changes the profile
   in-session without restarting; `dev_framework_status` reports the current
@@ -60,14 +59,13 @@ Then add the plugin to your project's `opencode.json`:
 
 ```json
 {
-  "plugin": ["opencode-dev-framework"]
+  "plugins": ["opencode-dev-framework"]
 }
 ```
 
-On OpenCode 1.18.18+ the `./tui` companion (the `/df-status` and `/df-help`
-modals) is auto-discovered from the npm plugin entry above, so the server and
-TUI parts load together. (On older builds, or if the modals do not appear, also
-add the package to `tui.json` — see *Local development* below.)
+Requires OpenCode `v2.0.0+` (`@opencode/plugin` `^2`). On `v1.18.18–1.18.31` use the `v1` branch
+of this plugin (`plugin` key). The `./tui` companion (`/df-status` and `/df-help`
+modals) is auto-discovered from the npm entry on `v2` — no separate `tui.json` needed.
 
 Finally, scaffold the project-level files (agents, skills, local rules directory,
 and default config) into your repo with the bundled `df` CLI:
@@ -94,25 +92,16 @@ local filesystem paths — it only loads when the package is listed in the TUI
 config. OpenCode reads `tui.json` from the global config dir
 (`~/.config/opencode/tui.json`) and the project dir (`.opencode/tui.json`).
 
-`opencode.json` (server plugin):
+`opencode.json` (V2):
 
 ```json
 {
-  "plugin": ["/home/jerome/opencode-dev-framework"]
-}
-```
-
-`tui.json` (TUI plugin — same path):
-
-```json
-{
-  "plugin": ["/home/jerome/opencode-dev-framework"]
+  "plugins": ["/home/jerome/opencode-dev-framework"]
 }
 ```
 
 The path must be the **repository root** (where `package.json` lives). OpenCode
-loads the server plugin from `dist/index.js` and the TUI plugin from `tui.tsx`,
-so rebuild after every source change:
+loads the plugin from `dist/index.js` (TUI from `tui.tsx`), so rebuild after every source change:
 
 ```bash
 npm run build
@@ -202,14 +191,12 @@ itself).
 
 ## Limitations
 
-- **The completion gate blocks only in newer OpenCode versions.** Newer
-  builds support the `session.stopping` hook (OpenCode PR #44712);
-  it lets the plugin keep the session running until checks pass. The hook
-  uses a fail-closed `{ stop, message }` contract and applies only
-  to natural loop exits; OpenCode core also caps continuations at 3
-  regardless of `gate.max_blocks`. In older OpenCode versions the gate
-  runs on `session.idle` and reports failures loudly but cannot force
-  the agent to keep working.
+- **The completion gate in V2 re-prompts instead of vetoing.** `session.stopping`
+  (`PR #44712`) was removed in the V2 plugin API. On failure inside `gate.max_blocks`
+  the plugin now calls `ctx.session.prompt()` from the `session.idle`/`session.status`
+  event, waking the agent with the failure summary — same UX, async instead of a
+  synchronous `stop=false` veto. Standing down after `max_blocks` is plugin-owned
+  (no core 3-re-entry cap). There is no synchronous hard block in V2.
 - **Guardrails run inside OpenCode.** The `tool.execute.before` hook runs
   after OpenCode's own permission system; it adds project rules on top, it
   does not replace OpenCode permissions.

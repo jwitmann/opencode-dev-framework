@@ -1,9 +1,8 @@
 /**
- * Structured logging wrapper around the OpenCode client's app.log API.
+ * Structured logging wrapper. Supports both V1 (client.app.log) and V2 (stderr/file).
  */
 
 import { appendFile } from "node:fs/promises";
-import type { PluginInput } from "@opencode-ai/plugin";
 
 export type LogLevel = "debug" | "info" | "warn" | "error";
 
@@ -15,17 +14,22 @@ export type LogFn = (
   extra?: Record<string, unknown>,
 ) => Promise<void>;
 
+// V1 client shape (subset) — kept for test compatibility
+type V1Client = {
+  app?: {
+    log?: (args: {
+      body: { service: string; level: LogLevel; message: string; extra?: Record<string, unknown> };
+    }) => Promise<unknown>;
+  };
+};
+
 /**
- * Create a logger bound to the OpenCode client. Logging never throws:
- * `app.log` failures fall back to stderr so the failure stays visible
- * (a total swallow made production debugging painful during development),
- * and even stderr failures are ignored as a last resort.
- *
- * If the `OPENCODE_DEV_FRAMEWORK_LOG_FILE` environment variable is set, every
- * log line is also appended to that path as JSON, which is useful when
- * `app.log` is unavailable or when a persistent trace is needed.
+ * Create a logger. If a V1 client is provided, forwards to `client.app.log`
+ * (as tests expect). Otherwise logs to stderr/file (V2 runtime).
  */
-export function createLogger(client: PluginInput["client"]): LogFn {
+export function createLogger(
+  client?: V1Client | { app: { log: (...args: unknown[]) => Promise<unknown> } },
+): LogFn {
   const filePath = process.env.OPENCODE_DEV_FRAMEWORK_LOG_FILE;
   return async (level, message, extra) => {
     const line = JSON.stringify({
@@ -36,23 +40,45 @@ export function createLogger(client: PluginInput["client"]): LogFn {
       extra,
     });
 
-    try {
-      await client.app.log({ body: { service: LOG_SERVICE, level, message, extra } });
-    } catch (error) {
+    if (client?.app?.log) {
       try {
-        process.stderr.write(
-          `[${LOG_SERVICE}] ${level} ${message} (app.log failed: ${String(error)})\n`,
-        );
-      } catch {
-        // Even stderr may be unavailable; truly ignore.
+        // biome-ignore lint/style/noNonNullAssertion: guarded by if above
+        await (client as V1Client).app!.log!({
+          body: { service: LOG_SERVICE, level, message, extra },
+        });
+      } catch (error) {
+        try {
+          process.stderr.write(
+            `[${LOG_SERVICE}] ${level} ${message} (app.log failed: ${String(error)})\n`,
+          );
+        } catch {
+          // ignore
+        }
       }
+      if (filePath) {
+        try {
+          await appendFile(filePath, `${line}\n`);
+        } catch {
+          // best-effort
+        }
+      }
+      return;
+    }
+
+    try {
+      process.stderr.write(`[${LOG_SERVICE}] ${level} ${message}\n`);
+      if (extra && Object.keys(extra).length > 0) {
+        process.stderr.write(`  extra: ${JSON.stringify(extra)}\n`);
+      }
+    } catch {
+      // ignore
     }
 
     if (filePath) {
       try {
         await appendFile(filePath, `${line}\n`);
       } catch {
-        // File logging is best-effort.
+        // best-effort
       }
     }
   };

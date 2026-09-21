@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import devFramework, { devFramework as namedDevFramework } from "../src/index";
+import plugin, { devFramework } from "../src/index";
 
 let dir: string;
 
@@ -30,9 +30,11 @@ function stubCtx(directory: string) {
 }
 
 describe("plugin entry point", () => {
-  it("exports the plugin as default and named export", () => {
+  it("exports the V2 plugin as default and legacy helper as named export", () => {
+    expect(typeof plugin).toBe("object");
+    expect((plugin as { id: string }).id).toBe("opencode-dev-framework");
     expect(typeof devFramework).toBe("function");
-    expect(devFramework).toBe(namedDevFramework);
+    expect(typeof (plugin as { setup: unknown }).setup).toBe("function");
   });
 
   it("registers hooks even for the off profile (behavior is gated by profile, not registration)", async () => {

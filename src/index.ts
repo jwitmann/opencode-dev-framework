@@ -1,17 +1,21 @@
 /**
- * opencode-dev-framework plugin entry point.
+ * opencode-dev-framework V2 plugin entry point.
  *
- * Wired so far:
- * - tool.execute.before -> protected-path / dangerous-command guardrails
- * - event (file.edited)  -> per-edit lint + changed-file tracking
- * - event (session.idle) -> completion gate fallback (advisory logging)
- * - experimental.chat.system.transform -> constitution injection + session mapping
- * - session.stopping -> blocking completion gate (OpenCode PR #44712)
- * - config hook -> registers /df-profile and /df-verify prompt commands
- * - command.execute.before -> handles /df-profile, /df-verify, and unknown /df-*
+ * V2 framework (opencode v2): Plugin.define({ id, setup(ctx) })
+ * - ctx.session.hook("context", ...) -> constitution injection
+ * - ctx.tool.hook("execute.before", ...) -> guardrails
+ * - ctx.event.subscribe() -> file tracking + gate enforcement via re-prompt
+ * - ctx.tool.transform(...) -> custom tools
+ * - ctx.command.transform(...) -> slash commands (optional)
+ *
+ * Gate enforcement: no synchronous `session.stopping`. On `session.idle`
+ * / `session.status:idle` we run the gate and if it fails inside budget we
+ * call `ctx.session.prompt({ sessionID, text: stoppingMessage })` to wake the
+ * agent — async re-injection preserving the enforcement intent (see docs/plans/08-notes).
  */
 
-import type { Hooks, Plugin, PluginInput } from "@opencode-ai/plugin";
+import { Plugin } from "@opencode/plugin";
+import type { Context } from "@opencode/plugin/promise/plugin";
 import { stat } from "node:fs/promises";
 import { join } from "node:path";
 import { clearConfigCache, loadConfig } from "./config.js";
@@ -25,133 +29,115 @@ import { runCommand, type RunCommand } from "./host.js";
 import { detectPreCommitAvailability, isLintFailure, lintFile, summarizeLint } from "./lint.js";
 import { createLogger, type LogFn, type LogLevel } from "./logger.js";
 import { checkToolCall } from "./protect.js";
-import {
-  clearSessionDirectory,
-  getHookState,
-  getStateForSession,
-  setBaseDirectory,
-  setHookState,
-  setSessionDirectory,
-  type HookState,
-  type OpenCodePermission,
-} from "./registry.js";
-import { injectConstitution, loadConstitution } from "./rules.js";
-import { buildTools } from "./tools.js";
+import { loadConstitution, injectConstitution } from "./rules.js";
 import type { ResolvedConfig } from "./types.js";
+import { buildTools as buildLegacyTools } from "./tools.js";
+import { setHookState, getHookState, updateHookState } from "./registry.js";
 
-/**
- * OpenCode exposes a `session.stopping` hook (PR #44712) that is not yet in the
- * published `@opencode-ai/plugin` types, so we declare it locally. The hook
- * fires only on natural loop exit and OpenCode core enforces a re-entry cap (3)
- * regardless of `gate.max_blocks`.
- */
-export interface HooksWithStopping extends Hooks {
-  "session.stopping"?: (
-    input: { sessionID: string },
-    output: { stop: boolean; message?: string },
-  ) => Promise<void>;
+// ---------------------------------------------------------------------------
+// Internal state — single plugin instance per location.directory.
+// HookState is kept in module scope, not in a registry keyed by directory,
+// because V2 Context is already per-location. The map is still used for
+// legacy test helpers (buildHooks) that inject a fake directory.
+// ---------------------------------------------------------------------------
+
+export interface HookState {
+  directory: string;
+  config: ResolvedConfig;
+  log: LogFn;
+  run: RunCommand;
+  tracker: ChangedFileTracker;
+  constitution: string | null;
+  blockCounts: Map<string, number>;
+  precommitAvailable?: boolean;
+  configMtime?: number;
 }
 
-/**
- * Module-level fallback logger, captured at plugin init. `safeLog` uses it when
- * a hook's `HookState.log` is missing or was stripped, so a logging failure can
- * never crash a hook. The original `state.log is not a function` error (seen when
- * switching `off` -> `standard` at runtime) happened because a hook fired against
- * a `HookState` whose `log` was never populated.
- */
+let activeState: HookState | null = null;
 let fallbackLog: LogFn = async () => {};
 
 function safeLog(
-  state: HookState,
+  state: HookState | null,
   level: LogLevel,
   message: string,
   extra?: Record<string, unknown>,
 ): Promise<void> {
-  const fn = typeof state.log === "function" ? state.log : fallbackLog;
+  const fn = state && typeof state.log === "function" ? state.log : fallbackLog;
   return fn(level, message, extra);
 }
 
-/**
- * Reload the in-memory config if the config file on disk changed since we last
- * loaded it. This makes out-of-process edits (e.g. a `/df-profile` change made
- * from the TUI module, which writes the file directly) take effect on the next
- * enforcement hook without restarting OpenCode.
- */
 async function reloadConfigIfChanged(state: HookState): Promise<void> {
-  const configPath = join(state.directory, ".opencode-dev-framework.yml");
-  try {
-    const stats = await stat(configPath);
-    if (state.configMtime !== undefined && state.configMtime === stats.mtimeMs) {
-      return;
+  const primary = join(state.directory, ".opencode-dev-framework.yml");
+  const fallback = join(state.directory, ".dev-framework.yml");
+  // check both names; stat whichever exists
+  let configPath: string | null = null;
+  let mtime: number | undefined;
+  for (const p of [primary, fallback]) {
+    try {
+      const s = await stat(p);
+      configPath = p;
+      mtime = s.mtimeMs;
+      break;
+    } catch {
+      // continue
     }
+  }
+  if (!configPath || mtime === undefined) {
+    return;
+  }
+  if (state.configMtime !== undefined && state.configMtime === mtime) {
+    return;
+  }
+  try {
     clearConfigCache();
     const next = loadConfig(state.directory);
     const { constitution } = await loadConstitution(next, state.directory);
     state.config = next;
     state.constitution = constitution;
-    state.configMtime = stats.mtimeMs;
+    state.configMtime = mtime;
   } catch {
-    // Config file missing/unreadable — keep the current state.
+    // keep current state on read failure
   }
 }
 
-/**
- * Result of running the completion gate from a loop-continuation hook.
- * - `pass`: gate passed (or not applicable) — let the session stop.
- * - `standdown`: gate keeps failing but `gate.max_blocks` was reached — let
- *   the session stop with a warning (do not keep blocking).
- * - `blocked`: gate failed within budget — the adapter injects a synthetic
- *   message to keep the loop running.
- */
 type StoppingVerdict =
   | { decision: "pass" }
   | { decision: "standdown"; failedSteps: string[] }
   | { decision: "blocked"; summary: string; blockCount: number; maxBlocks: number };
 
-/**
- * Shared completion-gate runner for the `session.stopping` hook (PR #44712).
- * The adapter translates the verdict into the hook's own output contract.
- * `state` must already be resolved and have had `reloadConfigIfChanged`
- * applied by the caller.
- */
-async function runStoppingGate(state: HookState, sessionID: string): Promise<StoppingVerdict> {
+async function runGateVerdict(state: HookState, _sessionID: string): Promise<StoppingVerdict> {
   if (!state.config.gate || state.config.profile === "off") {
     return { decision: "pass" };
   }
-
   const changedFiles = state.tracker.getChangedFiles();
   const report = await runGate(state.run, state.config, changedFiles, { cwd: state.directory });
   if (!report.ran || report.ok) {
     state.tracker.clearChangedFiles();
-    state.blockCounts.delete(sessionID);
+    state.blockCounts.delete(_sessionID);
     return { decision: "pass" };
   }
-
   const maxBlocks = state.config.gate.max_blocks ?? 3;
-  const blockCount = (state.blockCounts.get(sessionID) ?? 0) + 1;
-  state.blockCounts.set(sessionID, blockCount);
+  const blockCount = (state.blockCounts.get(_sessionID) ?? 0) + 1;
+  state.blockCounts.set(_sessionID, blockCount);
 
   if (blockCount > maxBlocks) {
-    // Standing down: clear the tracker so the session.idle fallback does
-    // not re-run the same failing gate commands a second time.
     state.tracker.clearChangedFiles();
     await safeLog(
       state,
       "warn",
       `completion gate has blocked ${maxBlocks} times; standing down but checks are still failing`,
-      { failedSteps: report.failedSteps.map((step) => step.name) },
+      {
+        failedSteps: report.failedSteps.map((s) => s.name),
+      },
     );
-    return { decision: "standdown", failedSteps: report.failedSteps.map((step) => step.name) };
+    return { decision: "standdown", failedSteps: report.failedSteps.map((s) => s.name) };
   }
 
   const summary = summarizeGate(report);
-  await safeLog(state, "error", summary, {
-    failedSteps: report.failedSteps.map((step) => step.name),
-  });
+  await safeLog(state, "error", summary, { failedSteps: report.failedSteps.map((s) => s.name) });
   return { decision: "blocked", summary, blockCount, maxBlocks };
 }
 
-/** The continuation message both stopping hooks inject on a gate block. */
 function stoppingMessage(verdict: Extract<StoppingVerdict, { decision: "blocked" }>): string {
   return (
     `opencode-dev-framework completion gate blocked you from finishing (block ${verdict.blockCount}/${verdict.maxBlocks}). ` +
@@ -160,42 +146,551 @@ function stoppingMessage(verdict: Extract<StoppingVerdict, { decision: "blocked"
   );
 }
 
-/**
- * Build the plugin's hooks and custom tools. Exported (rather than inlined in
- * the plugin) so tests can inject a stubbed command runner and tracker.
- */
+// Helpers to normalize V2 event shapes (data vs properties vs direct)
+function getEventSessionID(event: unknown): string | undefined {
+  const e = event as Record<string, unknown>;
+  // try common locations
+  if (typeof e.sessionID === "string") return e.sessionID;
+  const data = (e.data ?? e.properties ?? e.payload) as Record<string, unknown> | undefined;
+  if (data && typeof data.sessionID === "string") return data.sessionID;
+  if (data && typeof data.session_id === "string") return data.session_id as string;
+  // session.status carries sessionID at data.sessionID
+  if (e.properties && typeof (e.properties as Record<string, unknown>).sessionID === "string") {
+    return (e.properties as Record<string, unknown>).sessionID as string;
+  }
+  return undefined;
+}
+
+function getEventFilePath(event: unknown): string | undefined {
+  const e = event as Record<string, unknown>;
+  const data = (e.data ?? e.properties ?? e.payload) as Record<string, unknown> | undefined;
+  if (data && typeof data.file === "string") return data.file;
+  if (data && typeof data.filePath === "string") return data.filePath as string;
+  if (typeof e.file === "string") return e.file as string;
+  return undefined;
+}
+
+function isIdleEvent(event: { type: string; data?: unknown; properties?: unknown }): boolean {
+  if (event.type === "session.idle") return true;
+  if (event.type === "session.status") {
+    const d = (event as { data?: { status?: { type?: string } } }).data;
+    const p = (event as { properties?: { status?: { type?: string } } }).properties;
+    const statusType =
+      d?.status?.type ??
+      p?.status?.type ??
+      (event as unknown as { status?: { type?: string } }).status?.type;
+    return statusType === "idle";
+  }
+  if (event.type === "session.status") {
+    // also handle flattened shape where data is {status: "idle"}? check
+    const d2 = (event as { data?: { status?: string } }).data;
+    if (d2?.status === "idle") return true;
+  }
+  return false;
+}
+
+function isFilesystemChangedEvent(type: string): boolean {
+  return type === "filesystem.changed" || type === "file.edited" || type === "file.changed";
+}
+
+function isSessionDeletedEvent(type: string): boolean {
+  return type === "session.deleted";
+}
+
+// ---------------------------------------------------------------------------
+// V2 Plugin definition
+// ---------------------------------------------------------------------------
+
+const plugin = Plugin.define({
+  id: "opencode-dev-framework",
+  async setup(ctx: Context) {
+    const log = createLogger();
+    fallbackLog = log;
+
+    const directory = ctx.location.directory as string;
+    let config: ResolvedConfig;
+    try {
+      config = loadConfig(directory);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      await log("error", message, { directory });
+      // No client.app.log in V2 — stderr is enough
+      return;
+    }
+
+    const { constitution, warning } = await loadConstitution(config, directory);
+    if (warning) {
+      await log("warn", warning);
+    }
+
+    let configMtime: number | undefined;
+    for (const name of [".opencode-dev-framework.yml", ".dev-framework.yml"]) {
+      try {
+        configMtime = (await stat(join(directory, name))).mtimeMs;
+        break;
+      } catch {
+        // continue
+      }
+    }
+
+    const tracker = createChangedFileTracker();
+
+    const state: HookState = {
+      directory,
+      config,
+      log,
+      run: runCommand,
+      tracker,
+      constitution,
+      blockCounts: new Map(),
+      configMtime,
+    };
+    activeState = state;
+
+    // 1) Constitution injection — per model request (V1: experimental.chat.system.transform -> V2: session.hook("context", ...))
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (ctx.session as any).hook(
+      "context",
+      async (event: { system: Array<{ text: string }>; [k: string]: unknown }) => {
+        if (!activeState) return;
+        await reloadConfigIfChanged(activeState);
+        if (activeState.config.profile === "off") return;
+        if (!activeState.constitution) return;
+        // V2 system is Array<SystemPart> {type:"text", text:string}
+        const already = event.system.some((part: { text: string }) =>
+          part.text.includes(activeState!.constitution!),
+        );
+        if (already) return;
+        event.system.push({
+          type: "text",
+          text: activeState.constitution,
+        } as (typeof event.system)[number]);
+        await safeLog(activeState, "info", "constitution injected into system prompt");
+      },
+    );
+
+    // Also hook other request kinds so the reminder is not missed on title/generate
+    // (no-op if model doesn't need it; cheap)
+    for (const kind of ["generate", "compaction"] as const) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (ctx.session as any).hook(
+        kind,
+        async (event: { system?: Array<{ text: string }>; [k: string]: unknown }) => {
+          if (!activeState || activeState.config.profile === "off" || !activeState.constitution)
+            return;
+          // generate/compaction also have system — inject similarly if present
+          const ev = event as { system?: Array<{ type: string; text: string }> };
+          if (!ev.system) return;
+          const already = ev.system.some((p: { text: string }) =>
+            p.text.includes(activeState!.constitution!),
+          );
+          if (!already) ev.system.push({ type: "text" as const, text: activeState.constitution });
+        },
+      );
+    }
+
+    // 2) Guardrails — tool execution blocking (V1: tool.execute.before -> V2: ctx.tool.hook("execute.before", ...))
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (ctx.tool as any).hook(
+      "execute.before",
+      async (event: { tool: string; input: unknown; sessionID: string }) => {
+        if (!activeState) {
+          throw new Error(
+            "[opencode-dev-framework] plugin state is not available; guardrail cannot evaluate this tool call",
+          );
+        }
+        await reloadConfigIfChanged(activeState);
+        if (activeState.config.profile === "off") return;
+        // V2 event shapes: { tool, sessionID, agent, messageID, id, input: unknown }
+        const toolName = (event as { tool: string }).tool;
+        const input = (event as { input: unknown }).input;
+        const sessionID = (event as { sessionID: string }).sessionID;
+        // hostPermissions: not available in V2 permission model; pass undefined (conservative — still guard)
+        const result = checkToolCall(
+          activeState.config,
+          toolName,
+          input,
+          activeState.directory,
+          undefined,
+        );
+        if (result.decision === "allow") return;
+        const message = result.reason ?? "blocked by guardrails";
+        const extra = { tool: toolName, sessionID, pattern: result.matchedPattern };
+        if (result.decision === "warn") {
+          await safeLog(activeState, "warn", message, extra);
+          return;
+        }
+        await safeLog(activeState, "error", message, extra);
+        throw new Error(`[opencode-dev-framework] ${message}`);
+      },
+    );
+
+    // 3) Custom tools — V2: ctx.tool.transform(editor => editor.add(...))
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (ctx.tool as any).transform((editor: { add: (t: unknown) => void }) => {
+      (
+        editor as {
+          add: (t: {
+            name: string;
+            description: string;
+            input: unknown;
+            execute: (input: unknown) => Promise<unknown>;
+          }) => void;
+        }
+      ).add({
+        name: "dev_framework_init",
+        description:
+          "Scaffold opencode-dev-framework project files (agents, skills, commands, default config) into the current project. Missing files are created; existing files are skipped unless overwrite is true.",
+        input: {
+          type: "object",
+          properties: {
+            directory: {
+              type: "string",
+              description: "Target project directory (defaults to current project)",
+            },
+            overwrite: {
+              type: "boolean",
+              description: "Overwrite existing files that differ from templates",
+            },
+          },
+          additionalProperties: false,
+        },
+        async execute(input: unknown) {
+          const { installTemplates, writeDetectedConfig } = await import("./installer.js");
+          const args = input as { directory?: string; overwrite?: boolean };
+          const targetDir = args.directory ?? directory;
+          const result = await installTemplates(targetDir, {
+            overwriteExisting: args.overwrite ?? false,
+            skipExisting: !(args.overwrite ?? false),
+          });
+          const configResult = await writeDetectedConfig(targetDir, {
+            overwriteExisting: args.overwrite ?? false,
+            skipExisting: !(args.overwrite ?? false),
+          });
+          const lines = [
+            `Installed opencode-dev-framework templates into ${targetDir}.`,
+            `Created: ${result.created.length} file(s)`,
+            `Overwritten: ${result.overwritten.length} file(s)`,
+            `Skipped: ${result.skipped.length} file(s)`,
+            `Config: ${configResult.action}`,
+          ];
+          if (result.created.length > 0)
+            lines.push("", "Created files:", ...result.created.map((f) => `- ${f}`));
+          if (result.overwritten.length > 0)
+            lines.push("", "Overwritten files:", ...result.overwritten.map((f) => `- ${f}`));
+          return { content: lines.join("\n") };
+        },
+      });
+
+      (editor as { add: (t: unknown) => void }).add({
+        name: "dev_framework_set_profile",
+        description:
+          "Change the opencode-dev-framework profile (off, advisory, standard, strict) for the current project and apply it immediately without restarting OpenCode.",
+        input: {
+          type: "object",
+          properties: {
+            profile: {
+              type: "string",
+              description: "New profile: off, advisory, standard, or strict",
+            },
+            directory: {
+              type: "string",
+              description: "Project directory (defaults to current project)",
+            },
+          },
+          required: ["profile"],
+          additionalProperties: false,
+        },
+        async execute(input: unknown) {
+          const { clearConfigCache: ccc, loadConfig: lc } = await import("./config.js");
+          const { changeProfile } = await import("./commands.js");
+          const { loadConstitution: lc2 } = await import("./rules.js");
+          const args = input as { profile: string; directory?: string };
+          const targetDir = args.directory ?? directory;
+          const profile = args.profile.trim().toLowerCase() as ResolvedConfig["profile"];
+          const valid = ["off", "advisory", "standard", "strict"] as const;
+          if (!(valid as readonly string[]).includes(profile)) {
+            return {
+              content: `Invalid profile "${args.profile}". Valid values: ${valid.join(", ")}.`,
+            };
+          }
+          const message = await changeProfile(targetDir, profile);
+          ccc();
+          const newConfig = lc(targetDir);
+          const { constitution: newConstitution } = await lc2(newConfig, targetDir);
+          if (activeState && activeState.directory === targetDir) {
+            activeState.config = newConfig;
+            activeState.constitution = newConstitution;
+          }
+          return { content: `${message} Change applied immediately.` };
+        },
+      });
+
+      (editor as { add: (t: unknown) => void }).add({
+        name: "dev_framework_status",
+        description:
+          "Show the current opencode-dev-framework state for the project: active profile, guardrails, completion gate, on-edit behavior, tracked changed files, and block counts.",
+        input: {
+          type: "object",
+          properties: {
+            directory: {
+              type: "string",
+              description: "Project directory (defaults to current project)",
+            },
+          },
+          additionalProperties: false,
+        },
+        async execute(input: unknown) {
+          const { renderStatus } = await import("./format-status.js");
+          const args = input as { directory?: string };
+          const targetDir = args.directory ?? directory;
+          const cfg =
+            activeState && activeState.directory === targetDir
+              ? activeState.config
+              : loadConfig(targetDir);
+          // renderStatus expects HookState? pass activeState
+          return {
+            content: renderStatus(
+              cfg,
+              activeState as unknown as Parameters<typeof renderStatus>[1],
+            ),
+          };
+        },
+      });
+    });
+
+    // 4) Event subscription — file tracking + gate enforcement (V1: event hook)
+    // Keeps the completion gate intent without session.stopping: on idle, run gate;
+    // on failure inside budget, re-prompt the session (async block).
+    const controller = new AbortController();
+    const eventLoop = (async () => {
+      try {
+        for await (const rawEvent of ctx.event.subscribe({ signal: controller.signal })) {
+          const event = rawEvent as { type: string; data?: unknown; properties?: unknown } & Record<
+            string,
+            unknown
+          >;
+          const type = event.type;
+
+          if (isSessionDeletedEvent(type)) {
+            // session.deleted: cleanup blockCounts (and tracker if needed)
+            const sid = getEventSessionID(event);
+            if (sid && activeState) activeState.blockCounts.delete(sid);
+            continue;
+          }
+
+          if (isFilesystemChangedEvent(type)) {
+            if (!activeState) continue;
+            await reloadConfigIfChanged(activeState);
+            if (activeState.config.profile === "off") continue;
+            const filePath = getEventFilePath(event);
+            if (!filePath) continue;
+            activeState.tracker.add(filePath, activeState.directory);
+
+            // per-edit lint (V1: event file.edited -> lintFile)
+            if (!activeState.config.on_edit.lint) continue;
+            if (
+              activeState.config.precommit === "auto" &&
+              activeState.precommitAvailable === undefined
+            ) {
+              activeState.precommitAvailable = await detectPreCommitAvailability(
+                activeState.run,
+                activeState.directory,
+              );
+            }
+            const outcome = await lintFile(activeState.run, activeState.config, filePath, {
+              cwd: activeState.directory,
+              timeout: activeState.config.gate?.timeout,
+              precommitAvailable: activeState.precommitAvailable,
+            });
+            if (outcome.skipped) {
+              await safeLog(activeState, "debug", summarizeLint(outcome), {
+                filePath,
+                reason: outcome.reason,
+              });
+              continue;
+            }
+            if (!isLintFailure(outcome)) {
+              await safeLog(activeState, "info", summarizeLint(outcome), { filePath });
+              continue;
+            }
+            const summary = summarizeLint(outcome);
+            await safeLog(activeState, "error", summary, {
+              filePath,
+              command: outcome.command?.join(" "),
+              stdout: outcome.result?.stdout,
+              stderr: outcome.result?.stderr,
+            });
+            if (activeState.config.profile === "strict") {
+              // Event handlers cannot throw to block the edit (edit already happened), but we log loudly.
+              // In V2 we also have the tool hook to block before; this is advisory.
+            }
+            continue;
+          }
+
+          if (isIdleEvent(event as { type: string; data?: unknown; properties?: unknown })) {
+            if (!activeState) continue;
+            await reloadConfigIfChanged(activeState);
+            if (activeState.config.profile === "off") continue;
+            if (!activeState.config.gate) {
+              await safeLog(
+                activeState,
+                "warn",
+                "plugin config is incomplete (missing gate section), skipping completion gate",
+                {
+                  directory: activeState.directory,
+                },
+              );
+              continue;
+            }
+            const sessionID = getEventSessionID(event);
+            if (!sessionID) continue;
+
+            const verdict = await runGateVerdict(activeState, sessionID);
+            if (verdict.decision === "pass") continue;
+            if (verdict.decision === "standdown") {
+              // already logged in runGateVerdict; do not re-prompt
+              continue;
+            }
+            // blocked -> re-prompt the session (V2 replacement for session.stopping output.stop=false)
+            const message = stoppingMessage(verdict);
+            try {
+              // Prefer prompt (creates a user turn and wakes the agent); fallback to synthetic if prompt not available
+              if (typeof ctx.session.prompt === "function") {
+                await ctx.session.prompt({ sessionID, text: message });
+              } else if (typeof ctx.session.synthetic === "function") {
+                await ctx.session.synthetic({ sessionID, text: message });
+              } else {
+                await safeLog(
+                  activeState,
+                  "error",
+                  `gate blocked but no session prompt API available: ${message}`,
+                );
+              }
+              await safeLog(
+                activeState,
+                "info",
+                `completion gate re-prompted session ${sessionID} (block ${verdict.blockCount}/${verdict.maxBlocks})`,
+              );
+            } catch (err) {
+              await safeLog(
+                activeState,
+                "error",
+                `failed to re-prompt session ${sessionID} after gate block: ${String(err)}`,
+                {
+                  sessionID,
+                },
+              );
+            }
+          }
+        }
+      } catch (err) {
+        if ((err as Error)?.name === "AbortError") {
+          // normal on dispose
+          return;
+        }
+        await safeLog(activeState, "error", `event loop error: ${String(err)}`);
+      }
+    })();
+
+    // Ensure the loop doesn't block setup
+    void eventLoop;
+
+    return () => {
+      controller.abort();
+      activeState = null;
+    };
+  },
+});
+
+export const devFramework = async (ctx: LegacyPluginInput) => {
+  const log = ctx.client?.app?.log
+    ? async (level: LogLevel, message: string, extra?: Record<string, unknown>) => {
+        try {
+          await ctx.client!.app!.log!({
+            body: { service: "opencode-dev-framework", level, message, extra },
+          } as never);
+        } catch {
+          // ignore
+        }
+      }
+    : createLogger();
+
+  fallbackLog = log as LogFn;
+
+  let config: ResolvedConfig;
+  try {
+    config = loadConfig(ctx.directory);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    await (log as LogFn)("error", message, { directory: ctx.directory });
+    return {};
+  }
+
+  const { constitution, warning } = await loadConstitution(config, ctx.directory);
+  if (warning) await (log as LogFn)("warn", warning);
+
+  let configMtime: number | undefined;
+  for (const n of [".opencode-dev-framework.yml", ".dev-framework.yml"]) {
+    try {
+      configMtime = (await stat(join(ctx.directory, n))).mtimeMs;
+      break;
+    } catch {
+      // continue
+    }
+  }
+
+  return buildHooks(
+    ctx,
+    config,
+    log as LogFn,
+    runCommand,
+    createChangedFileTracker(),
+    constitution,
+    configMtime,
+  );
+};
+
+export default plugin;
+
+// ---------------------------------------------------------------------------
+// Test helpers — keep buildHooks-style API for legacy tests (optional).
+// Tests that still import `buildHooks` expect a PluginInput with directory.
+// We re-export a minimal adapter for `tests/stopping.test.ts` etc when they
+// are updated; new tests should use the V2 Context. For now we expose a
+// thin wrapper that sets activeState so those tests can run without V2 runtime.
+// ---------------------------------------------------------------------------
+
+export interface LegacyPluginInput {
+  directory: string;
+  client?: { app?: { log?: (...args: unknown[]) => Promise<unknown> } };
+}
+
 export function buildHooks(
-  ctx: PluginInput,
+  ctx: LegacyPluginInput,
   config: ResolvedConfig,
-  log: LogFn,
+  log: LogFn = createLogger(),
   run: RunCommand = runCommand,
   tracker: ChangedFileTracker = createChangedFileTracker(),
   constitution: string | null = null,
   configMtime?: number,
-): HooksWithStopping {
-  // All hook state — including the project directory — lives in the registry
-  // and is looked up at call time. OpenCode's Effect runtime stripped closure
-  // captures in production (config/log/run came back undefined), so hooks must
-  // not rely on variables from this scope.
-  const showToast: NonNullable<HookState["showToast"]> = (message, variant = "info") => {
-    try {
-      const tui = (
-        ctx.client as unknown as {
-          tui?: {
-            showToast?: (input: {
-              title?: string;
-              message: string;
-              variant?: string;
-            }) => Promise<unknown>;
-          };
-        }
-      ).tui;
-      tui?.showToast?.({ title: "opencode-dev-framework", message, variant });
-    } catch {
-      // TUI may be unavailable; the log line is enough.
-    }
-  };
-  setHookState(ctx.directory, {
+): {
+  tool?: ReturnType<typeof buildLegacyTools>;
+  config?: (c: unknown) => Promise<void>;
+  "experimental.chat.system.transform"?: (
+    input: { sessionID?: string; model: unknown },
+    output: { system: string[] },
+  ) => Promise<void>;
+  "tool.execute.before"?: (input: unknown, output: unknown) => Promise<void>;
+  "session.stopping"?: (
+    input: { sessionID: string },
+    output: { stop: boolean; message?: string },
+  ) => Promise<void>;
+  event?: (input: {
+    event: { type: string; properties: Record<string, unknown> };
+  }) => Promise<void>;
+} {
+  const state: HookState = {
     directory: ctx.directory,
     config,
     log,
@@ -203,195 +698,137 @@ export function buildHooks(
     tracker,
     constitution,
     blockCounts: new Map(),
-    showToast,
     configMtime,
-  });
+  };
+  // Keep both the new single-state and the legacy registry in sync so
+  // transition.test.ts's updateHookState(dir, ...) affects subsequent hooks.
+  activeState = state;
+  setHookState(ctx.directory, state as unknown as Parameters<typeof setHookState>[1]);
+  fallbackLog = log;
+
+  // legacy tool map for tools.test.ts
+  const legacyTools = buildLegacyTools(ctx as { directory: string });
+
+  const getState = (): HookState | null =>
+    getHookState(ctx.directory) as unknown as HookState | null;
 
   return {
-    tool: buildTools(ctx),
-
-    config: async (opencodeConfig) => {
-      const typedConfig = opencodeConfig as {
-        permission?: OpenCodePermission;
-        command?: Record<string, { template?: string; description?: string }>;
-      };
-
-      const state = getHookState(ctx.directory);
-      if (state) {
-        // OpenCode's native `permission` is a per-agent tool-to-mode object
-        // (e.g. `{ edit: "deny", bash: "deny" }`), not an array. Adopt it when
-        // it is a plain object; anything else (array, string, undefined) is
-        // ignored so the guardrail falls back to its own evaluation. See
-        // hostDenies in protect.ts.
-        const perm = typedConfig.permission;
-        state.hostPermissions =
+    tool: legacyTools,
+    config: async (opencodeConfig: unknown) => {
+      const typed = opencodeConfig as { permission?: Record<string, unknown> };
+      const st = getHookState(ctx.directory) as unknown as HookState | null;
+      if (st) {
+        const perm = typed.permission;
+        (st as unknown as { hostPermissions?: unknown }).hostPermissions =
           perm !== undefined && typeof perm === "object" && !Array.isArray(perm) ? perm : undefined;
+        // also keep registry in sync for getHookState callers
+        updateHookState(ctx.directory, st as unknown as Parameters<typeof updateHookState>[1]);
       }
-
-      // `df-profile`, `df-verify`, `df-status`, and `df-help` are all registered
-      // as TUI commands (keymap layer with `slashName`) in `tui.tsx`. TUI
-      // commands never insert text into the chat stream, so they cannot leak
-      // into a model turn. No server prompt command is registered here — such
-      // commands always produce a model turn, which is exactly what we avoid.
     },
-
     "experimental.chat.system.transform": async (input, output) => {
-      const state = getStateForSession(input.sessionID);
-      if (!state) {
-        return;
-      }
-      await reloadConfigIfChanged(state);
-      if (input.sessionID) {
-        setSessionDirectory(input.sessionID, state.directory);
-      }
-      if (state.config.profile === "off") {
-        return;
-      }
-      const next = injectConstitution(output.system, state.constitution);
+      const st = getState() ?? activeState;
+      if (!st) return;
+      await reloadConfigIfChanged(st);
+      if (st.config.profile === "off") return;
+      const next = injectConstitution(output.system, st.constitution);
       if (next !== output.system) {
-        await safeLog(state, "info", "constitution injected into system prompt");
+        await safeLog(st, "info", "constitution injected into system prompt");
         output.system = next;
       }
     },
-
-    "tool.execute.before": async (input, output) => {
-      const state = getStateForSession(input.sessionID);
-      if (!state) {
-        throw new Error(
-          "[opencode-dev-framework] plugin state is not available; guardrail cannot evaluate this tool call",
-        );
-      }
-      await reloadConfigIfChanged(state);
-      if (state.config.profile === "off") {
-        return;
-      }
-      const result = checkToolCall(
-        state.config,
-        input.tool,
-        output.args,
-        state.directory,
-        state.hostPermissions,
-      );
-      if (result.decision === "allow") {
-        return;
-      }
+    "tool.execute.before": async (input: unknown, output: unknown) => {
+      const st = getState() ?? activeState;
+      if (!st) throw new Error("[opencode-dev-framework] plugin state is not available");
+      const typed = input as { tool: string; sessionID: string };
+      const args = (output as { args: unknown }).args;
+      await reloadConfigIfChanged(st);
+      if (st.config.profile === "off") return;
+      const result = checkToolCall(st.config, typed.tool, args, st.directory, undefined);
+      if (result.decision === "allow") return;
       const message = result.reason ?? "blocked by guardrails";
-      const extra = {
-        tool: input.tool,
-        sessionID: input.sessionID,
-        pattern: result.matchedPattern,
-      };
       if (result.decision === "warn") {
-        await safeLog(state, "warn", message, extra);
+        await safeLog(st, "warn", message, { tool: typed.tool });
         return;
       }
-      await safeLog(state, "error", message, extra);
+      await safeLog(st, "error", message, { tool: typed.tool });
       throw new Error(`[opencode-dev-framework] ${message}`);
     },
-
     "session.stopping": async (input, output) => {
-      const state = getStateForSession(input.sessionID);
-      if (!state) {
-        return;
-      }
-      await reloadConfigIfChanged(state);
-      const verdict = await runStoppingGate(state, input.sessionID);
-      if (verdict.decision !== "blocked") {
-        return;
-      }
-      // Fail-closed contract: leave `stop: true` on pass/standdown; only a
-      // real block sets `stop: false` with a continuation message.
+      const st = getState() ?? activeState;
+      if (!st) return;
+      await reloadConfigIfChanged(st);
+      const verdict = await runGateVerdict(st, input.sessionID);
+      if (verdict.decision !== "blocked") return;
       output.stop = false;
       output.message = stoppingMessage(verdict);
     },
-
     event: async ({ event }) => {
-      // session.deleted must run even without hook state so the session map
-      // does not grow unboundedly.
       if (event.type === "session.deleted") {
-        clearSessionDirectory(event.properties.info.id);
+        const id = (event.properties as { info?: { id?: string } })?.info?.id;
+        const st = getState();
+        if (id && st) (st as unknown as HookState).blockCounts.delete(id);
+        if (id && activeState) activeState.blockCounts.delete(id);
         return;
       }
-      const sessionID =
-        event.type === "session.idle"
-          ? (event as unknown as { properties: { sessionID: string } }).properties.sessionID
-          : undefined;
-      const state = getStateForSession(sessionID);
-      if (!state) {
-        return;
-      }
-      await reloadConfigIfChanged(state);
-      if (state.config.profile === "off") {
-        return;
-      }
+      const st = getState() ?? activeState;
+      if (!st) return;
       if (event.type === "file.edited") {
-        const filePath = event.properties.file;
-        state.tracker.add(filePath, state.directory);
-        if (!state.config.on_edit.lint) {
-          return;
+        const filePath = (event.properties as { file?: string })?.file;
+        if (!filePath) return;
+        st.tracker.add(filePath, st.directory);
+        if (!st.config.on_edit.lint) return;
+        if (st.config.precommit === "auto" && st.precommitAvailable === undefined) {
+          st.precommitAvailable = await detectPreCommitAvailability(st.run, st.directory);
         }
-        if (state.config.precommit === "auto" && state.precommitAvailable === undefined) {
-          state.precommitAvailable = await detectPreCommitAvailability(state.run, state.directory);
-        }
-        const outcome = await lintFile(state.run, state.config, filePath, {
-          cwd: state.directory,
-          timeout: state.config.gate?.timeout,
-          precommitAvailable: state.precommitAvailable,
+        const outcome = await lintFile(st.run, st.config, filePath, {
+          cwd: st.directory,
+          timeout: st.config.gate?.timeout,
+          precommitAvailable: st.precommitAvailable,
         });
         if (outcome.skipped) {
-          await safeLog(state, "debug", summarizeLint(outcome), {
-            filePath,
-            reason: outcome.reason,
-          });
+          await safeLog(st, "debug", summarizeLint(outcome), { filePath, reason: outcome.reason });
           return;
         }
         if (!isLintFailure(outcome)) {
-          await safeLog(state, "info", summarizeLint(outcome), { filePath });
+          await safeLog(st, "info", summarizeLint(outcome), { filePath });
           return;
         }
         const summary = summarizeLint(outcome);
-        await safeLog(state, "error", summary, {
+        await safeLog(st, "error", summary, {
           filePath,
           command: outcome.command?.join(" "),
           stdout: outcome.result?.stdout,
           stderr: outcome.result?.stderr,
         });
-        // In strict mode lint failures throw. Note: file.edited is an event
-        // notification (the edit already happened), so this cannot undo the
-        // edit — it surfaces the failure loudly to the session.
-        if (state.config.profile === "strict") {
-          throw new Error(`[opencode-dev-framework] ${summary}`);
-        }
+        if (st.config.profile === "strict") throw new Error(`[opencode-dev-framework] ${summary}`);
         return;
       }
       if (event.type === "session.idle") {
-        if (!state.config.gate) {
+        if (!st.config.gate) {
           await safeLog(
-            state,
+            st,
             "warn",
             "plugin config is incomplete (missing gate section), skipping completion gate",
-            { directory: state.directory },
+            {
+              directory: st.directory,
+            },
           );
           return;
         }
-        const changedFiles = state.tracker.getChangedFiles();
-        const report = await runGate(state.run, state.config, changedFiles, {
-          cwd: state.directory,
-        });
-        state.tracker.clearChangedFiles();
+        const changedFiles = st.tracker.getChangedFiles();
+        const report = await runGate(st.run, st.config, changedFiles, { cwd: st.directory });
+        st.tracker.clearChangedFiles();
         const summary = summarizeGate(report);
         if (!report.ran) {
-          await safeLog(state, "debug", summary);
+          await safeLog(st, "debug", summary);
           return;
         }
         if (report.ok) {
-          await safeLog(state, "info", summary);
+          await safeLog(st, "info", summary);
           return;
         }
-        // The gate cannot physically block on session.idle (the turn already
-        // ended), so failure visibility is the enforcement mechanism.
-        const level = state.config.gate.block_on_failure ? "error" : "warn";
-        await safeLog(state, level, summary, {
+        const level = st.config.gate.block_on_failure ? "error" : "warn";
+        await safeLog(st, level, summary, {
           failedSteps: report.failedSteps.map((step) => ({
             name: step.name,
             command: step.command?.join(" "),
@@ -405,61 +842,4 @@ export function buildHooks(
   };
 }
 
-export const devFramework: Plugin = async (ctx) => {
-  const log = createLogger(ctx.client);
-  fallbackLog = log;
-
-  let config: ResolvedConfig;
-  try {
-    config = loadConfig(ctx.directory);
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    await log("error", message, { directory: ctx.directory });
-    const clientTui = (
-      ctx.client as unknown as {
-        tui?: { showToast?: (data: { type: string; message: string }) => Promise<unknown> };
-      }
-    ).tui;
-    try {
-      await clientTui?.showToast?.({
-        type: "error",
-        message: `[opencode-dev-framework] ${message}`,
-      });
-    } catch {
-      // TUI may not be available; the log line is enough.
-    }
-    return {};
-  }
-
-  // Hooks are now registered for every profile; each enforcement hook gates its
-  // own behavior by `state.config.profile` (off => no-op). Registering always
-  // guarantees HookState.log is populated at init, so a runtime `off` -> `standard`
-  // switch (via /df-profile) takes effect on the next hook call via
-  // reloadConfigIfChanged — no restart required — and a hook can never crash on a
-  // missing `log` (see safeLog).
-  setBaseDirectory(ctx.directory);
-
-  const { constitution, warning } = await loadConstitution(config, ctx.directory);
-  if (warning) {
-    await log("warn", warning);
-  }
-
-  let configMtime: number | undefined;
-  try {
-    configMtime = (await stat(join(ctx.directory, ".opencode-dev-framework.yml"))).mtimeMs;
-  } catch {
-    // Config file may not exist yet; reloadConfigIfChanged will pick it up.
-  }
-
-  return buildHooks(
-    ctx,
-    config,
-    log,
-    runCommand,
-    createChangedFileTracker(),
-    constitution,
-    configMtime,
-  );
-};
-
-export default devFramework;
+export type HooksWithStopping = ReturnType<typeof buildHooks>;
