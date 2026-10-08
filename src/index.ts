@@ -257,45 +257,69 @@ const plugin = Plugin.define({
     };
     activeState = state;
 
+    // Track hook/transform registrations so teardown can unregister them.
+    // `ctx.*.hook()` / `ctx.*.transform()` resolve to a `Registration`
+    // ({ dispose() }) per the V2 plugin API. If teardown runs without
+    // disposing, the `execute.before` closure below would stay alive while
+    // `activeState` is cleared — bricking every tool call (issue #1).
+    interface DisposableRegistration {
+      dispose: () => Promise<void> | void;
+    }
+    const registrations: DisposableRegistration[] = [];
+    function trackRegistration(value: unknown): void {
+      if (
+        value !== null &&
+        typeof value === "object" &&
+        "dispose" in (value as Record<string, unknown>) &&
+        typeof (value as { dispose?: unknown }).dispose === "function"
+      ) {
+        registrations.push(value as DisposableRegistration);
+      }
+    }
+
     // 1) Constitution injection — per model request (V1: experimental.chat.system.transform -> V2: session.hook("context", ...))
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await (ctx.session as any).hook(
-      "context",
-      async (event: { system: Array<{ text: string }>; [k: string]: unknown }) => {
-        if (!activeState) return;
-        await reloadConfigIfChanged(activeState);
-        if (activeState.config.profile === "off") return;
-        if (!activeState.constitution) return;
-        // V2 system is Array<SystemPart> {type:"text", text:string}
-        const already = event.system.some((part: { text: string }) =>
-          part.text.includes(activeState!.constitution!),
-        );
-        if (already) return;
-        event.system.push({
-          type: "text",
-          text: activeState.constitution,
-        } as (typeof event.system)[number]);
-        await safeLog(activeState, "info", "constitution injected into system prompt");
-      },
+    trackRegistration(
+      await (ctx.session as any).hook(
+        "context",
+        async (event: { system: Array<{ text: string }>; [k: string]: unknown }) => {
+          if (!activeState) return;
+          await reloadConfigIfChanged(activeState);
+          if (activeState.config.profile === "off") return;
+          if (!activeState.constitution) return;
+          // V2 system is Array<SystemPart> {type:"text", text:string}
+          const already = event.system.some((part: { text: string }) =>
+            part.text.includes(activeState!.constitution!),
+          );
+          if (already) return;
+          event.system.push({
+            type: "text",
+            text: activeState.constitution,
+          } as (typeof event.system)[number]);
+          await safeLog(activeState, "info", "constitution injected into system prompt");
+        },
+      ),
     );
 
     // Also hook other request kinds so the reminder is not missed on title/generate
     // (no-op if model doesn't need it; cheap)
     for (const kind of ["generate", "compaction"] as const) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      await (ctx.session as any).hook(
-        kind,
-        async (event: { system?: Array<{ text: string }>; [k: string]: unknown }) => {
-          if (!activeState || activeState.config.profile === "off" || !activeState.constitution)
-            return;
-          // generate/compaction also have system — inject similarly if present
-          const ev = event as { system?: Array<{ type: string; text: string }> };
-          if (!ev.system) return;
-          const already = ev.system.some((p: { text: string }) =>
-            p.text.includes(activeState!.constitution!),
-          );
-          if (!already) ev.system.push({ type: "text" as const, text: activeState.constitution });
-        },
+      trackRegistration(
+        await (ctx.session as any).hook(
+          kind,
+          async (event: { system?: Array<{ text: string }>; [k: string]: unknown }) => {
+            if (!activeState || activeState.config.profile === "off" || !activeState.constitution)
+              return;
+            // generate/compaction also have system — inject similarly if present
+            const ev = event as { system?: Array<{ type: string; text: string }> };
+            if (!ev.system) return;
+            const already = ev.system.some((p: { text: string }) =>
+              p.text.includes(activeState!.constitution!),
+            );
+            if (!already) ev.system.push({ type: "text" as const, text: activeState.constitution });
+          },
+        ),
       );
     }
 
@@ -308,28 +332,30 @@ const plugin = Plugin.define({
     // The first invocation flips `stopHookSupported` so /df-status can show
     // which enforcement level is active.
     try {
-      // biome-ignore lint/suspicious/noExplicitAny: V2 hook names are not yet typed for session.stopping
-      await (ctx.session as any).hook(
-        "stopping",
-        // biome-ignore lint/suspicious/noExplicitAny: core may dispatch (input, output) or a single mutable event
-        async (input: any, output?: StoppingOutput) => {
-          if (!activeState) return;
-          const out: StoppingOutput = output ?? input ?? {};
-          const sessionID: string =
-            input?.sessionID ??
-            (out as { sessionID?: string }).sessionID ??
-            getEventSessionID(input) ??
-            "unknown";
-          activeState.stopHookSupported = true;
-          await reloadConfigIfChanged(activeState);
-          if (activeState.config.profile === "off") return;
-          const verdict = await runCompletion(activeState, sessionID);
-          const message = await actOnVerdict(activeState, verdict);
-          if (message !== null) {
-            out.stop = false;
-            out.message = message;
-          }
-        },
+      trackRegistration(
+        // biome-ignore lint/suspicious/noExplicitAny: V2 hook names are not yet typed for session.stopping
+        await (ctx.session as any).hook(
+          "stopping",
+          // biome-ignore lint/suspicious/noExplicitAny: core may dispatch (input, output) or a single mutable event
+          async (input: any, output?: StoppingOutput) => {
+            if (!activeState) return;
+            const out: StoppingOutput = output ?? input ?? {};
+            const sessionID: string =
+              input?.sessionID ??
+              (out as { sessionID?: string }).sessionID ??
+              getEventSessionID(input) ??
+              "unknown";
+            activeState.stopHookSupported = true;
+            await reloadConfigIfChanged(activeState);
+            if (activeState.config.profile === "off") return;
+            const verdict = await runCompletion(activeState, sessionID);
+            const message = await actOnVerdict(activeState, verdict);
+            if (message !== null) {
+              out.stop = false;
+              out.message = message;
+            }
+          },
+        ),
       );
       await safeLog(
         state,
@@ -345,197 +371,208 @@ const plugin = Plugin.define({
     }
 
     // 2) Guardrails — tool execution blocking (V1: tool.execute.before -> V2: ctx.tool.hook("execute.before", ...))
+    // Fail-open when state is absent: after a teardown/reload the hook may
+    // briefly outlive its state (or disposal may be unsupported on an older
+    // core). Allowing the call keeps the session usable; see issue #1.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await (ctx.tool as any).hook(
-      "execute.before",
-      async (event: { tool: string; input: unknown; sessionID: string }) => {
-        if (!activeState) {
-          throw new Error(
-            "[opencode-dev-framework] plugin state is not available; guardrail cannot evaluate this tool call",
-          );
-        }
-        await reloadConfigIfChanged(activeState);
-        if (activeState.config.profile === "off") return;
-        // V2 event shapes: { tool, sessionID, agent, messageID, id, input: unknown }
-        const toolName = (event as { tool: string }).tool;
-        const input = (event as { input: unknown }).input;
-        const sessionID = (event as { sessionID: string }).sessionID;
+    trackRegistration(
+      await (ctx.tool as any).hook(
+        "execute.before",
+        async (event: { tool: string; input: unknown; sessionID: string }) => {
+          if (!activeState) {
+            await safeLog(
+              null,
+              "warn",
+              "[opencode-dev-framework] plugin state is not available; allowing tool call (fail-open after teardown)",
+              { tool: (event as { tool?: string }).tool },
+            );
+            return;
+          }
+          await reloadConfigIfChanged(activeState);
+          if (activeState.config.profile === "off") return;
+          // V2 event shapes: { tool, sessionID, agent, messageID, id, input: unknown }
+          const toolName = (event as { tool: string }).tool;
+          const input = (event as { input: unknown }).input;
+          const sessionID = (event as { sessionID: string }).sessionID;
 
-        // Pre-flight harness: when `preflight:` tasks are configured, file
-        // edits are denied (standard/strict) until the pre-flight artifact
-        // exists. This is a true hard gate — it runs before the edit lands.
-        if (activeState.config.preflight.length > 0) {
-          const artifact = await artifactState(activeState.directory, PREFLIGHT_ARTIFACT_REL);
-          const reason = preflightBlockReason(
-            activeState.config,
-            toolName,
-            extractFilePath(input),
-            artifact,
-          );
-          if (reason !== null) {
-            const extra = { tool: toolName, sessionID, artifact: PREFLIGHT_ARTIFACT_REL };
-            if (activeState.config.profile === "advisory") {
-              await safeLog(activeState, "warn", reason, extra);
-            } else {
-              await safeLog(activeState, "error", reason, extra);
-              throw new Error(`[opencode-dev-framework] ${reason}`);
+          // Pre-flight harness: when `preflight:` tasks are configured, file
+          // edits are denied (standard/strict) until the pre-flight artifact
+          // exists. This is a true hard gate — it runs before the edit lands.
+          if (activeState.config.preflight.length > 0) {
+            const artifact = await artifactState(activeState.directory, PREFLIGHT_ARTIFACT_REL);
+            const reason = preflightBlockReason(
+              activeState.config,
+              toolName,
+              extractFilePath(input),
+              artifact,
+            );
+            if (reason !== null) {
+              const extra = { tool: toolName, sessionID, artifact: PREFLIGHT_ARTIFACT_REL };
+              if (activeState.config.profile === "advisory") {
+                await safeLog(activeState, "warn", reason, extra);
+              } else {
+                await safeLog(activeState, "error", reason, extra);
+                throw new Error(`[opencode-dev-framework] ${reason}`);
+              }
             }
           }
-        }
 
-        // hostPermissions: not available in V2 permission model; pass undefined (conservative — still guard)
-        const result = checkToolCall(
-          activeState.config,
-          toolName,
-          input,
-          activeState.directory,
-          undefined,
-        );
-        if (result.decision === "allow") return;
-        const message = result.reason ?? "blocked by guardrails";
-        const extra = { tool: toolName, sessionID, pattern: result.matchedPattern };
-        if (result.decision === "warn") {
-          await safeLog(activeState, "warn", message, extra);
-          return;
-        }
-        await safeLog(activeState, "error", message, extra);
-        throw new Error(`[opencode-dev-framework] ${message}`);
-      },
+          // hostPermissions: not available in V2 permission model; pass undefined (conservative — still guard)
+          const result = checkToolCall(
+            activeState.config,
+            toolName,
+            input,
+            activeState.directory,
+            undefined,
+          );
+          if (result.decision === "allow") return;
+          const message = result.reason ?? "blocked by guardrails";
+          const extra = { tool: toolName, sessionID, pattern: result.matchedPattern };
+          if (result.decision === "warn") {
+            await safeLog(activeState, "warn", message, extra);
+            return;
+          }
+          await safeLog(activeState, "error", message, extra);
+          throw new Error(`[opencode-dev-framework] ${message}`);
+        },
+      ),
     );
 
     // 3) Custom tools — V2: ctx.tool.transform(editor => editor.add(...))
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await (ctx.tool as any).transform((editor: { add: (t: unknown) => void }) => {
-      (
-        editor as {
-          add: (t: {
-            name: string;
-            description: string;
-            input: unknown;
-            execute: (input: unknown) => Promise<unknown>;
-          }) => void;
-        }
-      ).add({
-        name: "dev_framework_init",
-        description:
-          "Scaffold opencode-dev-framework project files (agents, skills, commands, default config) into the current project. Missing files are created; existing files are skipped unless overwrite is true.",
-        input: {
-          type: "object",
-          properties: {
-            directory: {
-              type: "string",
-              description: "Target project directory (defaults to current project)",
+    trackRegistration(
+      await (ctx.tool as any).transform((editor: { add: (t: unknown) => void }) => {
+        (
+          editor as {
+            add: (t: {
+              name: string;
+              description: string;
+              input: unknown;
+              execute: (input: unknown) => Promise<unknown>;
+            }) => void;
+          }
+        ).add({
+          name: "dev_framework_init",
+          description:
+            "Scaffold opencode-dev-framework project files (agents, skills, commands, default config) into the current project. Missing files are created; existing files are skipped unless overwrite is true.",
+          input: {
+            type: "object",
+            properties: {
+              directory: {
+                type: "string",
+                description: "Target project directory (defaults to current project)",
+              },
+              overwrite: {
+                type: "boolean",
+                description: "Overwrite existing files that differ from templates",
+              },
             },
-            overwrite: {
-              type: "boolean",
-              description: "Overwrite existing files that differ from templates",
-            },
+            additionalProperties: false,
           },
-          additionalProperties: false,
-        },
-        async execute(input: unknown) {
-          const { installTemplates, writeDetectedConfig } = await import("./installer.js");
-          const args = input as { directory?: string; overwrite?: boolean };
-          const targetDir = args.directory ?? directory;
-          const result = await installTemplates(targetDir, {
-            overwriteExisting: args.overwrite ?? false,
-            skipExisting: !(args.overwrite ?? false),
-          });
-          const configResult = await writeDetectedConfig(targetDir, {
-            overwriteExisting: args.overwrite ?? false,
-            skipExisting: !(args.overwrite ?? false),
-          });
-          const lines = [
-            `Installed opencode-dev-framework templates into ${targetDir}.`,
-            `Created: ${result.created.length} file(s)`,
-            `Overwritten: ${result.overwritten.length} file(s)`,
-            `Skipped: ${result.skipped.length} file(s)`,
-            `Config: ${configResult.action}`,
-          ];
-          if (result.created.length > 0)
-            lines.push("", "Created files:", ...result.created.map((f) => `- ${f}`));
-          if (result.overwritten.length > 0)
-            lines.push("", "Overwritten files:", ...result.overwritten.map((f) => `- ${f}`));
-          return { content: lines.join("\n") };
-        },
-      });
+          async execute(input: unknown) {
+            const { installTemplates, writeDetectedConfig } = await import("./installer.js");
+            const args = input as { directory?: string; overwrite?: boolean };
+            const targetDir = args.directory ?? directory;
+            const result = await installTemplates(targetDir, {
+              overwriteExisting: args.overwrite ?? false,
+              skipExisting: !(args.overwrite ?? false),
+            });
+            const configResult = await writeDetectedConfig(targetDir, {
+              overwriteExisting: args.overwrite ?? false,
+              skipExisting: !(args.overwrite ?? false),
+            });
+            const lines = [
+              `Installed opencode-dev-framework templates into ${targetDir}.`,
+              `Created: ${result.created.length} file(s)`,
+              `Overwritten: ${result.overwritten.length} file(s)`,
+              `Skipped: ${result.skipped.length} file(s)`,
+              `Config: ${configResult.action}`,
+            ];
+            if (result.created.length > 0)
+              lines.push("", "Created files:", ...result.created.map((f) => `- ${f}`));
+            if (result.overwritten.length > 0)
+              lines.push("", "Overwritten files:", ...result.overwritten.map((f) => `- ${f}`));
+            return { content: lines.join("\n") };
+          },
+        });
 
-      (editor as { add: (t: unknown) => void }).add({
-        name: "dev_framework_set_profile",
-        description:
-          "Change the opencode-dev-framework profile (off, advisory, standard, strict) for the current project and apply it immediately without restarting OpenCode.",
-        input: {
-          type: "object",
-          properties: {
-            profile: {
-              type: "string",
-              description: "New profile: off, advisory, standard, or strict",
+        (editor as { add: (t: unknown) => void }).add({
+          name: "dev_framework_set_profile",
+          description:
+            "Change the opencode-dev-framework profile (off, advisory, standard, strict) for the current project and apply it immediately without restarting OpenCode.",
+          input: {
+            type: "object",
+            properties: {
+              profile: {
+                type: "string",
+                description: "New profile: off, advisory, standard, or strict",
+              },
+              directory: {
+                type: "string",
+                description: "Project directory (defaults to current project)",
+              },
             },
-            directory: {
-              type: "string",
-              description: "Project directory (defaults to current project)",
-            },
+            required: ["profile"],
+            additionalProperties: false,
           },
-          required: ["profile"],
-          additionalProperties: false,
-        },
-        async execute(input: unknown) {
-          const { clearConfigCache: ccc, loadConfig: lc } = await import("./config.js");
-          const { changeProfile } = await import("./commands.js");
-          const { loadConstitution: lc2 } = await import("./rules.js");
-          const args = input as { profile: string; directory?: string };
-          const targetDir = args.directory ?? directory;
-          const profile = args.profile.trim().toLowerCase() as ResolvedConfig["profile"];
-          const valid = ["off", "advisory", "standard", "strict"] as const;
-          if (!(valid as readonly string[]).includes(profile)) {
+          async execute(input: unknown) {
+            const { clearConfigCache: ccc, loadConfig: lc } = await import("./config.js");
+            const { changeProfile } = await import("./commands.js");
+            const { loadConstitution: lc2 } = await import("./rules.js");
+            const args = input as { profile: string; directory?: string };
+            const targetDir = args.directory ?? directory;
+            const profile = args.profile.trim().toLowerCase() as ResolvedConfig["profile"];
+            const valid = ["off", "advisory", "standard", "strict"] as const;
+            if (!(valid as readonly string[]).includes(profile)) {
+              return {
+                content: `Invalid profile "${args.profile}". Valid values: ${valid.join(", ")}.`,
+              };
+            }
+            const message = await changeProfile(targetDir, profile);
+            ccc();
+            const newConfig = lc(targetDir);
+            const { constitution: newConstitution } = await lc2(newConfig, targetDir);
+            if (activeState && activeState.directory === targetDir) {
+              activeState.config = newConfig;
+              activeState.constitution = newConstitution;
+            }
+            return { content: `${message} Change applied immediately.` };
+          },
+        });
+
+        (editor as { add: (t: unknown) => void }).add({
+          name: "dev_framework_status",
+          description:
+            "Show the current opencode-dev-framework state for the project: active profile, guardrails, completion gate, on-edit behavior, tracked changed files, and block counts.",
+          input: {
+            type: "object",
+            properties: {
+              directory: {
+                type: "string",
+                description: "Project directory (defaults to current project)",
+              },
+            },
+            additionalProperties: false,
+          },
+          async execute(input: unknown) {
+            const { renderStatus } = await import("./format-status.js");
+            const args = input as { directory?: string };
+            const targetDir = args.directory ?? directory;
+            const cfg =
+              activeState && activeState.directory === targetDir
+                ? activeState.config
+                : loadConfig(targetDir);
+            // renderStatus expects HookState? pass activeState
             return {
-              content: `Invalid profile "${args.profile}". Valid values: ${valid.join(", ")}.`,
+              content: renderStatus(
+                cfg,
+                activeState as unknown as Parameters<typeof renderStatus>[1],
+              ),
             };
-          }
-          const message = await changeProfile(targetDir, profile);
-          ccc();
-          const newConfig = lc(targetDir);
-          const { constitution: newConstitution } = await lc2(newConfig, targetDir);
-          if (activeState && activeState.directory === targetDir) {
-            activeState.config = newConfig;
-            activeState.constitution = newConstitution;
-          }
-          return { content: `${message} Change applied immediately.` };
-        },
-      });
-
-      (editor as { add: (t: unknown) => void }).add({
-        name: "dev_framework_status",
-        description:
-          "Show the current opencode-dev-framework state for the project: active profile, guardrails, completion gate, on-edit behavior, tracked changed files, and block counts.",
-        input: {
-          type: "object",
-          properties: {
-            directory: {
-              type: "string",
-              description: "Project directory (defaults to current project)",
-            },
           },
-          additionalProperties: false,
-        },
-        async execute(input: unknown) {
-          const { renderStatus } = await import("./format-status.js");
-          const args = input as { directory?: string };
-          const targetDir = args.directory ?? directory;
-          const cfg =
-            activeState && activeState.directory === targetDir
-              ? activeState.config
-              : loadConfig(targetDir);
-          // renderStatus expects HookState? pass activeState
-          return {
-            content: renderStatus(
-              cfg,
-              activeState as unknown as Parameters<typeof renderStatus>[1],
-            ),
-          };
-        },
-      });
-    });
+        });
+      }),
+    );
 
     // 4) Event subscription — file tracking + gate enforcement (V1: event hook)
     // Keeps the completion gate intent without session.stopping: on idle, run gate;
@@ -675,9 +712,24 @@ const plugin = Plugin.define({
     // Ensure the loop doesn't block setup
     void eventLoop;
 
-    return () => {
+    return async () => {
       controller.abort();
-      activeState = null;
+      // Unregister every hook/transform registered by this setup() so a
+      // teardown/reload (e.g. session_move into a worktree) does not leave
+      // stale closures alive. Disposal failures are ignored — the
+      // fail-open guard above keeps the session usable regardless.
+      for (const registration of registrations) {
+        try {
+          await registration.dispose();
+        } catch {
+          // ignore — fail-open guard is the safety net
+        }
+      }
+      // Only clear the singleton if it is still ours; a newer setup() may
+      // already have replaced it (reload race).
+      if (activeState === state) {
+        activeState = null;
+      }
     };
   },
 });

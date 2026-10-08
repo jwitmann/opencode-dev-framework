@@ -370,6 +370,24 @@ true hard gate via `tool.execute.before`.
   `session.stopping` claims, AGENTS.md enforcement caveat updated.
 - [ ] 19.7 Bump version and tag (user action).
 
+## Phase 20 — Teardown disposal + fail-open guard (issue #1, v0.2.3)
+
+Root cause: `setup()` discarded the `Registration` handles returned by
+`ctx.session.hook` / `ctx.tool.hook` / `ctx.tool.transform`, and teardown
+nulled the module-level `activeState` while the `execute.before` closure
+stayed registered — every subsequent tool call threw permanently
+(`session_move` / plugin reload repro).
+
+- [x] 20.1 `src/index.ts`: track every hook/transform `Registration` and
+  `dispose()` them in the setup cleanup; only clear `activeState` when it is
+  still this setup's state (reload-race safe).
+- [x] 20.2 `src/index.ts`: `execute.before` is fail-open when state is absent
+  (warn + allow) instead of throwing, so a stale hook can never brick the
+  session; matches the other hooks which already no-op on missing state.
+- [x] 20.3 `tests/teardown.test.ts`: teardown disposes registrations,
+  stale guard allows tool calls, fresh setup after teardown guards again.
+- [ ] 20.4 Bump version and tag (user action).
+
 ## Notes for the implementer
 
 - Do all tests first; use the stub host.

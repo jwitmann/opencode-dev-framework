@@ -4,6 +4,18 @@ Use this file to capture anything that comes up during implementation that futur
 
 ## Pre/post-flight enforcement harness (v0.2.3)
 
+**Teardown disposal + fail-open guard (issue #1, fixed in working tree):**
+`setup()` discarded the `Registration` (`{ dispose() }`) handles returned by
+`ctx.session.hook` / `ctx.tool.hook` / `ctx.tool.transform`, while teardown
+nulled module-level `activeState`. The orphaned `execute.before` closure then
+threw `plugin state is not available` on every tool call with no in-session
+recovery (`session_move` repro on desktop v2.0.18). Fix: track every
+registration and `dispose()` it in the setup cleanup (only clearing
+`activeState` when it is still this setup's instance), and make
+`execute.before` fail-open (warn + allow) when state is absent — consistent
+with the other hooks which already no-op. Regression covered by
+`tests/teardown.test.ts`. See `05-implementation-checklist.md` Phase 20.
+
 **Ground truth on hard stops (verified against the v2.0.12 tag source,
 2026-09-21):** `packages/plugin/src/promise/session.ts` `SessionHooks` has no
 `stopping` entry. PR #44712 (fail-closed `session.stopping`) is still **open**;
