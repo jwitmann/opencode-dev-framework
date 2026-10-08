@@ -1,5 +1,6 @@
 ---
 name: code-reviewer
+mode: subagent
 description: >
   Correctness reviewer. Scans changed code for bugs, logic errors, security
   issues, and unsafe edge cases — independent of style and pattern concerns.

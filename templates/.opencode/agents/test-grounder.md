@@ -1,5 +1,6 @@
 ---
 name: test-grounder
+mode: subagent
 description: >
   Evidence auditor. Verifies that claims about a change are backed by reality:
   that new behavior has a test which fails without the change and passes with
