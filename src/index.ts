@@ -277,26 +277,34 @@ const plugin = Plugin.define({
       }
     }
 
+    // Stale-hook guard: every closure below captures its own `state` and
+    // no-ops when it is no longer the live singleton. This covers three
+    // cases disposal alone cannot: (a) teardown with no fresh setup
+    // (activeState is null), (b) teardown + reload where an old
+    // registration outlives disposal (activeState is a newer state —
+    // the stale hook must NOT double-enforce), and (c) teardown racing
+    // an in-flight handler between awaits (captured `state` stays valid
+    // while the global may be cleared). See issue #1 follow-up.
     // 1) Constitution injection — per model request (V1: experimental.chat.system.transform -> V2: session.hook("context", ...))
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     trackRegistration(
       await (ctx.session as any).hook(
         "context",
         async (event: { system: Array<{ text: string }>; [k: string]: unknown }) => {
-          if (!activeState) return;
-          await reloadConfigIfChanged(activeState);
-          if (activeState.config.profile === "off") return;
-          if (!activeState.constitution) return;
+          if (activeState !== state) return;
+          await reloadConfigIfChanged(state);
+          if (state.config.profile === "off") return;
+          if (!state.constitution) return;
           // V2 system is Array<SystemPart> {type:"text", text:string}
           const already = event.system.some((part: { text: string }) =>
-            part.text.includes(activeState!.constitution!),
+            part.text.includes(state.constitution!),
           );
           if (already) return;
           event.system.push({
             type: "text",
-            text: activeState.constitution,
+            text: state.constitution,
           } as (typeof event.system)[number]);
-          await safeLog(activeState, "info", "constitution injected into system prompt");
+          await safeLog(state, "info", "constitution injected into system prompt");
         },
       ),
     );
@@ -309,15 +317,15 @@ const plugin = Plugin.define({
         await (ctx.session as any).hook(
           kind,
           async (event: { system?: Array<{ text: string }>; [k: string]: unknown }) => {
-            if (!activeState || activeState.config.profile === "off" || !activeState.constitution)
-              return;
+            if (activeState !== state) return;
+            if (state.config.profile === "off" || !state.constitution) return;
             // generate/compaction also have system — inject similarly if present
             const ev = event as { system?: Array<{ type: string; text: string }> };
             if (!ev.system) return;
             const already = ev.system.some((p: { text: string }) =>
-              p.text.includes(activeState!.constitution!),
+              p.text.includes(state.constitution!),
             );
-            if (!already) ev.system.push({ type: "text" as const, text: activeState.constitution });
+            if (!already) ev.system.push({ type: "text" as const, text: state.constitution });
           },
         ),
       );
@@ -338,18 +346,18 @@ const plugin = Plugin.define({
           "stopping",
           // biome-ignore lint/suspicious/noExplicitAny: core may dispatch (input, output) or a single mutable event
           async (input: any, output?: StoppingOutput) => {
-            if (!activeState) return;
+            if (activeState !== state) return;
             const out: StoppingOutput = output ?? input ?? {};
             const sessionID: string =
               input?.sessionID ??
               (out as { sessionID?: string }).sessionID ??
               getEventSessionID(input) ??
               "unknown";
-            activeState.stopHookSupported = true;
-            await reloadConfigIfChanged(activeState);
-            if (activeState.config.profile === "off") return;
-            const verdict = await runCompletion(activeState, sessionID);
-            const message = await actOnVerdict(activeState, verdict);
+            state.stopHookSupported = true;
+            await reloadConfigIfChanged(state);
+            if (state.config.profile === "off") return;
+            const verdict = await runCompletion(state, sessionID);
+            const message = await actOnVerdict(state, verdict);
             if (message !== null) {
               out.stop = false;
               out.message = message;
@@ -371,25 +379,30 @@ const plugin = Plugin.define({
     }
 
     // 2) Guardrails — tool execution blocking (V1: tool.execute.before -> V2: ctx.tool.hook("execute.before", ...))
-    // Fail-open when state is absent: after a teardown/reload the hook may
-    // briefly outlive its state (or disposal may be unsupported on an older
-    // core). Allowing the call keeps the session usable; see issue #1.
+    // Stale-hook fail-open: the closure captures its own `state` and allows
+    // the call whenever it is no longer live — torn down (activeState null)
+    // or superseded by a newer setup (activeState is a different instance,
+    // whose own hook enforces; this one must not double-enforce). Using the
+    // captured `state` throughout also closes the teardown race where the
+    // global is cleared between awaits. See issue #1.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     trackRegistration(
       await (ctx.tool as any).hook(
         "execute.before",
         async (event: { tool: string; input: unknown; sessionID: string }) => {
-          if (!activeState) {
-            await safeLog(
-              null,
-              "warn",
-              "[opencode-dev-framework] plugin state is not available; allowing tool call (fail-open after teardown)",
-              { tool: (event as { tool?: string }).tool },
-            );
+          if (activeState !== state) {
+            if (activeState == null) {
+              await safeLog(
+                null,
+                "warn",
+                "[opencode-dev-framework] plugin state is not available; allowing tool call (fail-open after teardown)",
+                { tool: (event as { tool?: string }).tool },
+              );
+            }
             return;
           }
-          await reloadConfigIfChanged(activeState);
-          if (activeState.config.profile === "off") return;
+          await reloadConfigIfChanged(state);
+          if (state.config.profile === "off") return;
           // V2 event shapes: { tool, sessionID, agent, messageID, id, input: unknown }
           const toolName = (event as { tool: string }).tool;
           const input = (event as { input: unknown }).input;
@@ -398,20 +411,20 @@ const plugin = Plugin.define({
           // Pre-flight harness: when `preflight:` tasks are configured, file
           // edits are denied (standard/strict) until the pre-flight artifact
           // exists. This is a true hard gate — it runs before the edit lands.
-          if (activeState.config.preflight.length > 0) {
-            const artifact = await artifactState(activeState.directory, PREFLIGHT_ARTIFACT_REL);
+          if (state.config.preflight.length > 0) {
+            const artifact = await artifactState(state.directory, PREFLIGHT_ARTIFACT_REL);
             const reason = preflightBlockReason(
-              activeState.config,
+              state.config,
               toolName,
               extractFilePath(input),
               artifact,
             );
             if (reason !== null) {
               const extra = { tool: toolName, sessionID, artifact: PREFLIGHT_ARTIFACT_REL };
-              if (activeState.config.profile === "advisory") {
-                await safeLog(activeState, "warn", reason, extra);
+              if (state.config.profile === "advisory") {
+                await safeLog(state, "warn", reason, extra);
               } else {
-                await safeLog(activeState, "error", reason, extra);
+                await safeLog(state, "error", reason, extra);
                 throw new Error(`[opencode-dev-framework] ${reason}`);
               }
             }
@@ -419,20 +432,20 @@ const plugin = Plugin.define({
 
           // hostPermissions: not available in V2 permission model; pass undefined (conservative — still guard)
           const result = checkToolCall(
-            activeState.config,
+            state.config,
             toolName,
             input,
-            activeState.directory,
+            state.directory,
             undefined,
           );
           if (result.decision === "allow") return;
           const message = result.reason ?? "blocked by guardrails";
           const extra = { tool: toolName, sessionID, pattern: result.matchedPattern };
           if (result.decision === "warn") {
-            await safeLog(activeState, "warn", message, extra);
+            await safeLog(state, "warn", message, extra);
             return;
           }
-          await safeLog(activeState, "error", message, extra);
+          await safeLog(state, "error", message, extra);
           throw new Error(`[opencode-dev-framework] ${message}`);
         },
       ),
@@ -532,7 +545,11 @@ const plugin = Plugin.define({
             ccc();
             const newConfig = lc(targetDir);
             const { constitution: newConstitution } = await lc2(newConfig, targetDir);
-            if (activeState && activeState.directory === targetDir) {
+            if (state.directory === targetDir) {
+              state.config = newConfig;
+              state.constitution = newConstitution;
+            }
+            if (activeState && activeState !== state && activeState.directory === targetDir) {
               activeState.config = newConfig;
               activeState.constitution = newConstitution;
             }
@@ -558,15 +575,14 @@ const plugin = Plugin.define({
             const { renderStatus } = await import("./format-status.js");
             const args = input as { directory?: string };
             const targetDir = args.directory ?? directory;
-            const cfg =
-              activeState && activeState.directory === targetDir
-                ? activeState.config
-                : loadConfig(targetDir);
-            // renderStatus expects HookState? pass activeState
+            const live = activeState && activeState.directory === targetDir ? activeState : null;
+            const own = state.directory === targetDir ? state : null;
+            const cfg = (live ?? own)?.config ?? loadConfig(targetDir);
+            // renderStatus expects HookState? pass live ?? own (may be null for other dirs)
             return {
               content: renderStatus(
                 cfg,
-                activeState as unknown as Parameters<typeof renderStatus>[1],
+                (live ?? own) as unknown as Parameters<typeof renderStatus>[1],
               ),
             };
           },
@@ -581,6 +597,9 @@ const plugin = Plugin.define({
     const eventLoop = (async () => {
       try {
         for await (const rawEvent of ctx.event.subscribe({ signal: controller.signal })) {
+          // Stale-loop guard: a previous setup's loop must exit rather than
+          // hijack a newer setup's state (duplicate gate re-prompts / lint).
+          if (activeState !== state) return;
           const event = rawEvent as { type: string; data?: unknown; properties?: unknown } & Record<
             string,
             unknown
@@ -590,53 +609,53 @@ const plugin = Plugin.define({
           if (isSessionDeletedEvent(type)) {
             // session.deleted: cleanup blockCounts (and tracker if needed)
             const sid = getEventSessionID(event);
-            if (sid && activeState) activeState.blockCounts.delete(sid);
+            if (sid) state.blockCounts.delete(sid);
             continue;
           }
 
           if (isFilesystemChangedEvent(type)) {
-            if (!activeState) continue;
-            await reloadConfigIfChanged(activeState);
-            if (activeState.config.profile === "off") continue;
+            if (activeState !== state) return;
+            await reloadConfigIfChanged(state);
+            if (state.config.profile === "off") continue;
             const filePath = getEventFilePath(event);
             if (!filePath) continue;
-            activeState.tracker.add(filePath, activeState.directory);
+            state.tracker.add(filePath, state.directory);
 
             // per-edit lint (V1: event file.edited -> lintFile)
-            if (!activeState.config.on_edit.lint) continue;
+            if (!state.config.on_edit.lint) continue;
             if (
-              activeState.config.precommit === "auto" &&
-              activeState.precommitAvailable === undefined
+              state.config.precommit === "auto" &&
+              state.precommitAvailable === undefined
             ) {
-              activeState.precommitAvailable = await detectPreCommitAvailability(
-                activeState.run,
-                activeState.directory,
+              state.precommitAvailable = await detectPreCommitAvailability(
+                state.run,
+                state.directory,
               );
             }
-            const outcome = await lintFile(activeState.run, activeState.config, filePath, {
-              cwd: activeState.directory,
-              timeout: activeState.config.gate?.timeout,
-              precommitAvailable: activeState.precommitAvailable,
+            const outcome = await lintFile(state.run, state.config, filePath, {
+              cwd: state.directory,
+              timeout: state.config.gate?.timeout,
+              precommitAvailable: state.precommitAvailable,
             });
             if (outcome.skipped) {
-              await safeLog(activeState, "debug", summarizeLint(outcome), {
+              await safeLog(state, "debug", summarizeLint(outcome), {
                 filePath,
                 reason: outcome.reason,
               });
               continue;
             }
             if (!isLintFailure(outcome)) {
-              await safeLog(activeState, "info", summarizeLint(outcome), { filePath });
+              await safeLog(state, "info", summarizeLint(outcome), { filePath });
               continue;
             }
             const summary = summarizeLint(outcome);
-            await safeLog(activeState, "error", summary, {
+            await safeLog(state, "error", summary, {
               filePath,
               command: outcome.command?.join(" "),
               stdout: outcome.result?.stdout,
               stderr: outcome.result?.stderr,
             });
-            if (activeState.config.profile === "strict") {
+            if (state.config.profile === "strict") {
               // Event handlers cannot throw to block the edit (edit already happened), but we log loudly.
               // In V2 we also have the tool hook to block before; this is advisory.
             }
@@ -644,16 +663,16 @@ const plugin = Plugin.define({
           }
 
           if (isIdleEvent(event as { type: string; data?: unknown; properties?: unknown })) {
-            if (!activeState) continue;
-            await reloadConfigIfChanged(activeState);
-            if (activeState.config.profile === "off") continue;
-            if (!activeState.config.gate) {
+            if (activeState !== state) return;
+            await reloadConfigIfChanged(state);
+            if (state.config.profile === "off") continue;
+            if (!state.config.gate) {
               await safeLog(
-                activeState,
+                state,
                 "warn",
                 "plugin config is incomplete (missing gate section), skipping completion gate",
                 {
-                  directory: activeState.directory,
+                  directory: state.directory,
                 },
               );
               continue;
@@ -661,8 +680,8 @@ const plugin = Plugin.define({
             const sessionID = getEventSessionID(event);
             if (!sessionID) continue;
 
-            const verdict = await runCompletion(activeState, sessionID);
-            const message = await actOnVerdict(activeState, verdict);
+            const verdict = await runCompletion(state, sessionID);
+            const message = await actOnVerdict(state, verdict);
             if (message === null) continue;
             const blockInfo =
               verdict.decision === "blocked"
@@ -678,19 +697,19 @@ const plugin = Plugin.define({
                 await ctx.session.synthetic({ sessionID, text: message });
               } else {
                 await safeLog(
-                  activeState,
+                  state,
                   "error",
                   `gate blocked but no session prompt API available: ${message}`,
                 );
               }
               await safeLog(
-                activeState,
+                state,
                 "info",
                 `completion gate re-prompted session ${sessionID}${blockInfo}`,
               );
             } catch (err) {
               await safeLog(
-                activeState,
+                state,
                 "error",
                 `failed to re-prompt session ${sessionID} after gate block: ${String(err)}`,
                 {
@@ -705,7 +724,7 @@ const plugin = Plugin.define({
           // normal on dispose
           return;
         }
-        await safeLog(activeState, "error", `event loop error: ${String(err)}`);
+        await safeLog(state, "error", `event loop error: ${String(err)}`);
       }
     })();
 
@@ -717,12 +736,13 @@ const plugin = Plugin.define({
       // Unregister every hook/transform registered by this setup() so a
       // teardown/reload (e.g. session_move into a worktree) does not leave
       // stale closures alive. Disposal failures are ignored — the
-      // fail-open guard above keeps the session usable regardless.
+      // stale-hook guard (`activeState !== state` → no-op / fail-open) keeps
+      // the session usable regardless.
       for (const registration of registrations) {
         try {
           await registration.dispose();
         } catch {
-          // ignore — fail-open guard is the safety net
+          // ignore — stale-hook guard is the safety net
         }
       }
       // Only clear the singleton if it is still ours; a newer setup() may

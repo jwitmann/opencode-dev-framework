@@ -131,4 +131,74 @@ describe("issue #1: teardown must not brick tool calls", () => {
 
     await cleanupSecond();
   });
+
+  it("stale hook after reload is a no-op (no double-enforce when dispose is unsupported)", async () => {
+    const mod = plugin as unknown as { setup: (c: unknown) => Promise<unknown> };
+
+    // Simulate an older core where hook()/transform() return void (no
+    // Registration): teardown cannot dispose, so the old closure outlives.
+    function createNoDisposeCtx() {
+      const toolHooks = new Map<string, (event: never) => Promise<void> | void>();
+      const ctx = {
+        location: { directory },
+        session: {
+          hook: async (name: string, callback: (event: never) => Promise<void> | void) => {
+            void name;
+            void callback;
+            return undefined;
+          },
+          prompt: async () => {},
+          synthetic: async () => {},
+        },
+        tool: {
+          hook: async (name: string, callback: (event: never) => Promise<void> | void) => {
+            toolHooks.set(name, callback);
+            return undefined;
+          },
+          transform: async (callback: (editor: { add: (t: unknown) => void }) => void) => {
+            callback({ add: () => {} });
+            return undefined;
+          },
+        },
+        event: {
+          subscribe: () => ({
+            [Symbol.asyncIterator]: async function* () {},
+          }),
+        },
+        app: { version: "2.0.18" },
+      };
+      return { ctx, toolHooks };
+    }
+
+    const first = createNoDisposeCtx();
+    const cleanupFirst = (await mod.setup(first.ctx)) as () => Promise<void> | void;
+    const staleGuard = first.toolHooks.get("execute.before");
+    expect(staleGuard).toBeDefined();
+
+    // Reload without disposal (teardown clears state, setup installs new).
+    await cleanupFirst();
+    clearConfigCache();
+    const second = createNoDisposeCtx();
+    const cleanupSecond = (await mod.setup(second.ctx)) as () => Promise<void> | void;
+    const liveGuard = second.toolHooks.get("execute.before");
+    expect(liveGuard).toBeDefined();
+
+    // A dangerous command the live guard must still block.
+    const dangerous = {
+      tool: "shell",
+      input: { command: "rm -rf /tmp/should-never-run" },
+      sessionID: "teardown-stale",
+    };
+    await expect(
+      (liveGuard as (event: unknown) => Promise<void>)(dangerous),
+    ).rejects.toThrow(/blocked/);
+
+    // The stale (superseded) hook must NOT double-enforce — it no-ops
+    // (fail-open) even though disposal never happened.
+    await expect(
+      (staleGuard as (event: unknown) => Promise<void>)(dangerous),
+    ).resolves.toBeUndefined();
+
+    await cleanupSecond();
+  });
 });
