@@ -391,7 +391,7 @@ const plugin = Plugin.define({
         "execute.before",
         async (event: { tool: string; input: unknown; sessionID: string }) => {
           if (activeState !== state) {
-            if (activeState == null) {
+            if (activeState === null) {
               await safeLog(
                 null,
                 "warn",
