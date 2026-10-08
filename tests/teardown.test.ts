@@ -189,9 +189,9 @@ describe("issue #1: teardown must not brick tool calls", () => {
       input: { command: "rm -rf /tmp/should-never-run" },
       sessionID: "teardown-stale",
     };
-    await expect(
-      (liveGuard as (event: unknown) => Promise<void>)(dangerous),
-    ).rejects.toThrow(/blocked/);
+    await expect((liveGuard as (event: unknown) => Promise<void>)(dangerous)).rejects.toThrow(
+      /blocked/,
+    );
 
     // The stale (superseded) hook must NOT double-enforce — it no-ops
     // (fail-open) even though disposal never happened.

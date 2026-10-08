@@ -431,13 +431,7 @@ const plugin = Plugin.define({
           }
 
           // hostPermissions: not available in V2 permission model; pass undefined (conservative — still guard)
-          const result = checkToolCall(
-            state.config,
-            toolName,
-            input,
-            state.directory,
-            undefined,
-          );
+          const result = checkToolCall(state.config, toolName, input, state.directory, undefined);
           if (result.decision === "allow") return;
           const message = result.reason ?? "blocked by guardrails";
           const extra = { tool: toolName, sessionID, pattern: result.matchedPattern };
@@ -623,10 +617,7 @@ const plugin = Plugin.define({
 
             // per-edit lint (V1: event file.edited -> lintFile)
             if (!state.config.on_edit.lint) continue;
-            if (
-              state.config.precommit === "auto" &&
-              state.precommitAvailable === undefined
-            ) {
+            if (state.config.precommit === "auto" && state.precommitAvailable === undefined) {
               state.precommitAvailable = await detectPreCommitAvailability(
                 state.run,
                 state.directory,
