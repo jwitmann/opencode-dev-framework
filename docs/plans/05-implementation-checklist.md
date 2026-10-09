@@ -500,8 +500,11 @@ stayed registered — every subsequent tool call threw permanently
   this line: every factual claim cross-checked (all 4 commands in
   `tui.tsx` keymap layer; `runPerEditLint` never throws; df-profile arg
   wired; zero `cli.json` refs in code; example loads). No Blocking, no
-  Should-fix. Version NOT bumped by hand — `npm run release:minor` owns it
-  (0.2.4 → 0.3.0 + tag on demand); push + publish via CI are user actions.
+  Should-fix. Version NOT bumped by hand — `npm run release:minor` owns it;
+  push + publish via CI are user actions.
+  RELEASED 2026-10-09: user ran `npm run release:minor` (after a
+  `style: apply biome formatting` fixup, `ac58c67`), then pushed:
+  commit `7f84b81` "Release v0.3.0", tag `v0.3.0`, `package.json` at 0.3.0.
 
 ## Phase 28 — Effect-API rewrite (post-process, UNSCHEDULED)
 

@@ -219,7 +219,7 @@ They open instantly and **never** feed text back to the LLM:
 
 You can still run `df init` to install the bundled agents, skills, and default
 config; the commands themselves are provided by the plugin. The
-`dev_framework_init` and `dev_framework_set_profile` custom *tools* remain
+`dev_framework_*` custom *tools* remain
 available for in-agent use (e.g. when the model wants to change the profile
 itself).
 

@@ -816,6 +816,10 @@ idle gate it never re-prompts.
   tags; then `git push origin main --tags` and CI publishes to npm).
   A manual 0.3.0 edit was made and reverted for exactly this reason.
   Tag + push remain user actions (never push from agent sessions).
+- Released 2026-10-09: user ran `npm run release:minor` (needed one
+  `ac58c67` biome-format fixup first — two whitespace hunks the earlier
+  `format:check` had passed, cause unknown), then pushed release commit
+  `7f84b81` with tag `v0.3.0`; CI publishes to npm from the tag.
 
 ## References
 
