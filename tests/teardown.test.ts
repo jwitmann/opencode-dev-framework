@@ -20,7 +20,51 @@ describe("issue #1: teardown must not brick tool calls", () => {
     vi.restoreAllMocks();
   });
 
-  function createMockCtx() {
+  function createQueueSource() {
+    // Adversarial event stream: abort-ignorant by design. Parking on an
+    // empty queue forever (unless push()ed) simulates a core stream that
+    // survives teardown, so the stale-loop guard (`activeState !== state`)
+    // is what must contain it — the worst case for the strain probe.
+    const queue: unknown[] = [];
+    let wake: (() => void) | null = null;
+    return {
+      push(event: unknown) {
+        queue.push(event);
+        wake?.();
+        wake = null;
+      },
+      async *iterate(): AsyncGenerator<unknown, void, unknown> {
+        while (true) {
+          while (queue.length === 0) {
+            await new Promise<void>((resolve) => {
+              wake = resolve;
+            });
+          }
+          const next = queue.shift();
+          if (next !== undefined) yield next;
+        }
+      },
+    };
+  }
+
+  function sleep(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  async function waitForPromptCalls(
+    prompt: unknown,
+    expected: number,
+    timeoutMs = 10000,
+  ): Promise<void> {
+    const mock = prompt as { mock: { calls: unknown[][] } };
+    const deadline = Date.now() + timeoutMs;
+    while (mock.mock.calls.length !== expected && Date.now() < deadline) {
+      await sleep(25);
+    }
+    expect(mock.mock.calls.length).toBe(expected);
+  }
+
+  function createMockCtx(subscribe?: () => AsyncGenerator<unknown, void, unknown>) {
     const sessionHooks = new Map<string, (event: never) => Promise<void> | void>();
     const toolHooks = new Map<string, (event: never) => Promise<void> | void>();
     const permissionHooks = new Map<string, (event: never) => Promise<void> | void>();
@@ -58,7 +102,11 @@ describe("issue #1: teardown must not brick tool calls", () => {
       },
       event: {
         subscribe: () => ({
-          [Symbol.asyncIterator]: async function* () {},
+          // Abort-ignorant on purpose when a custom source is given (see
+          // createQueueSource): the stream outlives teardown, so only the
+          // stale-loop guard stands between a dead loop and double
+          // enforcement. The default empty generator exits immediately.
+          [Symbol.asyncIterator]: subscribe ?? async function* () {},
         }),
       },
       app: { version: "2.0.18" },
@@ -211,5 +259,109 @@ describe("issue #1: teardown must not brick tool calls", () => {
     ).resolves.toBeUndefined();
 
     await cleanupSecond();
+  });
+
+  it("rapid setup/teardown cycles with in-flight streams leave no live stale loop (strain probe)", async () => {
+    // Gate config that blocks on idle, so event-loop liveness is observable
+    // via ctx.session.prompt: `false` exits 1 instantly (hermetic, no real
+    // checks run) and skip_unchanged is off so the gate runs with no
+    // changed files.
+    writeFileSync(
+      join(directory, ".opencode-dev-framework.yml"),
+      'profile: standard\ncommands:\n  typecheck: "false"\ngate:\n  run_typecheck: true\n  run_tests: false\n  skip_unchanged: false\n  block_on_failure: true\n',
+    );
+    clearConfigCache();
+    const mod = plugin as unknown as { setup: (c: unknown) => Promise<unknown> };
+    type Cleanup = () => Promise<void> | void;
+
+    // Reload churn: five rapid setup/teardown pairs with hanging streams.
+    const dead: Array<{
+      ctx: { session: { prompt: unknown } };
+      source: ReturnType<typeof createQueueSource>;
+    }> = [];
+    for (let i = 0; i < 5; i++) {
+      const source = createQueueSource();
+      const { ctx, disposers } = createMockCtx(() => source.iterate());
+      const cleanup = (await mod.setup(ctx)) as Cleanup;
+      expect(typeof cleanup).toBe("function");
+      await cleanup();
+      expect(disposers.length).toBeGreaterThan(0);
+      for (const registration of disposers) {
+        expect(registration.dispose).toHaveBeenCalledTimes(1);
+      }
+      dead.push({ ctx: ctx as unknown as { session: { prompt: unknown } }, source });
+    }
+
+    // Live setup after the churn.
+    const liveSource = createQueueSource();
+    const live = createMockCtx(() => liveSource.iterate());
+    const cleanupLive = (await mod.setup(live.ctx)) as Cleanup;
+
+    // Late events into every dead stream: the stale loops wake, see
+    // `activeState !== state`, and exit — without re-prompting anywhere.
+    for (const [i, d] of dead.entries()) {
+      d.source.push({ type: "session.idle", sessionID: `stress-stale-${i}` });
+    }
+    await sleep(300);
+    for (const d of dead) {
+      expect(d.ctx.session.prompt).not.toHaveBeenCalled();
+    }
+    expect(live.ctx.session.prompt).not.toHaveBeenCalled();
+
+    // The live loop still enforces: one failing-gate idle → one re-prompt.
+    liveSource.push({ type: "session.idle", sessionID: "stress-live" });
+    await waitForPromptCalls(live.ctx.session.prompt, 1);
+    expect(live.ctx.session.prompt).toHaveBeenCalledWith(
+      expect.objectContaining({ sessionID: "stress-live" }),
+    );
+
+    await cleanupLive();
+  });
+
+  it("a throwing event subscriber neither breaks setup nor bricks the session", async () => {
+    const mod = plugin as unknown as { setup: (c: unknown) => Promise<unknown> };
+    type Cleanup = () => Promise<void> | void;
+
+    // 1) subscribe() throws synchronously: the loop catches it, setup still
+    // resolves, and the guardrail still works.
+    const syncBoom = createMockCtx();
+    syncBoom.ctx.event.subscribe = () => {
+      throw new Error("subscribe boom");
+    };
+    const cleanupSync = (await mod.setup(syncBoom.ctx)) as Cleanup;
+    expect(typeof cleanupSync).toBe("function");
+    const syncGuard = syncBoom.toolHooks.get("execute.before");
+    expect(syncGuard).toBeDefined();
+    await expect(
+      (syncGuard as (event: unknown) => Promise<void>)({
+        tool: "read",
+        input: { path: "README.md" },
+        sessionID: "boom-sync",
+      }),
+    ).resolves.toBeUndefined();
+    await cleanupSync();
+
+    // 2) The stream throws mid-iteration (after one idle event): same
+    // guarantees. The loop's catch + safeLog contain it — visible as an
+    // "event loop error" stderr line from the real logger, which is
+    // expected noise, not a failure.
+    async function* midThrow(): AsyncGenerator<unknown, void, unknown> {
+      yield { type: "session.idle", sessionID: "boom-live" };
+      throw new Error("stream boom");
+    }
+    const midCtx = createMockCtx(midThrow);
+    const cleanupMid = (await mod.setup(midCtx.ctx)) as Cleanup;
+    expect(typeof cleanupMid).toBe("function");
+    const midGuard = midCtx.toolHooks.get("execute.before");
+    expect(midGuard).toBeDefined();
+    await expect(
+      (midGuard as (event: unknown) => Promise<void>)({
+        tool: "read",
+        input: { path: "README.md" },
+        sessionID: "boom-mid",
+      }),
+    ).resolves.toBeUndefined();
+    await sleep(200);
+    await cleanupMid();
   });
 });

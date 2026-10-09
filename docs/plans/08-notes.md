@@ -573,6 +573,30 @@ Effect fiber with a finalizer, compare teardown behavior against
 `teardown.test.ts`, then decide. Do NOT rewrite the whole plugin to Effect
 without that spike + peer review.
 
+**Re-checked 2026-10-09 (no code changed):** triggers still unmet — (a) no
+strain observed (see strain probe below), (b) gate steps still run
+sequentially (`Promise.all` would cover parallelism if ever needed), (c)
+`@opencode/plugin@2.0.26` pins `effect@4.0.0-rc.112` — Effect 4 is still a
+release candidate. Two corrections to the paragraph above: the entrypoint
+path is `@opencode/plugin/effect` (not `@opencode/plugin/v2/effect`), and
+"port only the loop" is narrower than it sounds — the Effect `Stream`
+`subscribe` is only reachable through the Effect `Context`, so a
+promise-entrypoint spike would manage its own `Runtime` + `Scope` (fiber
+interruption without the auto-release-on-reload payoff), while the full
+payoff requires switching the whole plugin to the Effect entrypoint (all
+hooks move to the Effect domain APIs; `teardown.test.ts`'s `setup()`
+harness shape changes). Either route also adds `effect@4.0.0-rc` as a
+direct dependency, which needs explicit approval under the
+lightweight-deps convention.
+
+**Strain probe (2026-10-09, `tests/teardown.test.ts`):** rapid setup/teardown
+cycles (5x) with hanging abort-ignorant streams, late idle events into every
+dead stream (stale guard must drop them, live loop must still re-prompt via
+a hermetic failing-gate config), plus throwing subscribers (sync throw and
+mid-iteration throw must neither break `setup()` nor brick the session).
+Result: no leaks, no double-enforcement, no unhandled rejections — the
+promise loop holds. This stays deferred.
+
 ## v0.2.5 upgrade probe: 2.0.11 → 2.0.26 (Phase 21, 2026-10-09)
 
 Branch `chore/plugin-2.0.26`. `package.json`: `@opencode/plugin ^2.0.11` →
