@@ -390,14 +390,14 @@ stayed registered — every subsequent tool call threw permanently
 
 ## Phase 21 — Upgrade probe 2.0.11 → 2.0.26 (no behavior change)
 
-- [ ] 21.1 Branch `chore/plugin-2.0.26`, bump `@opencode/plugin`, record
+- [x] 21.1 Branch `chore/plugin-2.0.26`, bump `@opencode/plugin`, record
   pulled `@opencode/client` / `@opencode/schema` / `effect` versions.
-- [ ] 21.2 `npm run typecheck` + `build` + `test`: capture breakage report.
-- [ ] 21.3 Diff SDK types (`session` / `permission` / `command` / `tool` /
+- [x] 21.2 `npm run typecheck` + `build` + `test`: capture breakage report.
+- [x] 21.3 Diff SDK types (`session` / `permission` / `command` / `tool` /
   `storage` / `agent`, TUI `slot`/`keymap`/`dialog`); record new
   `SessionHooks` key list (does `request` replace `context`?).
-- [ ] 21.4 Append breakage report to `08-notes.md`; decision: upgrade or pin.
-- [ ] 21.5 Peer-review skill gate (see Peer-review gate below); then commit.
+- [x] 21.4 Append breakage report to `08-notes.md`; decision: upgrade or pin.
+- [x] 21.5 Peer-review skill gate (see Peer-review gate below); then commit.
 
 ## Phase 22 — Type hardening + `title` hook + comment cleanup
 

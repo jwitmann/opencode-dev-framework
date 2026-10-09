@@ -56,16 +56,16 @@
     "guardrails"
   ],
   "dependencies": {
-    "@opencode/plugin": "^2.0.11",
+    "@opencode/plugin": "^2.0.26",
     "picomatch": "^4.0.5",
     "yaml": "^2.9.0",
     "zod": "^4.4.3"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.8",
-    "@opentui/core": "^0.5.10",
-    "@opentui/keymap": "^0.5.11",
-    "@opentui/solid": "^0.5.11",
+    "@opentui/core": "^0.5.17",
+    "@opentui/keymap": "^0.5.17",
+    "@opentui/solid": "^0.5.17",
     "@types/node": "^26.2.0",
     "@types/picomatch": "^4.0.3",
     "markdownlint-cli2": "^0.23.2",

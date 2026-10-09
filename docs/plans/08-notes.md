@@ -573,6 +573,42 @@ Effect fiber with a finalizer, compare teardown behavior against
 `teardown.test.ts`, then decide. Do NOT rewrite the whole plugin to Effect
 without that spike + peer review.
 
+## v0.2.5 upgrade probe: 2.0.11 → 2.0.26 (Phase 21, 2026-10-09)
+
+Branch `chore/plugin-2.0.26`. `package.json`: `@opencode/plugin ^2.0.11` →
+`^2.0.26`; `@opentui/{core,keymap,solid}` `^0.5.1x` → `^0.5.17` (required:
+plugin 2.0.26 declares `peerOptional @opentui/core|solid >=0.5.17`; bare
+`npm install @opencode/plugin@2.0.26` fails with ERESOLVE otherwise).
+Pulled transitive: `@opencode/{ai,client,protocol,schema,util}` all `2.0.26`,
+`effect 4.0.0-rc.112` (unchanged). Note: plugin 2.0.26 dropped `zod` from its
+own deps (was `4.1.8`); our direct `zod ^4.4.3` dep is unaffected.
+
+Validation on 2.0.26, no source changes: `typecheck` green, `build` green,
+`test` **169/169 pass** (14 files). No breakage — the 4x `as any` casts hide
+everything, which is exactly why Phase 22 types the hooks.
+
+SDK type diff (`dist/promise/*.d.ts`, 2.0.11 → 2.0.26):
+
+- `SessionHooks` keys UNCHANGED: `prompt/context/compaction/generate/title/
+  model.request/http.request/http.response/experimental.ws.*/retry`. **No
+  `request` hook exists in the installed SDK** — web docs describing
+  `ctx.session.hook("request", {system, messages, tools})` do not match this
+  export path (`@opencode/plugin`, `./promise`). `context: SessionContext
+  extends SessionRequest + agent + tools` is the same shape under its real
+  name, so our `context` hook is correct and no rename is needed. Treat
+  `request` as docs-ahead-of-SDK (or a `@opencode-ai/plugin/v2` export
+  difference); re-check on the next upgrade.
+- `SessionDomain` (actions) gained two: `remove` and `compact` (were absent in
+  2.0.11). Unused by us; `compact` may matter for the compaction-hook story
+  later — recorded, not adopted.
+- `ToolContext` gained `signal: AbortSignal` (was only `progress`). Our custom
+  tools ignore it (short config ops); no change needed.
+- `PermissionEvaluation` / `PermissionHooks`, `CommandDomain`,
+  `StorageDomain`, `Context` keys: all UNCHANGED. Phase 23/25/26 premises hold.
+- `stopping` still absent from `SessionHooks` — defensive probe stays.
+
+Decision: UPGRADE. No blockers. Proceed to Phase 22 on this branch.
+
 ## References
 
 - OpenCode plugin docs: <https://opencode.ai/docs/plugins>
