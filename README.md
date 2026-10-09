@@ -110,7 +110,7 @@ local filesystem paths — it only loads when the package is listed in the TUI
 config. OpenCode reads `tui.json` from the global config dir
 (`~/.config/opencode/tui.json`) and the project dir (`.opencode/tui.json`).
 
-`opencode.json` (V2):
+`opencode.jsonc`:
 
 ```json
 {
@@ -132,10 +132,10 @@ npm run build
 
 ### Important caveats
 
-- The `opencode plugin <module>` command creates a `.opencode/opencode.json`
-  file in the project directory that takes precedence over the project-level
-  `opencode.json`. If you used that command while testing, either delete
-  `.opencode/opencode.json` or make sure it also points to the local path.
+- Plugin arrays **merge** across config files (global `opencode.jsonc`,
+  project `./opencode.jsonc`, `./.opencode/opencode.jsonc`), so a stale entry
+  in another file adds to — never replaces — the registration above. If a
+  session loads an unexpected plugin source, check all three locations.
 - OpenCode caches downloaded plugins in
   `~/.cache/opencode/packages/opencode-dev-framework*/`. If you previously
   loaded a published version and then switch to a local source, clear that
