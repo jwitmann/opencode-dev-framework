@@ -473,17 +473,17 @@ stayed registered — every subsequent tool call threw permanently
 ## Phase 26 — `command.transform` + `session.interrupt` verdicts (ship or drop)
 
 - [x] 26.1 Spike `command.transform` (server-side `df-verify`): does it
-  route without a model-turn leak? DROP (TUI modal superior; throw-only
-  delivery; unverifiable name-collision risk) + documented. Evidence below.
+  route without a model-turn leak? Primitive DROPPED, but SPIRIT reshaped
+  into a SHIPPED tool: `dev_framework_verify` (server-side
+  `ctx.tool.transform`, gate summary as tool content → delivered into the
+  conversation). Live-verified on the approved model; details below.
 - [x] 26.2 Spike `session.interrupt` on gate-blocked running sessions;
   DROP (mechanism proven, no safe call site in this architecture) +
   documented. Evidence below.
 - [x] 26.3 `08-notes.md` "Phase 26 verdict" with evidence either way.
 - [x] 26.4 Peer-review skill gate on whatever ships; commit.
-  Skill tool uninstallable → inline 3-specialist pass over the diff
-  (spike removal + docs): no Blocking, no Should-fix. Verified every
-  evidence claim against the spike logs, spike-code absence via grep,
-  and hook-mapping left untouched (its TUI-command rows remain accurate).
+  Skill tool uninstallable → inline 3-specialist pass over the
+  `dev_framework_verify` tool + tests: no Blocking, no Should-fix.
 
 ## Phase 27 — Docs, checklist, release prep
 

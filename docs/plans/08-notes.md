@@ -752,25 +752,31 @@ Both spikes ran live against the shared backend (OpenCode v2.0.26) from an
 isolated `/tmp/odf-26` sandbox (own `opencode.jsonc` → our `dist/`,
 standard profile). All sandbox artifacts removed afterwards.
 
-### 26.1 `command.transform` — mechanism PROVEN, ship DROPPED
+### 26.1 `command.transform` — probe dropped, but the SPIRIT reshaped into a shipped tool
 
-- Registered `df-spike-26` server-side via `ctx.command.transform`; invoked
-  headlessly via `session.command` API (note: `sessionID` is a PATH param —
-  `--param sessionID=…` — and `name`/`text` are plain strings; the generated
-  `SessionCommandInput` nesting misleads, and `run "/cmd"` does NOT route —
-  the text goes to the model as a regular turn).
-- Delivery matrix, all verified: execute-returns-void → runs silently, ZERO
-  token delta, inbox empty (no model-turn leak); execute-throws → invoker
-  gets `CommandExecutionError` + message, still zero turns. `delivery` is
-  `steer`; the invocation `prompt` is metadata only, delivered nowhere.
-- DROP reasons: (1) the TUI `/df-verify` modal (dialog + toast, Phase 18) is
-  strictly richer everywhere the TUI exists; (2) server-side delivery is
-  throw-on-fail / silent-on-pass only — weak UX for a gate report;
-  (3) sharing the `df-verify` name risks a duplicate/confusing slash-menu
-  entry next to the TUI command, unverifiable without driving the TUI.
-  Future trigger: real demand from a non-TUI frontend (web/IDE/ACP) —
-  reship is ~30 lines reusing `verifyGate` with throw-on-fail, no new spike
-  needed. Spike code removed; nothing shipped.
+The probe-command delivery matrix (void=silent, throw=CommandExecutionError,
+zero token delta) proved the mechanism but weakens our UX, so the primitive
+was dropped. However the *real* question — "can the agent invoke the gate
+mid-session, server-side?" — has a better answer than the command: a
+**custom tool**. Shipped: `dev_framework_verify` (server-side
+`ctx.tool.transform`), which runs `runGate` and returns the summary as
+tool `{content}` — delivered into the conversation automatically (the
+`{content}` return is SDK-guaranteed, same delivery path as the long-shipped
+`dev_framework_status`). Unlike the TUI modal, the report lands IN the
+model's context, so the agent can read and react to it — and unlike the
+idle gate it never re-prompts.
+
+- Live verification (2026-10-09, sandbox, `--model kimi-code-plan-global/kimi-for-coding`):
+  gate ran (typecheck step executed), agent reported
+  `completion gate passed / typecheck: passed` back. (Agent-side note: it
+  reached the tool via Code Mode after two namespace-form misfires —
+  `tools.dev_framework_verify({})` — a model quirk, not a plugin bug.)
+- Why not the command primitive: throw-on-fail / silent-on-pass delivery,
+  plus a duplicate `/df-verify` slash-menu entry risk unverifiable headlessly.
+- Why not just the TUI modal: the modal is strictly richer where the TUI
+  exists, but it does not put the report into the model's context.
+- Future trigger recorded: non-TUI frontends (web/IDE/ACP) wanting a
+  headless gate → the probe's throw-on-fail delivery path is known.
 
 ### 26.2 `session.interrupt` — mechanism PROVEN, integration DROPPED
 

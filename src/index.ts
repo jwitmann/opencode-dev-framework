@@ -725,6 +725,36 @@ const plugin = Plugin.define({
         });
 
         editor.add({
+          name: "dev_framework_verify",
+          description:
+            "Run the opencode-dev-framework completion gate now (typecheck, tests, changed-file lint) and return the summary. Use for a mid-session gate check without waiting for session idle; unlike the idle gate this never re-prompts, it only reports.",
+          input: {
+            type: "object",
+            properties: {
+              directory: {
+                type: "string",
+                description: "Project directory (defaults to current project)",
+              },
+            },
+            additionalProperties: false,
+          },
+          async execute(input: unknown) {
+            const { verifyGate } = await import("./commands.js");
+            const args = input as { directory?: string };
+            const targetDir = args.directory ?? directory;
+            const live = activeState && activeState.directory === targetDir ? activeState : null;
+            const own = state.directory === targetDir ? state : null;
+            const holder = live ?? own;
+            // Live tracker's changed files beat the TUI's empty default: a
+            // mid-session verify scopes `changed` steps to real edits.
+            const cfg = holder?.config ?? loadConfig(targetDir);
+            const changed = holder ? holder.tracker.getChangedFiles() : [];
+            const { summary } = await verifyGate(state.run, targetDir, cfg, changed);
+            return { content: summary };
+          },
+        });
+
+        editor.add({
           name: "dev_framework_status",
           description:
             "Show the current opencode-dev-framework state for the project: active profile, guardrails, completion gate, on-edit behavior, tracked changed files, and block counts.",
