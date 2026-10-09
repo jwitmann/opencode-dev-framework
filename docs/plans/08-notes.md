@@ -727,18 +727,24 @@ metadata?, source?, effect, message?}` with
   two shapes into the existing `checkToolCall` verdicts and abstains
   (`null`) on anything else — unknown actions, empty resources.
 
-Firing-coverage finding (reshapes 25.3): `evaluate` fired for the three
-benign calls above but did **NOT** fire for the two block-worthy calls
-(`rm -rf ...` shell, `.env.spike25` protected-path edit) — the marker log
-shows zero evaluate lines for either session while `execute.before`
-blocked both. Cause unknown (engine-internal skip? another plugin's hook
-short-circuiting? — do NOT assert without evidence). Design consequence:
-`execute.before` stays THE enforcement layer; `permission.evaluate` is
-best-effort defense-in-depth for the calls it does see. The mapper's core
-invariant (peer-review focus): it only ever denies or abstains, never
-allows — it cannot weaken host/engine enforcement. Live enforcement
-check 2026-10-09: protected edit denied, file byte-identical, via the
-backstop. All spike artifacts reverted in animeRSS.
+Firing-coverage finding — SOLVED (follow-up investigation, same day):
+`evaluate` skipping block-worthy calls is NOT an engine quirk. Controlled
+sandbox experiments (isolated `/tmp` project, debug server logs, DCP ruled
+out — it registers no evaluate hook, zero `permission.asked` events on the
+bus) proved the pipeline runs **`execute.before` FIRST**: a custom-guarded
+`notes-guard-*.txt` edit (no engine heuristic could flag it) still skipped
+evaluate while the backstop blocked it, and flipping to `advisory` produced
+TWIN warn lines — one per layer — for the same call. So evaluate only ever
+sees calls the backstop already passed, with identical matchers and config.
+In `standard`/`strict` the native layer is therefore structurally redundant
+(but harmless); its value is defense-in-depth if core ever reorders the
+pipeline or adds paths bypassing tool hooks. One real wart found and fixed:
+advisory double-warned — the evaluate warn path now logs at debug (the
+backstop already warned). The mapper's core invariant stands (peer-review
+focus): it only ever denies or abstains, never allows — it cannot weaken
+host/engine enforcement. Live enforcement check 2026-10-09: protected edit
+denied, file byte-identical, via the backstop. All spike artifacts reverted
+in animeRSS.
 
 ## References
 

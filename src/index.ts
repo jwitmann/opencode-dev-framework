@@ -437,15 +437,19 @@ const plugin = Plugin.define({
     }
 
     // 2a) Native permission layer (Phase 25): `permission.evaluate` fires
-    // before tool execution with `{action, resources, effect}` (shapes
-    // recorded in the 25.1 spike, docs/plans/08-notes.md — never guessed:
-    // action "edit" covers edit/write/patch with resources[0] = file path;
-    // action "shell" covers bash/shell with resources[0] = command).
+    // with `{action, resources, effect}` (shapes recorded in the 25.1 spike,
+    // docs/plans/08-notes.md — never guessed: action "edit" covers
+    // edit/write/patch with resources[0] = file path; action "shell" covers
+    // bash/shell with resources[0] = command).
     // The mapper only ever denies or abstains (never allows), so it can
     // never weaken host/engine enforcement. `execute.before` below stays as
-    // the backstop: the spike proved evaluate does NOT fire for every call
-    // (a blocked `rm -rf` never reached it), so execute.before remains the
-    // load-bearing enforcement layer. Both log at debug on quiet paths.
+    // the backstop — and is the load-bearing layer: the firing investigation
+    // (08-notes) proved the pipeline runs before-hooks FIRST, so evaluate
+    // only ever sees calls the backstop already passed. The native layer is
+    // defense-in-depth (it still matters if core ever reorders the pipeline
+    // or adds paths bypassing tool hooks). Quiet paths log at debug — in
+    // particular advisory warns stay debug here because execute.before
+    // already warned for the same call.
     try {
       trackRegistration(
         await ctx.permission.hook("evaluate", async (event) => {
@@ -511,8 +515,11 @@ const plugin = Plugin.define({
           const message = verdict.reason ?? "blocked by guardrails";
           const extra = { ...baseExtra, pattern: verdict.matchedPattern };
           if (verdict.decision === "warn") {
-            await safeLog(state, "warn", message, extra);
-            return; // advisory: leave the engine verdict untouched
+            // Advisory: stay silent at warn level — `execute.before` runs
+            // first in the pipeline and already warned for this exact call.
+            // A debug trace keeps the layer observable without double noise.
+            await safeLog(state, "debug", message, extra);
+            return; // leave the engine verdict untouched
           }
           event.effect = "deny";
           event.message = message;
