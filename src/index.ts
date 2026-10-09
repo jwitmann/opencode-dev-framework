@@ -316,13 +316,14 @@ const plugin = Plugin.define({
         if (activeState !== state) return;
         await reloadConfigIfChanged(state);
         if (state.config.profile === "off") return;
-        if (!state.constitution) return;
+        const constitution = state.constitution;
+        if (!constitution) return;
         // V2 system is Array<SystemPart> {type:"text", text:string}
-        const already = event.system.some((part) => part.text.includes(state.constitution!));
+        const already = event.system.some((part) => part.text.includes(constitution));
         if (already) return;
         event.system.push({
           type: "text",
-          text: state.constitution,
+          text: constitution,
         });
         await safeLog(state, "info", "constitution injected into system prompt");
       }),
@@ -334,11 +335,12 @@ const plugin = Plugin.define({
       trackRegistration(
         await ctx.session.hook(kind, async (event) => {
           if (activeState !== state) return;
-          if (state.config.profile === "off" || !state.constitution) return;
+          const constitution = state.constitution;
+          if (state.config.profile === "off" || !constitution) return;
           // generate/compaction/title also have system — inject similarly if present
           if (!event.system) return;
-          const already = event.system.some((p) => p.text.includes(state.constitution!));
-          if (!already) event.system.push({ type: "text" as const, text: state.constitution });
+          const already = event.system.some((p) => p.text.includes(constitution));
+          if (!already) event.system.push({ type: "text" as const, text: constitution });
         }),
       );
     }

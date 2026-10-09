@@ -17,10 +17,6 @@ afterEach(async () => {
   await rm(dir, { recursive: true, force: true });
 });
 
-function makeConfig(raw = {}) {
-  return resolveConfig({ profile: "standard", ...raw }, join(dir, ".opencode-dev-framework.yml"));
-}
-
 describe("changeProfile helper", () => {
   it("edits the profile key in the config file", async () => {
     await writeFile(

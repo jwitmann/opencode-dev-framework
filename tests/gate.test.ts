@@ -8,17 +8,10 @@ import {
   summarizeGate,
 } from "../src/gate";
 import type { CommandResult, RunCommand, RunCommandOptions } from "../src/host";
-import type { LogFn, LogLevel } from "../src/logger";
 import type { Config } from "../src/types";
 
 function resolve(raw: Config) {
   return resolveConfig(raw, "/project/.opencode-dev-framework.yml");
-}
-
-type EventInput = Parameters<NonNullable<Hooks["event"]>>[0];
-
-function eventOf(type: string, properties: Record<string, unknown>): EventInput {
-  return { event: { type, properties } } as unknown as EventInput;
 }
 
 interface RunCall {
@@ -36,20 +29,6 @@ function stubRun(resultFor: ResultFor = () => ({})) {
     return { stdout: "", stderr: "", exitCode: 0, timedOut: false, ...resultFor(command) };
   };
   return { calls, run };
-}
-
-interface LogEntry {
-  level: LogLevel;
-  message: string;
-  extra?: Record<string, unknown>;
-}
-
-function stubLog() {
-  const entries: LogEntry[] = [];
-  const log: LogFn = async (level, message, extra) => {
-    entries.push({ level, message, extra });
-  };
-  return { entries, log };
 }
 
 const GATE_COMMANDS = {

@@ -1,9 +1,7 @@
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-type Hooks = Record<string, unknown>;
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { LogFn } from "../src/logger";
 import {
   BUNDLED_CONSTITUTION_DIR,
   injectConstitution,

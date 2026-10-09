@@ -11,17 +11,10 @@ import {
   resolvePreCommitCommand,
   summarizeLint,
 } from "../src/lint";
-import type { LogFn, LogLevel } from "../src/logger";
 import type { Config } from "../src/types";
 
 function resolve(raw: Config) {
   return resolveConfig(raw, "/project/.opencode-dev-framework.yml");
-}
-
-type EventInput = Parameters<NonNullable<Hooks["event"]>>[0];
-
-function fileEditedEvent(file: string): EventInput {
-  return { event: { type: "file.edited", properties: { file } } } as unknown as EventInput;
 }
 
 interface RunCall {
@@ -37,20 +30,6 @@ function stubRun(result: Partial<CommandResult> = {}) {
     return { stdout: "", stderr: "", exitCode: 0, timedOut: false, ...result };
   };
   return { calls, run };
-}
-
-interface LogEntry {
-  level: LogLevel;
-  message: string;
-  extra?: Record<string, unknown>;
-}
-
-function stubLog() {
-  const entries: LogEntry[] = [];
-  const log: LogFn = async (level, message, extra) => {
-    entries.push({ level, message, extra });
-  };
-  return { entries, log };
 }
 
 describe("resolveLintCommand", () => {
