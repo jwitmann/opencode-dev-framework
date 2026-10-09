@@ -21,8 +21,18 @@ export const DEFAULT_GATE_TIMEOUT_SECONDS = 300;
 /** Tracks files edited during a session so the gate can scope work. */
 export interface ChangedFileTracker {
   add: (filePath: string, directory?: string) => void;
+  /** True when the (normalized) path is already tracked. */
+  has: (filePath: string, directory?: string) => boolean;
   getChangedFiles: () => string[];
   clearChangedFiles: () => void;
+}
+
+function normalizeTrackedPath(filePath: string, directory?: string): string {
+  let candidate = filePath;
+  if (directory !== undefined && isAbsolute(filePath)) {
+    candidate = relative(directory, filePath);
+  }
+  return candidate.replace(/^\.\//, "");
 }
 
 /**
@@ -33,11 +43,10 @@ export function createChangedFileTracker(): ChangedFileTracker {
   const files = new Set<string>();
   return {
     add(filePath, directory) {
-      let candidate = filePath;
-      if (directory !== undefined && isAbsolute(filePath)) {
-        candidate = relative(directory, filePath);
-      }
-      files.add(candidate.replace(/^\.\//, ""));
+      files.add(normalizeTrackedPath(filePath, directory));
+    },
+    has(filePath, directory) {
+      return files.has(normalizeTrackedPath(filePath, directory));
     },
     getChangedFiles() {
       return [...files];

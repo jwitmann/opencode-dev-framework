@@ -53,6 +53,7 @@ describe("plugin entry point (V2)", () => {
       expect(sessionNames).toContain(name);
     }
     expect(toolNames).toContain("execute.before");
+    expect(toolNames).toContain("execute.after");
     if (typeof result === "function") {
       await result();
     }

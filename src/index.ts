@@ -4,6 +4,8 @@
  * V2 framework (opencode v2): Plugin.define({ id, setup(ctx) })
  * - ctx.session.hook("context"/"generate"/"compaction"/"title", ...) -> constitution injection
  * - ctx.tool.hook("execute.before", ...) -> guardrails
+ * - ctx.tool.hook("execute.after", ...) -> per-edit lint + change tracking
+ *   (`filesystem.changed` stays as a fallback this release; see Phase 24)
  * - ctx.event.subscribe() -> file tracking + gate enforcement via re-prompt
  * - ctx.tool.transform(...) -> custom tools
  *
@@ -30,7 +32,7 @@ import {
 import { runCommand, type RunCommand } from "./host.js";
 import { lintFile, detectPreCommitAvailability, isLintFailure, summarizeLint } from "./lint.js";
 import { createLogger, type LogFn, type LogLevel } from "./logger.js";
-import { checkToolCall, extractFilePath } from "./protect.js";
+import { checkToolCall, extractFilePath, FILE_TOOLS } from "./protect.js";
 import { loadConstitution } from "./rules.js";
 import type { ResolvedConfig } from "./types.js";
 
@@ -151,6 +153,41 @@ async function actOnVerdict(state: HookState, verdict: CompletionVerdict): Promi
     return null;
   }
   return continuationMessage(verdict);
+}
+
+/**
+ * Per-edit lint flow, shared by the `execute.after` hook (primary) and the
+ * `filesystem.changed` fallback. Skipped files log at debug; passes at info;
+ * failures log loudly at error (the edit already landed, so unlike
+ * `execute.before` this never throws — it only reports).
+ */
+async function runPerEditLint(state: HookState, filePath: string): Promise<void> {
+  if (!state.config.on_edit.lint) return;
+  if (state.config.precommit === "auto" && state.precommitAvailable === undefined) {
+    state.precommitAvailable = await detectPreCommitAvailability(state.run, state.directory);
+  }
+  const outcome = await lintFile(state.run, state.config, filePath, {
+    cwd: state.directory,
+    timeout: state.config.gate?.timeout,
+    precommitAvailable: state.precommitAvailable,
+  });
+  if (outcome.skipped) {
+    await safeLog(state, "debug", summarizeLint(outcome), {
+      filePath,
+      reason: outcome.reason,
+    });
+    return;
+  }
+  if (!isLintFailure(outcome)) {
+    await safeLog(state, "info", summarizeLint(outcome), { filePath });
+    return;
+  }
+  await safeLog(state, "error", summarizeLint(outcome), {
+    filePath,
+    command: outcome.command?.join(" "),
+    stdout: outcome.result?.stdout,
+    stderr: outcome.result?.stderr,
+  });
 }
 
 /** Assemble the completion verdict with the state's live dependencies. */
@@ -460,6 +497,34 @@ const plugin = Plugin.define({
       }),
     );
 
+    // 2b) Per-edit lint — `tool.execute.after` (primary; the
+    // `filesystem.changed` branch below stays as a fallback this release).
+    // Edit tools with `completed` status are tracked + linted via the shared
+    // flow; `error` status tracks without linting (the tool failed, so there
+    // is nothing reliable to lint); read-only tools never touch the tracker.
+    // The edit already landed, so this hook only reports — it never throws.
+    trackRegistration(
+      await ctx.tool.hook("execute.after", async (event) => {
+        if (activeState !== state) return;
+        await reloadConfigIfChanged(state);
+        if (state.config.profile === "off") return;
+        const filePath = extractFilePath(event.input);
+        if (!filePath) return;
+        if (!FILE_TOOLS.has(event.tool)) return;
+        state.tracker.add(filePath, state.directory);
+        if (event.status !== "completed") {
+          await safeLog(
+            state,
+            "debug",
+            `tracked ${filePath} from failed ${event.tool} call (lint skipped)`,
+            { tool: event.tool, sessionID: event.sessionID, filePath },
+          );
+          return;
+        }
+        await runPerEditLint(state, filePath);
+      }),
+    );
+
     // 3) Custom tools — V2: ctx.tool.transform(editor => editor.add(...))
     trackRegistration(
       await ctx.tool.transform((editor) => {
@@ -619,43 +684,20 @@ const plugin = Plugin.define({
             if (state.config.profile === "off") continue;
             const filePath = getEventFilePath(event);
             if (!filePath) continue;
-            state.tracker.add(filePath, state.directory);
-
-            // per-edit lint (V1: event file.edited -> lintFile)
-            if (!state.config.on_edit.lint) continue;
-            if (state.config.precommit === "auto" && state.precommitAvailable === undefined) {
-              state.precommitAvailable = await detectPreCommitAvailability(
-                state.run,
-                state.directory,
+            // Fallback path (primary is `execute.after` since Phase 24): the
+            // tracker is add-idempotent, so a file already seen via
+            // `execute.after` just logs at debug instead of linting twice.
+            if (state.tracker.has(filePath, state.directory)) {
+              await safeLog(
+                state,
+                "debug",
+                `already tracked ${filePath} (skipping fallback lint; execute.after is primary)`,
+                { filePath },
               );
-            }
-            const outcome = await lintFile(state.run, state.config, filePath, {
-              cwd: state.directory,
-              timeout: state.config.gate?.timeout,
-              precommitAvailable: state.precommitAvailable,
-            });
-            if (outcome.skipped) {
-              await safeLog(state, "debug", summarizeLint(outcome), {
-                filePath,
-                reason: outcome.reason,
-              });
               continue;
             }
-            if (!isLintFailure(outcome)) {
-              await safeLog(state, "info", summarizeLint(outcome), { filePath });
-              continue;
-            }
-            const summary = summarizeLint(outcome);
-            await safeLog(state, "error", summary, {
-              filePath,
-              command: outcome.command?.join(" "),
-              stdout: outcome.result?.stdout,
-              stderr: outcome.result?.stderr,
-            });
-            if (state.config.profile === "strict") {
-              // Event handlers cannot throw to block the edit (edit already happened), but we log loudly.
-              // In V2 we also have the tool hook to block before; this is advisory.
-            }
+            state.tracker.add(filePath, state.directory);
+            await runPerEditLint(state, filePath);
             continue;
           }
 

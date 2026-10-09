@@ -641,6 +641,26 @@ Decision: UPGRADE. No blockers. Proceed to Phase 22 on this branch.
   all fixed, suite re-greened. Verdict recorded in the Phase 23 commit
   message.
 
+## Phase 24 notes (per-edit lint via execute.after, 2026-10-09)
+
+- `execute.after` is now the primary per-edit path: typed hook, edit tools
+  (`FILE_TOOLS` from `protect.ts`, shared with the `execute.before`
+  taxonomy) with `completed` status → `tracker.add` + shared
+  `runPerEditLint` flow; `error` status tracks without linting; read-only
+  tools and path-less events return early. Never throws (reports only).
+- `runPerEditLint` extracts the old `filesystem.changed` inline block
+  unchanged (same guards, args, log levels); the fallback branch now
+  `has()`-checks first (debug log on already-tracked, so one edit yields
+  one lint, not two) and stays for one release as the shell-edit safety net
+  (`bash` heredocs carry no file path in tool input). `has`/`add` share one
+  `normalizeTrackedPath` helper, both call sites pass `state.directory`.
+- 24.4 is NOT done here: the one-lint-per-edit real-session check needs a
+  live OpenCode session (user action). The filesystem branch must stay until
+  that check passes, then schedule its deletion.
+- Peer-review skill gate (3 specialists, parallel): no drift, no style
+  issues, no correctness issues. Verdict recorded in the Phase 24 commit
+  message.
+
 ## References
 
 - OpenCode plugin docs: <https://opencode.ai/docs/plugins>

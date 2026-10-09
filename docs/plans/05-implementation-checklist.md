@@ -426,16 +426,16 @@ stayed registered — every subsequent tool call threw permanently
 
 ## Phase 24 — Per-edit lint via `tool.hook("execute.after")`
 
-- [ ] 24.1 Register typed `execute.after`: edit tools + `completed` status
+- [x] 24.1 Register typed `execute.after`: edit tools + `completed` status
   only → `tracker.add` + existing `lintFile` flow; `error` status tracks
   without linting; `off`/stale guards as today.
-- [ ] 24.2 Keep `filesystem.changed` handler for one release as fallback
+- [x] 24.2 Keep `filesystem.changed` handler for one release as fallback
   (tracker must be add-idempotent); log already-tracked hits at `debug`.
-- [ ] 24.3 Tests: `tests/lint-after.test.ts` (edit→lint, read→skip,
+- [x] 24.3 Tests: `tests/lint-after.test.ts` (edit→lint, read→skip,
   error→track-only, off/stale no-op); update smoke/teardown counts.
 - [ ] 24.4 Real-session check: one lint log per edit (not zero, not two);
   then schedule filesystem-branch deletion.
-- [ ] 24.5 Peer-review skill gate (focus: no missed/double lint); commit.
+- [x] 24.5 Peer-review skill gate (focus: no missed/double lint); commit.
 
 ## Phase 25 — `permission.hook("evaluate")` native layer
 

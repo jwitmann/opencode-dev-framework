@@ -68,6 +68,8 @@ describe("issue #1: teardown must not brick tool calls", () => {
 
     const guard = toolHooks.get("execute.before");
     expect(guard).toBeDefined();
+    // Phase 24: per-edit lint hook must be registered (and disposed) too.
+    expect(toolHooks.get("execute.after")).toBeDefined();
 
     // Benign call before teardown should pass.
     await expect(
