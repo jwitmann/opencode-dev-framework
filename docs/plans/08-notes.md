@@ -746,6 +746,46 @@ host/engine enforcement. Live enforcement check 2026-10-09: protected edit
 denied, file byte-identical, via the backstop. All spike artifacts reverted
 in animeRSS.
 
+## Phase 26 verdict — DROP both, with evidence (2026-10-09)
+
+Both spikes ran live against the shared backend (OpenCode v2.0.26) from an
+isolated `/tmp/odf-26` sandbox (own `opencode.jsonc` → our `dist/`,
+standard profile). All sandbox artifacts removed afterwards.
+
+### 26.1 `command.transform` — mechanism PROVEN, ship DROPPED
+
+- Registered `df-spike-26` server-side via `ctx.command.transform`; invoked
+  headlessly via `session.command` API (note: `sessionID` is a PATH param —
+  `--param sessionID=…` — and `name`/`text` are plain strings; the generated
+  `SessionCommandInput` nesting misleads, and `run "/cmd"` does NOT route —
+  the text goes to the model as a regular turn).
+- Delivery matrix, all verified: execute-returns-void → runs silently, ZERO
+  token delta, inbox empty (no model-turn leak); execute-throws → invoker
+  gets `CommandExecutionError` + message, still zero turns. `delivery` is
+  `steer`; the invocation `prompt` is metadata only, delivered nowhere.
+- DROP reasons: (1) the TUI `/df-verify` modal (dialog + toast, Phase 18) is
+  strictly richer everywhere the TUI exists; (2) server-side delivery is
+  throw-on-fail / silent-on-pass only — weak UX for a gate report;
+  (3) sharing the `df-verify` name risks a duplicate/confusing slash-menu
+  entry next to the TUI command, unverifiable without driving the TUI.
+  Future trigger: real demand from a non-TUI frontend (web/IDE/ACP) —
+  reship is ~30 lines reusing `verifyGate` with throw-on-fail, no new spike
+  needed. Spike code removed; nothing shipped.
+
+### 26.2 `session.interrupt` — mechanism PROVEN, integration DROPPED
+
+- `session.interrupt --param sessionID=…` on a session mid-`sleep 90`
+  returned `{"interrupted":true}`; the run aborted promptly (`Tool
+  execution interrupted` / `Step interrupted`), session outcome
+  `interrupted`. The stop mechanism genuinely works.
+- DROP reasons (no safe call site in this architecture): at `session.idle`
+  the session is idle by definition (nothing to interrupt); inside
+  `execute.before/after` interrupting would abort the very turn being gated
+  (the throw/deny already handles the call with feedback intact); a timer
+  watchdog is out-of-scope creep for this event-driven plugin.
+  Future trigger: a runaway-loop watchdog (e.g. around `doom_loop`) — the
+  stop primitive is proven, no re-spike needed.
+
 ## References
 
 - OpenCode plugin docs: <https://opencode.ai/docs/plugins>
