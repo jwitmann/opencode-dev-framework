@@ -499,9 +499,9 @@ stayed registered — every subsequent tool call threw permanently
   Skill tool uninstallable → inline 3-specialist pass done BEFORE writing
   this line: every factual claim cross-checked (all 4 commands in
   `tui.tsx` keymap layer; `runPerEditLint` never throws; df-profile arg
-  wired; zero `cli.json` refs in code; example loads; `df version` →
-  0.3.0). No Blocking, no Should-fix. Version bumped to 0.3.0; tag + push
-  are user actions.
+  wired; zero `cli.json` refs in code; example loads). No Blocking, no
+  Should-fix. Version NOT bumped by hand — `npm run release:minor` owns it
+  (0.2.4 → 0.3.0 + tag on demand); push + publish via CI are user actions.
 
 ## Phase 28 — Effect-API rewrite (post-process, UNSCHEDULED)
 

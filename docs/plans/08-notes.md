@@ -811,9 +811,11 @@ idle gate it never re-prompts.
 - Example config check: `examples/go-service/.opencode-dev-framework.yml`
   loads clean via `loadConfig` (profile standard, `gate.max_blocks` 3).
   No changes needed.
-- Version bumped `0.2.4` → `0.3.0` (Phases 21–26: SDK upgrade, typed hooks,
-  storage-backed blocks, `execute.after` lint, permission layer, verify
-  tool). Tag + push remain user actions (never push from agent sessions).
+- Versioning: do NOT bump by hand — `scripts/release.sh` owns it
+  (`npm run release:minor` validates, bumps `0.2.4` → `0.3.0`, commits,
+  tags; then `git push origin main --tags` and CI publishes to npm).
+  A manual 0.3.0 edit was made and reverted for exactly this reason.
+  Tag + push remain user actions (never push from agent sessions).
 
 ## References
 
