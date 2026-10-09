@@ -661,6 +661,51 @@ Decision: UPGRADE. No blockers. Proceed to Phase 22 on this branch.
   issues, no correctness issues. Verdict recorded in the Phase 24 commit
   message.
 
+## Phase 24 verification (24.4, real session, 2026-10-09)
+
+- **Verdict: PASS.** Drove the full loop from this box (user asked to hand
+  over driving): probe wrapper as the `.go` lint command (appends
+  `lint-ran <file>` then execs the real `golangci-lint` by absolute path),
+  one agent `Edit` via `opencode run` on a standalone `--print-logs`
+  server. Result: exactly **1** `lint-ran` marker + one `info "lint
+  passed for internal/httpapi/httpapi.go"` per edit — not zero, not two.
+  No `already-tracked` fallback line fired (this build did not emit
+  `filesystem.changed` for the edit at all). Suite: 187/187 still green
+  (no src changes for 24.4). All probe artifacts reverted in animeRSS
+  (config, wrapper, scratch file, my probe comment lines; the user's own
+  probe line kept).
+- **Incidental guardrail proof:** with the plugin correctly loaded, an
+  `Edit` to `.env.probe` was denied with `edit on protected path
+  ".env.probe" is blocked (matched ".env*")` — enforcement live
+  end-to-end. All earlier "successful" protected edits in this saga were
+  made while the plugin was absent (see below), not bypasses.
+
+## Plugin-registration discovery (v2.0.26, 2026-10-09)
+
+Real-session debugging surfaced a registration trap future sessions must
+know (README install section updated accordingly):
+
+- The shared `opencode serve --service` backend (not the TUI process)
+  executes plugin code, so `OPENCODE_DEV_FRAMEWORK_LOG_FILE` must be in
+  the **server's** environment — a TUI-side export is invisible. Used
+  `opencode run --standalone --print-logs` (private server, env
+  inherited) for full observability instead of restarting shared infra.
+- `~/animeRSS/.opencode/opencode.json` with the V1 singular `"plugin"`
+  key is **silently ignored** on v2 (and `opencode plugin list`
+  misleadingly still displays the entry). The working project file is the
+  root `opencode.json[c]` with the plural `"plugins"` key.
+- Local directory entries resolve the entrypoint as `<dir>/index.js`
+  (`<dir>/server.js` also observed for operator-memory) and **ignore
+  `package.json` `main`**. A repo-root path fails silently (`Plugin
+  entrypoint not found`, visible only in `/plugins` or server logs) with
+  zero hooks running — including zero guardrails. Working form:
+  `"plugins": [{ "package": "/path/to/opencode-dev-framework/dist" }]`
+  (object→dist verified; object→root and string→root both fail).
+- `GET /api/*` needs auth (401 on bare curl); `opencode api plugin.list`
+  handles auth but resolves location to the server default, so it cannot
+  show project-scoped plugin states. Server `--print-logs` + `loading
+  plugin` lines are the reliable load signal.
+
 ## References
 
 - OpenCode plugin docs: <https://opencode.ai/docs/plugins>

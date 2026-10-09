@@ -107,12 +107,17 @@ config. OpenCode reads `tui.json` from the global config dir
 
 ```json
 {
-  "plugins": ["/home/jerome/opencode-dev-framework"]
+  "plugins": [{ "package": "/home/jerome/opencode-dev-framework/dist" }]
 }
 ```
 
-The path must be the **repository root** (where `package.json` lives). OpenCode
-loads the plugin from `dist/index.js` (TUI from `tui.tsx`), so rebuild after every source change:
+The path must be the package's **`dist/` directory**, not the repository
+root. Verified on OpenCode `v2.0.26`: for local directory entries the server
+resolves the entrypoint as `<dir>/index.js` and ignores `package.json`
+`main`, so a repo-root path fails silently with `Plugin entrypoint not
+found` (visible only via `/plugins` or server logs) and no hook runs at
+all. Rebuild after every source change (`npm run build`) since OpenCode
+loads `dist/index.js` directly:
 
 ```bash
 npm run build

@@ -433,8 +433,12 @@ stayed registered — every subsequent tool call threw permanently
   (tracker must be add-idempotent); log already-tracked hits at `debug`.
 - [x] 24.3 Tests: `tests/lint-after.test.ts` (edit→lint, read→skip,
   error→track-only, off/stale no-op); update smoke/teardown counts.
-- [ ] 24.4 Real-session check: one lint log per edit (not zero, not two);
+- [x] 24.4 Real-session check: one lint log per edit (not zero, not two);
   then schedule filesystem-branch deletion.
+  Verified 2026-10-09 on OpenCode v2.0.26 (standalone server, animeRSS):
+  one `lint-ran` marker + one `lint passed` info log per edit, no
+  already-tracked fallback line. Filesystem branch kept until Phase 27
+  cleanup; see 08-notes.
 - [x] 24.5 Peer-review skill gate (focus: no missed/double lint); commit.
 
 ## Phase 25 — `permission.hook("evaluate")` native layer
