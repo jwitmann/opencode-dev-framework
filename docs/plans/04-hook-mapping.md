@@ -9,7 +9,7 @@
 | dev-framework primitive | Copilot CLI hook | OpenCode V2 equivalent | Can block? | Notes |
 |---|---|---|---|---|
 | Constitution injection | `sessionStart` | `session.hook("context")` (`system: SystemPart[]`) | N/A | Per model request; no session mapping (ctx.location). |
-| Protected-path guardrail | `preToolUse` | `tool.hook("execute.before")` | Yes (throw) | Always check; V2 no host permission snapshot. |
+| Protected-path guardrail | `preToolUse` | `permission.hook("evaluate")` (deny) + `tool.hook("execute.before")` (backstop, throw) | Yes (deny/throw) | Phase 25: evaluate is best-effort (spike proved it skips block-worthy calls); `execute.before` is the load-bearing layer. |
 | Format on edit | `postToolUse` | `formatter` + `event.subscribe` on `filesystem.changed` | Indirectly | Formatter auto-runs; plugin supplements. |
 | Lint on edit | `postToolUse` | `event.subscribe` on `filesystem.changed` | No | Run linter; can delegate to `pre-commit`. |
 | Completion gate | `agentStop` | `event.subscribe` on `session.idle`/`session.status:idle` → `session.prompt` | **Async bounded** (`gate.max_blocks`) | V2 re-prompts, no `session.stopping` veto. |

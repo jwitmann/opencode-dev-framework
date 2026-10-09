@@ -706,6 +706,40 @@ know (README install section updated accordingly):
   show project-scoped plugin states. Server `--print-logs` + `loading
   plugin` lines are the reliable load signal.
 
+## Phase 25 spike — `permission.evaluate` real shapes (25.1, 2026-10-09)
+
+Drove from this box: standalone `--print-logs` server in animeRSS with
+the spike hook logging every evaluation. OpenCode v2.0.26,
+`PermissionEvaluation = {sessionID, agent?, action, resources[],
+metadata?, source?, effect, message?}` with
+`Effect = "allow" | "deny" | "ask"`. Observed (never guessed):
+
+- File edit via edit tool: `action="edit"`,
+  `resources=["internal/httpapi/httpapi.go"]` (repo-relative),
+  `metadata.files=[{file, patch, status:"modified", additions, deletions}]`,
+  `source={type:"tool", messageID, id}`, `effect="allow"`.
+- File create via **write** tool: `action="edit"` (NOT `"write"`),
+  `resources=["PERM-SPIKE-25-1.tmp"]`,
+  `metadata.files=[{status:"added", ...}]`.
+- Shell via **bash** tool: `action="shell"` (NOT `"bash"`),
+  `resources=["echo spike-done"]` (raw command string), no metadata.
+- The `toPermissionGuard` mapper (`src/protect.ts`) adapts exactly these
+  two shapes into the existing `checkToolCall` verdicts and abstains
+  (`null`) on anything else — unknown actions, empty resources.
+
+Firing-coverage finding (reshapes 25.3): `evaluate` fired for the three
+benign calls above but did **NOT** fire for the two block-worthy calls
+(`rm -rf ...` shell, `.env.spike25` protected-path edit) — the marker log
+shows zero evaluate lines for either session while `execute.before`
+blocked both. Cause unknown (engine-internal skip? another plugin's hook
+short-circuiting? — do NOT assert without evidence). Design consequence:
+`execute.before` stays THE enforcement layer; `permission.evaluate` is
+best-effort defense-in-depth for the calls it does see. The mapper's core
+invariant (peer-review focus): it only ever denies or abstains, never
+allows — it cannot weaken host/engine enforcement. Live enforcement
+check 2026-10-09: protected edit denied, file byte-identical, via the
+backstop. All spike artifacts reverted in animeRSS.
+
 ## References
 
 - OpenCode plugin docs: <https://opencode.ai/docs/plugins>

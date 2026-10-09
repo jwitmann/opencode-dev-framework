@@ -23,6 +23,7 @@ describe("issue #1: teardown must not brick tool calls", () => {
   function createMockCtx() {
     const sessionHooks = new Map<string, (event: never) => Promise<void> | void>();
     const toolHooks = new Map<string, (event: never) => Promise<void> | void>();
+    const permissionHooks = new Map<string, (event: never) => Promise<void> | void>();
     const disposers: Array<{ dispose: () => Promise<void> }> = [];
     const makeRegistration = () => {
       const registration = { dispose: vi.fn(async () => {}) };
@@ -38,6 +39,12 @@ describe("issue #1: teardown must not brick tool calls", () => {
         }),
         prompt: vi.fn(),
         synthetic: vi.fn(),
+      },
+      permission: {
+        hook: vi.fn(async (name: string, callback: (event: never) => Promise<void> | void) => {
+          permissionHooks.set(name, callback);
+          return makeRegistration();
+        }),
       },
       tool: {
         hook: vi.fn(async (name: string, callback: (event: never) => Promise<void> | void) => {
@@ -56,11 +63,11 @@ describe("issue #1: teardown must not brick tool calls", () => {
       },
       app: { version: "2.0.18" },
     };
-    return { ctx, sessionHooks, toolHooks, disposers };
+    return { ctx, sessionHooks, toolHooks, permissionHooks, disposers };
   }
 
   it("execute.before is fail-open after teardown (no throw, session recoverable)", async () => {
-    const { ctx, toolHooks, disposers } = createMockCtx();
+    const { ctx, toolHooks, permissionHooks, disposers } = createMockCtx();
     const mod = plugin as unknown as { setup: (c: unknown) => Promise<unknown> };
 
     const cleanup = (await mod.setup(ctx)) as () => Promise<void> | void;
@@ -70,6 +77,8 @@ describe("issue #1: teardown must not brick tool calls", () => {
     expect(guard).toBeDefined();
     // Phase 24: per-edit lint hook must be registered (and disposed) too.
     expect(toolHooks.get("execute.after")).toBeDefined();
+    // Phase 25: permission.evaluate spike hook must be registered too.
+    expect(permissionHooks.get("evaluate")).toBeDefined();
 
     // Benign call before teardown should pass.
     await expect(

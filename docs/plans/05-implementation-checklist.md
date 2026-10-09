@@ -443,17 +443,27 @@ stayed registered — every subsequent tool call threw permanently
 
 ## Phase 25 — `permission.hook("evaluate")` native layer
 
-- [ ] 25.1 Spike (30 min, real session): log `PermissionEvaluation`
+- [x] 25.1 Spike (30 min, real session): log `PermissionEvaluation`
   `{action, resources, effect}` for edit/write/bash; record real shapes —
-  do NOT guess from docs.
-- [ ] 25.2 `src/protect.ts`: `toPermissionEffect()` mapper reusing glob +
+  do NOT guess from docs. Done 2026-10-09 on v2.0.26 (standalone,
+  animeRSS); shapes + firing-coverage finding in 08-notes.
+- [x] 25.2 `src/protect.ts`: `toPermissionEffect()` mapper reusing glob +
   bash matchers; return `null` when unsure (engine default wins).
-- [ ] 25.3 Register `permission.hook("evaluate")` (preflight + guardrails);
+  Implemented as `toPermissionGuard()` adapting (action, resources) into
+  the existing `checkToolCall` verdicts; deny/warn or abstain, never allow.
+- [x] 25.3 Register `permission.hook("evaluate")` (preflight + guardrails);
   KEEP `execute.before` as backstop this release; log both at `debug`.
-- [ ] 25.4 Tests: `tests/permission-evaluate.test.ts` (deny + message,
+  Spike proved evaluate does NOT fire for block-worthy calls, so the
+  backstop is load-bearing, not just caution — see 08-notes.
+- [x] 25.4 Tests: `tests/permission-evaluate.test.ts` (deny + message,
   advisory behavior, allowed→untouched, off no-op).
-- [ ] 25.5 Peer-review skill gate (focus: mapper can never weaken
+- [x] 25.5 Peer-review skill gate (focus: mapper can never weaken
   enforcement); commit.
+  Skill tool uninstallable in this env → inline 3-specialist pass:
+  no Blocking; fixed 2 Should-fix (detached doc comment after edit
+  repair → mapper moved to end of protect.ts; already-denied events now
+  abstain so host/engine message wins + test); 1 Note (preflight block
+  shape shared between hooks — different deny mechanisms, accepted).
 
 ## Phase 26 — `command.transform` + `session.interrupt` verdicts (ship or drop)
 

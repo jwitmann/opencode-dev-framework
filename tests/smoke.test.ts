@@ -29,11 +29,18 @@ describe("plugin entry point (V2)", () => {
   it("registers constitution (context/generate/compaction/title), stopping and guardrail hooks", async () => {
     const sessionNames: string[] = [];
     const toolNames: string[] = [];
+    const permissionNames: string[] = [];
     const ctx: Record<string, unknown> = {
       location: { directory: "/tmp" },
       session: {
         hook: async (name: string) => {
           sessionNames.push(name);
+          return { dispose: async () => {} };
+        },
+      },
+      permission: {
+        hook: async (name: string) => {
+          permissionNames.push(name);
           return { dispose: async () => {} };
         },
       },
@@ -52,6 +59,7 @@ describe("plugin entry point (V2)", () => {
     for (const name of ["context", "generate", "compaction", "title", "stopping"]) {
       expect(sessionNames).toContain(name);
     }
+    expect(permissionNames).toContain("evaluate");
     expect(toolNames).toContain("execute.before");
     expect(toolNames).toContain("execute.after");
     if (typeof result === "function") {

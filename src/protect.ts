@@ -205,3 +205,41 @@ export function checkToolCall(
 
   return { decision: "allow" };
 }
+
+/**
+ * Phase 25: adapt a native `permission.evaluate` event to the guardrail
+ * verdict. Maps the observed engine shapes (spike 25.1, OpenCode v2.0.26 —
+ * recorded in docs/plans/08-notes.md, never guessed):
+ * - action `"edit"` (covers edit/write/patch tools) with `resources[0]` =
+ *   the target file path (repo-relative).
+ * - action `"shell"` (covers bash/shell tools) with `resources[0]` = the
+ *   shell command string.
+ *
+ * Returns the guardrail verdict (`deny`/`warn`) or `null` when the mapper
+ * abstains (unknown action, empty resources, protection off, or no match) —
+ * `null` leaves the engine verdict untouched so the engine default wins.
+ * Never returns `allow`: the mapper can only deny, warn, or abstain, so it
+ * can never weaken host/engine enforcement.
+ */
+export function toPermissionGuard(
+  config: ResolvedConfig,
+  action: string,
+  resources: ReadonlyArray<string>,
+  directory?: string,
+): GuardResult | null {
+  if (config.profile === "off" || config.protect_off) {
+    return null;
+  }
+  if (resources.length === 0) {
+    return null;
+  }
+  if (action === "edit") {
+    const result = checkToolCall(config, "edit", { filePath: resources[0] }, directory, undefined);
+    return result.decision === "allow" ? null : result;
+  }
+  if (action === "shell") {
+    const result = checkToolCall(config, "bash", { command: resources[0] }, directory, undefined);
+    return result.decision === "allow" ? null : result;
+  }
+  return null;
+}

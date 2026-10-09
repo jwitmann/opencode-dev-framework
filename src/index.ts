@@ -3,7 +3,9 @@
  *
  * V2 framework (opencode v2): Plugin.define({ id, setup(ctx) })
  * - ctx.session.hook("context"/"generate"/"compaction"/"title", ...) -> constitution injection
- * - ctx.tool.hook("execute.before", ...) -> guardrails
+ * - ctx.permission.hook("evaluate", ...) -> native permission layer (Phase 25;
+ *   observe-only spike in 25.1, enforcing mapper from 25.2)
+ * - ctx.tool.hook("execute.before", ...) -> guardrails (backstop from Phase 25)
  * - ctx.tool.hook("execute.after", ...) -> per-edit lint + change tracking
  *   (`filesystem.changed` stays as a fallback this release; see Phase 24)
  * - ctx.event.subscribe() -> file tracking + gate enforcement via re-prompt
@@ -32,7 +34,7 @@ import {
 import { runCommand, type RunCommand } from "./host.js";
 import { lintFile, detectPreCommitAvailability, isLintFailure, summarizeLint } from "./lint.js";
 import { createLogger, type LogFn, type LogLevel } from "./logger.js";
-import { checkToolCall, extractFilePath, FILE_TOOLS } from "./protect.js";
+import { checkToolCall, extractFilePath, FILE_TOOLS, toPermissionGuard } from "./protect.js";
 import { loadConstitution } from "./rules.js";
 import type { ResolvedConfig } from "./types.js";
 
@@ -431,6 +433,97 @@ const plugin = Plugin.define({
         state,
         "warn",
         "could not register session.stopping hook; using session.idle re-prompt fallback only",
+      );
+    }
+
+    // 2a) Native permission layer (Phase 25): `permission.evaluate` fires
+    // before tool execution with `{action, resources, effect}` (shapes
+    // recorded in the 25.1 spike, docs/plans/08-notes.md — never guessed:
+    // action "edit" covers edit/write/patch with resources[0] = file path;
+    // action "shell" covers bash/shell with resources[0] = command).
+    // The mapper only ever denies or abstains (never allows), so it can
+    // never weaken host/engine enforcement. `execute.before` below stays as
+    // the backstop: the spike proved evaluate does NOT fire for every call
+    // (a blocked `rm -rf` never reached it), so execute.before remains the
+    // load-bearing enforcement layer. Both log at debug on quiet paths.
+    try {
+      trackRegistration(
+        await ctx.permission.hook("evaluate", async (event) => {
+          if (activeState !== state) return;
+          await reloadConfigIfChanged(state);
+          if (state.config.profile === "off") return;
+          const action = event.action;
+          const target = event.resources[0];
+          const baseExtra = {
+            action,
+            resources: [...event.resources],
+            sessionID: event.sessionID,
+          };
+          // Already denied by the host/engine: abstain so its verdict and
+          // message survive untouched (mirrors the backstop's hostDenies
+          // stand-down; the mapper must never overwrite a denial).
+          if (event.effect === "deny") {
+            await safeLog(
+              state,
+              "debug",
+              `permission.evaluate action=${action} already denied; leaving host/engine verdict untouched`,
+              { ...baseExtra, message: event.message },
+            );
+            return;
+          }
+          // Pre-flight (mirrors execute.before; the artifact itself stays
+          // writable). Deny/warn per profile, exactly like the backstop.
+          if (state.config.preflight.length > 0 && action === "edit") {
+            const artifact = await artifactState(state.directory, PREFLIGHT_ARTIFACT_REL);
+            const reason = preflightBlockReason(state.config, "edit", target, artifact);
+            if (reason !== null) {
+              if (state.config.profile === "advisory") {
+                await safeLog(state, "warn", reason, {
+                  ...baseExtra,
+                  artifact: PREFLIGHT_ARTIFACT_REL,
+                });
+              } else {
+                event.effect = "deny";
+                event.message = reason;
+                await safeLog(state, "error", reason, {
+                  ...baseExtra,
+                  artifact: PREFLIGHT_ARTIFACT_REL,
+                });
+              }
+              return;
+            }
+          }
+          const verdict = toPermissionGuard(
+            state.config,
+            action,
+            event.resources,
+            state.directory,
+          );
+          if (verdict === null) {
+            await safeLog(
+              state,
+              "debug",
+              `permission.evaluate action=${action} effect=${event.effect} (no guardrail verdict; engine default wins)`,
+              { ...baseExtra, effect: event.effect },
+            );
+            return;
+          }
+          const message = verdict.reason ?? "blocked by guardrails";
+          const extra = { ...baseExtra, pattern: verdict.matchedPattern };
+          if (verdict.decision === "warn") {
+            await safeLog(state, "warn", message, extra);
+            return; // advisory: leave the engine verdict untouched
+          }
+          event.effect = "deny";
+          event.message = message;
+          await safeLog(state, "error", message, extra);
+        }),
+      );
+    } catch {
+      await safeLog(
+        state,
+        "warn",
+        "could not register permission.evaluate hook; guardrails use execute.before only",
       );
     }
 
