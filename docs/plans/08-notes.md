@@ -557,6 +557,22 @@ Keep both. The custom tool lets the agent call verification explicitly; the slas
   use unique session IDs.
 - **Validation:** 180 tests pass; format/lint/lint:md/typecheck/build all green.
 
+## Future work — Effect-API rewrite (post-process, not scheduled)
+
+**`@opencode/plugin/v2/effect` evaluation (deferred):** the V2 Effect entrypoint
+(`Plugin.define` via `@opencode/plugin/v2/effect` + `effect` package, scoped
+plugin effect with finalizers/fibers/registrations auto-released on reload)
+could replace the hand-rolled `AbortController` + manual `Registration.dispose()`
+event loop in `src/index.ts`. Current approach works and is regression-covered
+by `tests/teardown.test.ts` (Phase 20), so migration is churn with no behavior
+gain today. Re-evaluate when: (a) the promise API shows strain (leaked loops,
+reload races the stale-guard can't cover), (b) we need structured concurrency
+for parallel gate runs, or (c) the Effect API goes stable (it is beta, same as
+the promise API). Spike first: port only the `event.subscribe` loop to an
+Effect fiber with a finalizer, compare teardown behavior against
+`teardown.test.ts`, then decide. Do NOT rewrite the whole plugin to Effect
+without that spike + peer review.
+
 ## References
 
 - OpenCode plugin docs: <https://opencode.ai/docs/plugins>

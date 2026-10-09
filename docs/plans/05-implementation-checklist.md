@@ -388,6 +388,122 @@ stayed registered — every subsequent tool call threw permanently
   stale guard allows tool calls, fresh setup after teardown guards again.
 - [ ] 20.4 Bump version and tag (user action).
 
+## Phase 21 — Upgrade probe 2.0.11 → 2.0.26 (no behavior change)
+
+- [ ] 21.1 Branch `chore/plugin-2.0.26`, bump `@opencode/plugin`, record
+  pulled `@opencode/client` / `@opencode/schema` / `effect` versions.
+- [ ] 21.2 `npm run typecheck` + `build` + `test`: capture breakage report.
+- [ ] 21.3 Diff SDK types (`session` / `permission` / `command` / `tool` /
+  `storage` / `agent`, TUI `slot`/`keymap`/`dialog`); record new
+  `SessionHooks` key list (does `request` replace `context`?).
+- [ ] 21.4 Append breakage report to `08-notes.md`; decision: upgrade or pin.
+- [ ] 21.5 Peer-review skill gate (see Peer-review gate below); then commit.
+
+## Phase 22 — Type hardening + `title` hook + comment cleanup
+
+- [ ] 22.1 Type all hooks (`SessionHooks`, `ToolHooks`, `ToolEditor`); keep
+  `as any` ONLY on the isolated defensive `stopping` probe with PR #44712
+  comment. All other hooks fully typed.
+- [ ] 22.2 Add `title` hook to the constitution loop
+  (`generate`/`compaction`/`title`), guard missing `system`.
+- [ ] 22.3 Fix `src/index.ts` header comment: drop the unimplemented
+  `ctx.command.transform` claim, list the real hooks.
+- [ ] 22.4 Tests: `title` injection + idempotency + `off` skip; update
+  `smoke`/`teardown` registration counts; `grep "as any" src/` = 1 hit.
+- [ ] 22.5 Peer-review skill gate; then commit.
+
+## Phase 23 — Persist `blockCounts` + flags in `ctx.storage`
+
+- [ ] 23.1 New `src/block-store.ts` (`get`/`increment`/`clear`,
+  `getStopSupported`/`setStopSupported`) over `ctx.storage` with in-memory
+  fallback; keys `df:blocks:<sessionID>`, `df:stopSupported`.
+- [ ] 23.2 Wire into `setup()` / `evaluateCompletion` / `session.deleted`;
+  load `stopHookSupported` from storage on setup.
+- [ ] 23.3 Tests: `tests/block-store.test.ts` (sequence, clear, fallback,
+  stopSupported round-trip, persistence across two store instances).
+- [ ] 23.4 Peer-review skill gate (focus: key namespacing, JSON safety,
+  fallback can't mask failures, no secrets in storage); then commit.
+
+## Phase 24 — Per-edit lint via `tool.hook("execute.after")`
+
+- [ ] 24.1 Register typed `execute.after`: edit tools + `completed` status
+  only → `tracker.add` + existing `lintFile` flow; `error` status tracks
+  without linting; `off`/stale guards as today.
+- [ ] 24.2 Keep `filesystem.changed` handler for one release as fallback
+  (tracker must be add-idempotent); log already-tracked hits at `debug`.
+- [ ] 24.3 Tests: `tests/lint-after.test.ts` (edit→lint, read→skip,
+  error→track-only, off/stale no-op); update smoke/teardown counts.
+- [ ] 24.4 Real-session check: one lint log per edit (not zero, not two);
+  then schedule filesystem-branch deletion.
+- [ ] 24.5 Peer-review skill gate (focus: no missed/double lint); commit.
+
+## Phase 25 — `permission.hook("evaluate")` native layer
+
+- [ ] 25.1 Spike (30 min, real session): log `PermissionEvaluation`
+  `{action, resources, effect}` for edit/write/bash; record real shapes —
+  do NOT guess from docs.
+- [ ] 25.2 `src/protect.ts`: `toPermissionEffect()` mapper reusing glob +
+  bash matchers; return `null` when unsure (engine default wins).
+- [ ] 25.3 Register `permission.hook("evaluate")` (preflight + guardrails);
+  KEEP `execute.before` as backstop this release; log both at `debug`.
+- [ ] 25.4 Tests: `tests/permission-evaluate.test.ts` (deny + message,
+  advisory behavior, allowed→untouched, off no-op).
+- [ ] 25.5 Peer-review skill gate (focus: mapper can never weaken
+  enforcement); commit.
+
+## Phase 26 — `command.transform` + `session.interrupt` verdicts (ship or drop)
+
+- [ ] 26.1 Spike `command.transform` (`df-verify` server-side): does it route
+  without a model-turn leak? Ship `df-verify` or drop + document.
+- [ ] 26.2 Spike `session.interrupt` on gate-blocked running sessions;
+  ship (blocked-only) or drop + document.
+- [ ] 26.3 `08-notes.md` "Phase 26 verdict" with evidence either way.
+- [ ] 26.4 Peer-review skill gate on whatever ships; commit.
+
+## Phase 27 — Docs, checklist, release prep
+
+- [ ] 27.1 `08-notes.md` phase sections; README min-version
+  ("requires OpenCode 2.x, tested on 2.0.26"), enforcement table,
+  `cli.json` note if applicable; examples config check.
+- [ ] 27.2 Full validation
+  (`format:check` → `lint` → `lint:md` → `typecheck` → `test` → `build`).
+- [ ] 27.3 Peer-review skill gate (focus: docs accuracy); version bump + tag
+  (user action, never push).
+
+## Phase 28 — Effect-API rewrite (post-process, UNSCHEDULED)
+
+- [ ] Deferred. See `08-notes.md` "Future work — Effect-API rewrite".
+  Trigger only on promise-API strain, structured-concurrency need, or
+  Effect API going stable. First step is always a spike (port ONLY the
+  `event.subscribe` loop to an Effect fiber, compare vs
+  `teardown.test.ts`) + peer-review skill gate. No full rewrite without
+  spike + review.
+
+## Peer-review gate (mandatory after EVERY phase 21–27)
+
+Run the **`peer-review` skill** (`templates/.opencode/skills/peer-review/SKILL.md`),
+NOT a lone reviewer agent. The skill fans out to three specialists in parallel:
+
+- **pattern-guardian** — duplication, re-invented helpers, divergent
+  conventions, unjustified dependencies.
+- **style-enforcer** — style guide / lint / local conventions on changed files.
+- **code-reviewer** — correctness: bugs, logic, security, concurrency
+  (high bar, high signal; if uninstallable, do the pass inline per the
+  skill fallback).
+
+Procedure per phase:
+
+1. Scope: `git diff --staged` / `git diff` (or `diff main...HEAD` if clean).
+2. Run the skill; consolidate to **Blocking / Should-fix / Note**.
+3. Act, don't summarize: fix every Blocking + Should-fix or record why N/A.
+4. Confirm: re-run affected specialist until zero Blocking.
+5. Artifact: write `.opencode/opencode-dev-framework/review.md` (required —
+  `gate.require_review` defaults ON, so the phase's own gate blocks without
+  it). Verdict line is either the consolidated list with actions or
+  "Peer review clean — no blocking issues."
+6. Re-run the full validation suite, then commit with the verdict in the
+  message. A phase is done only when skill = no Blocking AND suite = green.
+
 ## Notes for the implementer
 
 - Do all tests first; use the stub host.
