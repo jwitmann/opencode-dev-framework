@@ -401,16 +401,16 @@ stayed registered — every subsequent tool call threw permanently
 
 ## Phase 22 — Type hardening + `title` hook + comment cleanup
 
-- [ ] 22.1 Type all hooks (`SessionHooks`, `ToolHooks`, `ToolEditor`); keep
+- [x] 22.1 Type all hooks (`SessionHooks`, `ToolHooks`, `ToolEditor`); keep
   `as any` ONLY on the isolated defensive `stopping` probe with PR #44712
   comment. All other hooks fully typed.
-- [ ] 22.2 Add `title` hook to the constitution loop
+- [x] 22.2 Add `title` hook to the constitution loop
   (`generate`/`compaction`/`title`), guard missing `system`.
-- [ ] 22.3 Fix `src/index.ts` header comment: drop the unimplemented
+- [x] 22.3 Fix `src/index.ts` header comment: drop the unimplemented
   `ctx.command.transform` claim, list the real hooks.
-- [ ] 22.4 Tests: `title` injection + idempotency + `off` skip; update
+- [x] 22.4 Tests: `title` injection + idempotency + `off` skip; update
   `smoke`/`teardown` registration counts; `grep "as any" src/` = 1 hit.
-- [ ] 22.5 Peer-review skill gate; then commit.
+- [x] 22.5 Peer-review skill gate; then commit.
 
 ## Phase 23 — Persist `blockCounts` + flags in `ctx.storage`
 

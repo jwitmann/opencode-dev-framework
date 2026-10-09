@@ -609,6 +609,20 @@ SDK type diff (`dist/promise/*.d.ts`, 2.0.11 → 2.0.26):
 
 Decision: UPGRADE. No blockers. Proceed to Phase 22 on this branch.
 
+## Phase 22 notes (type hardening + `title`, 2026-10-09)
+
+- All hooks typed via SDK inference (`ctx.session.hook("context" | …)`,
+  `ctx.tool.hook("execute.before")`, `ctx.tool.transform`); `grep "as any"
+  src/` = 1 hit, the defensive `stopping` probe (not in `SessionHooks` as of
+  2.0.26, PR #44712). The cast stays until core dispatches `stopping` or the
+  SDK types it — typing it away would silently drop the registration.
+- `title` joins the constitution loop; `SessionTitle.system` is required, so
+  the `if (!event.system) return` guard is dead-but-harmless uniformity with
+  the loop body.
+- Peer-review skill gate (3 specialists, parallel): no drift, no style
+  issues, no correctness issues. Verdict recorded in the Phase 22 commit
+  message.
+
 ## References
 
 - OpenCode plugin docs: <https://opencode.ai/docs/plugins>

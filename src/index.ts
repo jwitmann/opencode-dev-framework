@@ -2,11 +2,10 @@
  * opencode-dev-framework V2 plugin entry point.
  *
  * V2 framework (opencode v2): Plugin.define({ id, setup(ctx) })
- * - ctx.session.hook("context", ...) -> constitution injection
+ * - ctx.session.hook("context"/"generate"/"compaction"/"title", ...) -> constitution injection
  * - ctx.tool.hook("execute.before", ...) -> guardrails
  * - ctx.event.subscribe() -> file tracking + gate enforcement via re-prompt
  * - ctx.tool.transform(...) -> custom tools
- * - ctx.command.transform(...) -> slash commands (optional)
  *
  * Gate enforcement: no synchronous `session.stopping`. On `session.idle`
  * / `session.status:idle` we run the gate and if it fails inside budget we
@@ -286,48 +285,35 @@ const plugin = Plugin.define({
     // an in-flight handler between awaits (captured `state` stays valid
     // while the global may be cleared). See issue #1 follow-up.
     // 1) Constitution injection — per model request (V1: experimental.chat.system.transform -> V2: session.hook("context", ...))
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     trackRegistration(
-      await (ctx.session as any).hook(
-        "context",
-        async (event: { system: Array<{ text: string }>; [k: string]: unknown }) => {
-          if (activeState !== state) return;
-          await reloadConfigIfChanged(state);
-          if (state.config.profile === "off") return;
-          if (!state.constitution) return;
-          // V2 system is Array<SystemPart> {type:"text", text:string}
-          const already = event.system.some((part: { text: string }) =>
-            part.text.includes(state.constitution!),
-          );
-          if (already) return;
-          event.system.push({
-            type: "text",
-            text: state.constitution,
-          } as (typeof event.system)[number]);
-          await safeLog(state, "info", "constitution injected into system prompt");
-        },
-      ),
+      await ctx.session.hook("context", async (event) => {
+        if (activeState !== state) return;
+        await reloadConfigIfChanged(state);
+        if (state.config.profile === "off") return;
+        if (!state.constitution) return;
+        // V2 system is Array<SystemPart> {type:"text", text:string}
+        const already = event.system.some((part) => part.text.includes(state.constitution!));
+        if (already) return;
+        event.system.push({
+          type: "text",
+          text: state.constitution,
+        });
+        await safeLog(state, "info", "constitution injected into system prompt");
+      }),
     );
 
     // Also hook other request kinds so the reminder is not missed on title/generate
     // (no-op if model doesn't need it; cheap)
-    for (const kind of ["generate", "compaction"] as const) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    for (const kind of ["generate", "compaction", "title"] as const) {
       trackRegistration(
-        await (ctx.session as any).hook(
-          kind,
-          async (event: { system?: Array<{ text: string }>; [k: string]: unknown }) => {
-            if (activeState !== state) return;
-            if (state.config.profile === "off" || !state.constitution) return;
-            // generate/compaction also have system — inject similarly if present
-            const ev = event as { system?: Array<{ type: string; text: string }> };
-            if (!ev.system) return;
-            const already = ev.system.some((p: { text: string }) =>
-              p.text.includes(state.constitution!),
-            );
-            if (!already) ev.system.push({ type: "text" as const, text: state.constitution });
-          },
-        ),
+        await ctx.session.hook(kind, async (event) => {
+          if (activeState !== state) return;
+          if (state.config.profile === "off" || !state.constitution) return;
+          // generate/compaction/title also have system — inject similarly if present
+          if (!event.system) return;
+          const already = event.system.some((p) => p.text.includes(state.constitution!));
+          if (!already) event.system.push({ type: "text" as const, text: state.constitution });
+        }),
       );
     }
 
@@ -339,9 +325,13 @@ const plugin = Plugin.define({
     // session.idle fallback below provides re-prompt enforcement instead.
     // The first invocation flips `stopHookSupported` so /df-status can show
     // which enforcement level is active.
+    // DEFENSIVE: "stopping" is not in SessionHooks as of 2.0.x; fires only
+    // if a future core dispatches it (see PR #44712). This is the ONLY
+    // remaining any-cast in src/ — all other hooks are fully typed so the
+    // compiler guards future SDK upgrades.
     try {
       trackRegistration(
-        // biome-ignore lint/suspicious/noExplicitAny: V2 hook names are not yet typed for session.stopping
+        // biome-ignore lint/suspicious/noExplicitAny: defensive stopping probe, not in SessionHooks (PR #44712)
         await (ctx.session as any).hook(
           "stopping",
           // biome-ignore lint/suspicious/noExplicitAny: core may dispatch (input, output) or a single mutable event
@@ -385,80 +375,66 @@ const plugin = Plugin.define({
     // whose own hook enforces; this one must not double-enforce). Using the
     // captured `state` throughout also closes the teardown race where the
     // global is cleared between awaits. See issue #1.
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     trackRegistration(
-      await (ctx.tool as any).hook(
-        "execute.before",
-        async (event: { tool: string; input: unknown; sessionID: string }) => {
-          if (activeState !== state) {
-            if (activeState === null) {
-              await safeLog(
-                null,
-                "warn",
-                "[opencode-dev-framework] plugin state is not available; allowing tool call (fail-open after teardown)",
-                { tool: (event as { tool?: string }).tool },
-              );
-            }
-            return;
-          }
-          await reloadConfigIfChanged(state);
-          if (state.config.profile === "off") return;
-          // V2 event shapes: { tool, sessionID, agent, messageID, id, input: unknown }
-          const toolName = (event as { tool: string }).tool;
-          const input = (event as { input: unknown }).input;
-          const sessionID = (event as { sessionID: string }).sessionID;
-
-          // Pre-flight harness: when `preflight:` tasks are configured, file
-          // edits are denied (standard/strict) until the pre-flight artifact
-          // exists. This is a true hard gate — it runs before the edit lands.
-          if (state.config.preflight.length > 0) {
-            const artifact = await artifactState(state.directory, PREFLIGHT_ARTIFACT_REL);
-            const reason = preflightBlockReason(
-              state.config,
-              toolName,
-              extractFilePath(input),
-              artifact,
+      await ctx.tool.hook("execute.before", async (event) => {
+        if (activeState !== state) {
+          if (activeState === null) {
+            await safeLog(
+              null,
+              "warn",
+              "[opencode-dev-framework] plugin state is not available; allowing tool call (fail-open after teardown)",
+              { tool: event.tool },
             );
-            if (reason !== null) {
-              const extra = { tool: toolName, sessionID, artifact: PREFLIGHT_ARTIFACT_REL };
-              if (state.config.profile === "advisory") {
-                await safeLog(state, "warn", reason, extra);
-              } else {
-                await safeLog(state, "error", reason, extra);
-                throw new Error(`[opencode-dev-framework] ${reason}`);
-              }
+          }
+          return;
+        }
+        await reloadConfigIfChanged(state);
+        if (state.config.profile === "off") return;
+        // V2 event shapes: { tool, sessionID, agent, messageID, id, input: unknown }
+        const toolName = event.tool;
+        const input = event.input;
+        const sessionID = event.sessionID;
+
+        // Pre-flight harness: when `preflight:` tasks are configured, file
+        // edits are denied (standard/strict) until the pre-flight artifact
+        // exists. This is a true hard gate — it runs before the edit lands.
+        if (state.config.preflight.length > 0) {
+          const artifact = await artifactState(state.directory, PREFLIGHT_ARTIFACT_REL);
+          const reason = preflightBlockReason(
+            state.config,
+            toolName,
+            extractFilePath(input),
+            artifact,
+          );
+          if (reason !== null) {
+            const extra = { tool: toolName, sessionID, artifact: PREFLIGHT_ARTIFACT_REL };
+            if (state.config.profile === "advisory") {
+              await safeLog(state, "warn", reason, extra);
+            } else {
+              await safeLog(state, "error", reason, extra);
+              throw new Error(`[opencode-dev-framework] ${reason}`);
             }
           }
+        }
 
-          // hostPermissions: not available in V2 permission model; pass undefined (conservative — still guard)
-          const result = checkToolCall(state.config, toolName, input, state.directory, undefined);
-          if (result.decision === "allow") return;
-          const message = result.reason ?? "blocked by guardrails";
-          const extra = { tool: toolName, sessionID, pattern: result.matchedPattern };
-          if (result.decision === "warn") {
-            await safeLog(state, "warn", message, extra);
-            return;
-          }
-          await safeLog(state, "error", message, extra);
-          throw new Error(`[opencode-dev-framework] ${message}`);
-        },
-      ),
+        // hostPermissions: not available in V2 permission model; pass undefined (conservative — still guard)
+        const result = checkToolCall(state.config, toolName, input, state.directory, undefined);
+        if (result.decision === "allow") return;
+        const message = result.reason ?? "blocked by guardrails";
+        const extra = { tool: toolName, sessionID, pattern: result.matchedPattern };
+        if (result.decision === "warn") {
+          await safeLog(state, "warn", message, extra);
+          return;
+        }
+        await safeLog(state, "error", message, extra);
+        throw new Error(`[opencode-dev-framework] ${message}`);
+      }),
     );
 
     // 3) Custom tools — V2: ctx.tool.transform(editor => editor.add(...))
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     trackRegistration(
-      await (ctx.tool as any).transform((editor: { add: (t: unknown) => void }) => {
-        (
-          editor as {
-            add: (t: {
-              name: string;
-              description: string;
-              input: unknown;
-              execute: (input: unknown) => Promise<unknown>;
-            }) => void;
-          }
-        ).add({
+      await ctx.tool.transform((editor) => {
+        editor.add({
           name: "dev_framework_init",
           description:
             "Scaffold opencode-dev-framework project files (agents, skills, commands, default config) into the current project. Missing files are created; existing files are skipped unless overwrite is true.",
@@ -503,7 +479,7 @@ const plugin = Plugin.define({
           },
         });
 
-        (editor as { add: (t: unknown) => void }).add({
+        editor.add({
           name: "dev_framework_set_profile",
           description:
             "Change the opencode-dev-framework profile (off, advisory, standard, strict) for the current project and apply it immediately without restarting OpenCode.",
@@ -551,7 +527,7 @@ const plugin = Plugin.define({
           },
         });
 
-        (editor as { add: (t: unknown) => void }).add({
+        editor.add({
           name: "dev_framework_status",
           description:
             "Show the current opencode-dev-framework state for the project: active profile, guardrails, completion gate, on-edit behavior, tracked changed files, and block counts.",
