@@ -482,18 +482,21 @@ const plugin = Plugin.define({
             const reason = preflightBlockReason(state.config, "edit", target, artifact);
             if (reason !== null) {
               if (state.config.profile === "advisory") {
-                await safeLog(state, "warn", reason, {
+                // Debug, not warn: execute.before runs first and already
+                // warned for this exact call (same double-noise rule as the
+                // guardrail warn path below).
+                await safeLog(state, "debug", reason, {
                   ...baseExtra,
                   artifact: PREFLIGHT_ARTIFACT_REL,
                 });
-              } else {
-                event.effect = "deny";
-                event.message = reason;
-                await safeLog(state, "error", reason, {
-                  ...baseExtra,
-                  artifact: PREFLIGHT_ARTIFACT_REL,
-                });
+                return;
               }
+              event.effect = "deny";
+              event.message = reason;
+              await safeLog(state, "error", reason, {
+                ...baseExtra,
+                artifact: PREFLIGHT_ARTIFACT_REL,
+              });
               return;
             }
           }

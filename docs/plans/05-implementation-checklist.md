@@ -459,11 +459,16 @@ stayed registered — every subsequent tool call threw permanently
   advisory behavior, allowed→untouched, off no-op).
 - [x] 25.5 Peer-review skill gate (focus: mapper can never weaken
   enforcement); commit.
-  Skill tool uninstallable in this env → inline 3-specialist pass:
-  no Blocking; fixed 2 Should-fix (detached doc comment after edit
-  repair → mapper moved to end of protect.ts; already-denied events now
-  abstain so host/engine message wins + test); 1 Note (preflight block
-  shape shared between hooks — different deny mechanisms, accepted).
+  Skill tool uninstallable in this env → skill-sanctioned inline
+  3-specialist pass. First pass (main commit): no Blocking; fixed 2
+  Should-fix (detached doc comment after edit repair → mapper moved to end
+  of protect.ts; already-denied events now abstain so host/engine message
+  wins + test). User flagged the follow-up fix as under-reviewed → full
+  gate re-run over the whole Phase 25 diff: 1 more Should-fix (preflight
+  advisory double-warn — same wart class, now debug like the guardrail warn
+  path) + 2 Notes (shared preflight block shape accepted — different deny
+  mechanisms; per-call debug line consistent with existing lint-debug
+  behavior). Re-validated green after each fix.
 
 ## Phase 26 — `command.transform` + `session.interrupt` verdicts (ship or drop)
 
