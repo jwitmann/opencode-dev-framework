@@ -73,7 +73,7 @@ How each mechanism is enforced on OpenCode `v2` (verified on `v2.0.26`):
 npm install opencode-dev-framework
 ```
 
-Then add the plugin to your project's `opencode.json`:
+Then add the plugin to your project's `opencode.jsonc`:
 
 ```json
 {
@@ -104,7 +104,7 @@ profile from the shell; `df version` prints the plugin version.
 ## Local development and testing
 
 To test the plugin from source without publishing to npm, point OpenCode at the
-local repository path in your project's `opencode.json` **and** in a `tui.json`.
+local repository path in your project's `opencode.jsonc` **and** in a `tui.json`.
 The TUI module (`/df-status`, `/df-help` modals) is **not** auto-discovered for
 local filesystem paths — it only loads when the package is listed in the TUI
 config. OpenCode reads `tui.json` from the global config dir

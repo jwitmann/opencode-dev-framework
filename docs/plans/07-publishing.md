@@ -128,9 +128,9 @@ npm run dev:clean
 
 Caveats:
 
-- `opencode plugin <module>` writes a `.opencode/opencode.json` file that
-  overrides the project-level `opencode.json`. Delete it or keep its plugin
-  list consistent with the project-level config.
+- `opencode plugin <module>` writes a `.opencode/opencode.json[c]` file whose
+  plugin array **merges** with (never replaces) the project-level config.
+  Delete it or keep its plugin list consistent with the project-level config.
 - Clear OpenCode's plugin cache after switching from a published version to a
   local path:
 

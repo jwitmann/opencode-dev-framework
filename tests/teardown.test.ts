@@ -5,6 +5,28 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { clearConfigCache } from "../src/config";
 import plugin from "../src/index";
 
+// Hermetic stub: no child process ever spawns from this file. `setup()`
+// hardwires the real spawner (src/index.ts `run: runCommand`), so without
+// this every idle-triggered gate would shell out to real `git`/`false` —
+// the only test file in the suite that did. `false` mimics /bin/false
+// (exit 1, gate-failing); `git` mimics "not a repo" so gitChangedFiles
+// fails fast to [] exactly as it does in these temp dirs.
+vi.mock("../src/host", async (importOriginal) => {
+  const original = await importOriginal<typeof import("../src/host")>();
+  const runCommand: typeof original.runCommand = async (command) => {
+    if (command[0] === "false") {
+      return { stdout: "", stderr: "", exitCode: 1, timedOut: false };
+    }
+    if (command[0] === "git") {
+      return { stdout: "", stderr: "not a git repo", exitCode: 128, timedOut: false };
+    }
+    return { stdout: "", stderr: "", exitCode: 0, timedOut: false };
+  };
+  return { ...original, runCommand };
+});
+
+type Cleanup = () => Promise<void> | void;
+
 describe("issue #1: teardown must not brick tool calls", () => {
   let directory: string;
 
@@ -54,11 +76,15 @@ describe("issue #1: teardown must not brick tool calls", () => {
   async function waitForPromptCalls(
     prompt: unknown,
     expected: number,
-    timeoutMs = 10000,
+    // Below the default vitest 5s test timeout on purpose: on failure the
+    // terminal expect below must be what reports, not a framework timeout.
+    timeoutMs = 3000,
   ): Promise<void> {
     const mock = prompt as { mock: { calls: unknown[][] } };
     const deadline = Date.now() + timeoutMs;
-    while (mock.mock.calls.length !== expected && Date.now() < deadline) {
+    // `<` (not `!==`): an overshoot is already a failure — fail fast
+    // instead of spinning the full timeout before the expect fires.
+    while (mock.mock.calls.length < expected && Date.now() < deadline) {
       await sleep(25);
     }
     expect(mock.mock.calls.length).toBe(expected);
@@ -263,16 +289,15 @@ describe("issue #1: teardown must not brick tool calls", () => {
 
   it("rapid setup/teardown cycles with in-flight streams leave no live stale loop (strain probe)", async () => {
     // Gate config that blocks on idle, so event-loop liveness is observable
-    // via ctx.session.prompt: `false` exits 1 instantly (hermetic, no real
-    // checks run) and skip_unchanged is off so the gate runs with no
-    // changed files.
+    // via ctx.session.prompt: stubbed `false` exits 1 (no child process
+    // ever spawns — see the host mock at the top of this file) and
+    // skip_unchanged is off so the gate runs with no changed files.
     writeFileSync(
       join(directory, ".opencode-dev-framework.yml"),
       'profile: standard\ncommands:\n  typecheck: "false"\ngate:\n  run_typecheck: true\n  run_tests: false\n  skip_unchanged: false\n  block_on_failure: true\n',
     );
     clearConfigCache();
     const mod = plugin as unknown as { setup: (c: unknown) => Promise<unknown> };
-    type Cleanup = () => Promise<void> | void;
 
     // Reload churn: five rapid setup/teardown pairs with hanging streams.
     const dead: Array<{
@@ -314,13 +339,16 @@ describe("issue #1: teardown must not brick tool calls", () => {
     expect(live.ctx.session.prompt).toHaveBeenCalledWith(
       expect.objectContaining({ sessionID: "stress-live" }),
     );
+    // Quiescence: a double-firing loop would land its second prompt just
+    // after the first — settle, then confirm the count is still exactly 1.
+    await sleep(200);
+    expect(live.ctx.session.prompt).toHaveBeenCalledTimes(1);
 
     await cleanupLive();
   });
 
   it("a throwing event subscriber neither breaks setup nor bricks the session", async () => {
     const mod = plugin as unknown as { setup: (c: unknown) => Promise<unknown> };
-    type Cleanup = () => Promise<void> | void;
 
     // 1) subscribe() throws synchronously: the loop catches it, setup still
     // resolves, and the guardrail still works.

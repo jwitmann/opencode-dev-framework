@@ -559,8 +559,8 @@ Keep both. The custom tool lets the agent call verification explicitly; the slas
 
 ## Future work — Effect-API rewrite (post-process, not scheduled)
 
-**`@opencode/plugin/v2/effect` evaluation (deferred):** the V2 Effect entrypoint
-(`Plugin.define` via `@opencode/plugin/v2/effect` + `effect` package, scoped
+**`@opencode/plugin/effect` evaluation (deferred):** the V2 Effect entrypoint
+(`Plugin.define` via `@opencode/plugin/effect` + `effect` package, scoped
 plugin effect with finalizers/fibers/registrations auto-released on reload)
 could replace the hand-rolled `AbortController` + manual `Registration.dispose()`
 event loop in `src/index.ts`. Current approach works and is regression-covered
@@ -577,8 +577,9 @@ without that spike + peer review.
 strain observed (see strain probe below), (b) gate steps still run
 sequentially (`Promise.all` would cover parallelism if ever needed), (c)
 `@opencode/plugin@2.0.26` pins `effect@4.0.0-rc.112` — Effect 4 is still a
-release candidate. Two corrections to the paragraph above: the entrypoint
-path is `@opencode/plugin/effect` (not `@opencode/plugin/v2/effect`), and
+release candidate. Two corrections since first writing (paragraph above now fixed): the entrypoint
+path was originally recorded here as `@opencode/plugin/v2/effect` — it is
+`@opencode/plugin/effect` — and
 "port only the loop" is narrower than it sounds — the Effect `Stream`
 `subscribe` is only reachable through the Effect `Context`, so a
 promise-entrypoint spike would manage its own `Runtime` + `Scope` (fiber
