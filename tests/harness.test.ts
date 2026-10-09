@@ -2,6 +2,7 @@ import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { createBlockStore } from "../src/block-store";
 import { resolveConfig } from "../src/config";
 import { createChangedFileTracker } from "../src/gate";
 import {
@@ -186,7 +187,8 @@ describe("evaluateCompletion", () => {
     const { entries, log } = stubLog();
     const tracker = createChangedFileTracker();
     for (const f of opts.trackerFiles ?? []) tracker.add(f);
-    const blockCounts = new Map<string, number>();
+    // Memory-backed store (no ctx.storage in unit tests).
+    const blockCounts = createBlockStore(undefined);
     const config = resolve(raw);
     const deps = {
       run,
@@ -235,7 +237,7 @@ describe("evaluateCompletion", () => {
       expect(verdict.summary).toContain("peer-review loop has not run");
       expect(verdict.blockCount).toBe(1);
     }
-    expect(blockCounts.get("s1")).toBe(1);
+    expect(await blockCounts.get("s1")).toBe(1);
   });
 
   it("blocks (reason=gate) on failing checks even when the review artifact exists", async () => {
@@ -284,24 +286,25 @@ describe("evaluateCompletion", () => {
     });
     const v1 = await evaluateCompletion(first.deps);
     expect(v1.decision).toBe("blocked");
-    expect(first.blockCounts.get("sess")).toBe(1);
+    expect(await first.blockCounts.get("sess")).toBe(1);
 
     const second = makeDeps(raw, {
       trackerFiles: ["src/a.ts"],
       sessionID: "sess",
       resultFor: FAIL_FALSE,
     });
-    second.blockCounts.set("sess", 1); // continue the same session's count
+    await second.blockCounts.increment("sess"); // continue the same session's count
     const v2 = await evaluateCompletion(second.deps);
     expect(v2.decision).toBe("blocked");
-    expect(second.blockCounts.get("sess")).toBe(2);
+    expect(await second.blockCounts.get("sess")).toBe(2);
 
     const third = makeDeps(raw, {
       trackerFiles: ["src/a.ts"],
       sessionID: "sess",
       resultFor: FAIL_FALSE,
     });
-    third.blockCounts.set("sess", 2);
+    await third.blockCounts.increment("sess");
+    await third.blockCounts.increment("sess");
     const v3 = await evaluateCompletion(third.deps);
     expect(v3.decision).toBe("standdown");
     if (v3.decision === "standdown") {

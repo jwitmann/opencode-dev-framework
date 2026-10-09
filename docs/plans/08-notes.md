@@ -623,6 +623,24 @@ Decision: UPGRADE. No blockers. Proceed to Phase 22 on this branch.
   issues, no correctness issues. Verdict recorded in the Phase 22 commit
   message.
 
+## Phase 23 notes (storage-backed block counts, 2026-10-09)
+
+- `src/block-store.ts`: `BlockStore` over `ctx.storage` (keys
+  `df:blocks:<sessionID>`, `df:stopSupported`), write-through into the
+  existing `blockCounts` Map so `format-status.ts` keeps reading live data.
+  `evaluateCompletion` now takes the store (`increment`/`clear`) instead of
+  the raw Map. Assumption: session IDs are globally unique, so the keys are
+  safe even if storage is shared across projects.
+- Fallback never masks: any storage throw sets `isDegraded()` (only counts
+  and one boolean are ever stored — no secrets); setup logs a warn when
+  degraded after hydration. Stored values are validated (`asCount`); corrupt
+  values are treated as missing and overwritten.
+- Peer-review skill gate: code-reviewer clean; pattern-guardian +
+  style-enforcer found 4 Should-fix items (mid-file import, docstring-after-
+  import, unsorted test import, undocumented index/registry HookState fork) —
+  all fixed, suite re-greened. Verdict recorded in the Phase 23 commit
+  message.
+
 ## References
 
 - OpenCode plugin docs: <https://opencode.ai/docs/plugins>

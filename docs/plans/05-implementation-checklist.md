@@ -414,14 +414,14 @@ stayed registered — every subsequent tool call threw permanently
 
 ## Phase 23 — Persist `blockCounts` + flags in `ctx.storage`
 
-- [ ] 23.1 New `src/block-store.ts` (`get`/`increment`/`clear`,
+- [x] 23.1 New `src/block-store.ts` (`get`/`increment`/`clear`,
   `getStopSupported`/`setStopSupported`) over `ctx.storage` with in-memory
   fallback; keys `df:blocks:<sessionID>`, `df:stopSupported`.
-- [ ] 23.2 Wire into `setup()` / `evaluateCompletion` / `session.deleted`;
+- [x] 23.2 Wire into `setup()` / `evaluateCompletion` / `session.deleted`;
   load `stopHookSupported` from storage on setup.
-- [ ] 23.3 Tests: `tests/block-store.test.ts` (sequence, clear, fallback,
+- [x] 23.3 Tests: `tests/block-store.test.ts` (sequence, clear, fallback,
   stopSupported round-trip, persistence across two store instances).
-- [ ] 23.4 Peer-review skill gate (focus: key namespacing, JSON safety,
+- [x] 23.4 Peer-review skill gate (focus: key namespacing, JSON safety,
   fallback can't mask failures, no secrets in storage); then commit.
 
 ## Phase 24 — Per-edit lint via `tool.hook("execute.after")`

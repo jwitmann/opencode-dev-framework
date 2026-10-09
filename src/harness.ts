@@ -21,6 +21,7 @@
 
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
+import type { BlockStore } from "./block-store.js";
 import { runGate, summarizeGate, type ChangedFileTracker, type GateReport } from "./gate.js";
 import type { RunCommand } from "./host.js";
 import type { LogFn } from "./logger.js";
@@ -145,7 +146,7 @@ export interface CompletionDeps {
   directory: string;
   sessionID: string;
   tracker: ChangedFileTracker;
-  blockCounts: Map<string, number>;
+  blockCounts: BlockStore;
   log: LogFn;
 }
 
@@ -195,7 +196,7 @@ export async function evaluateCompletion(deps: CompletionDeps): Promise<Completi
 
   if (!gateFailed && !reviewMissing) {
     tracker.clearChangedFiles();
-    blockCounts.delete(sessionID);
+    await blockCounts.clear(sessionID);
     return {
       decision: "pass",
       changedFiles,
@@ -217,11 +218,11 @@ export async function evaluateCompletion(deps: CompletionDeps): Promise<Completi
   const reason: "gate" | "review" = gateFailed ? "gate" : "review";
   const summary = gateFailed ? summarizeGate(report) : reviewMissingMessage(changedFiles);
   const maxBlocks = config.gate.max_blocks ?? 3;
-  const blockCount = (blockCounts.get(sessionID) ?? 0) + 1;
+  const blockCount = await blockCounts.increment(sessionID);
 
   if (blockCount > maxBlocks) {
     tracker.clearChangedFiles();
-    blockCounts.delete(sessionID);
+    await blockCounts.clear(sessionID);
     const standdownSummary =
       `opencode-dev-framework completion gate has blocked ${maxBlocks} times and is standing ` +
       `down to avoid trapping you. The requirement is STILL unmet:\n\n${summary}\n\n` +
@@ -230,7 +231,6 @@ export async function evaluateCompletion(deps: CompletionDeps): Promise<Completi
     return { decision: "standdown", reason, summary: standdownSummary, changedFiles };
   }
 
-  blockCounts.set(sessionID, blockCount);
   await deps.log("error", summary, { reason, sessionID, blockCount, maxBlocks });
   return {
     decision: "blocked",

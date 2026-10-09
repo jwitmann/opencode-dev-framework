@@ -17,6 +17,7 @@ import { Plugin } from "@opencode/plugin";
 import type { Context } from "@opencode/plugin/promise/plugin";
 import { stat } from "node:fs/promises";
 import { join } from "node:path";
+import { type BlockStore, createBlockStore } from "./block-store.js";
 import { clearConfigCache, loadConfig } from "./config.js";
 import { type ChangedFileTracker, createChangedFileTracker } from "./gate.js";
 import {
@@ -48,6 +49,16 @@ export interface HookState {
   tracker: ChangedFileTracker;
   constitution: string | null;
   blockCounts: Map<string, number>;
+  /**
+   * Persistent block-count store over `ctx.storage`, write-through into
+   * `blockCounts` (which stays the live L1 cache for status rendering).
+   * Survives plugin reload / session_move / server restart.
+   * Note: this `HookState` is intentionally forked from `registry.ts`
+   * `HookState` (module state is per-location here, not registry-keyed);
+   * `format-status.ts` reads the `blockCounts` Map projection, which the
+   * store keeps live on every get/increment/clear.
+   */
+  blocks: BlockStore;
   precommitAvailable?: boolean;
   configMtime?: number;
   /**
@@ -150,7 +161,7 @@ function runCompletion(state: HookState, sessionID: string): Promise<CompletionV
     directory: state.directory,
     sessionID,
     tracker: state.tracker,
-    blockCounts: state.blockCounts,
+    blockCounts: state.blocks,
     log: (level, message, extra) => safeLog(state, level, message, extra),
   });
 }
@@ -243,6 +254,8 @@ const plugin = Plugin.define({
     }
 
     const tracker = createChangedFileTracker();
+    const blockCounts = new Map<string, number>();
+    const blocks = createBlockStore(ctx.storage, blockCounts);
 
     const state: HookState = {
       directory,
@@ -251,10 +264,23 @@ const plugin = Plugin.define({
       run: runCommand,
       tracker,
       constitution,
-      blockCounts: new Map(),
+      blockCounts,
+      blocks,
       configMtime,
     };
     activeState = state;
+
+    // Hydrate the hard-stop probe flag: a previous setup may have seen core
+    // dispatch `session.stopping`. A storage failure degrades to in-memory
+    // counts (pre-Phase-23 behavior) and is logged, never thrown.
+    state.stopHookSupported = await blocks.getStopSupported();
+    if (blocks.isDegraded()) {
+      await log(
+        "warn",
+        "ctx.storage is unavailable; gate block counts are in-memory only and reset on reload",
+        { directory },
+      );
+    }
 
     // Track hook/transform registrations so teardown can unregister them.
     // `ctx.*.hook()` / `ctx.*.transform()` resolve to a `Registration`
@@ -344,6 +370,7 @@ const plugin = Plugin.define({
               getEventSessionID(input) ??
               "unknown";
             state.stopHookSupported = true;
+            await state.blocks.setStopSupported();
             await reloadConfigIfChanged(state);
             if (state.config.profile === "off") return;
             const verdict = await runCompletion(state, sessionID);
@@ -577,9 +604,10 @@ const plugin = Plugin.define({
           const type = event.type;
 
           if (isSessionDeletedEvent(type)) {
-            // session.deleted: cleanup blockCounts (and tracker if needed)
+            // session.deleted: cleanup block counts (memory + storage) and
+            // forget the session's directory mapping if present.
             const sid = getEventSessionID(event);
-            if (sid) state.blockCounts.delete(sid);
+            if (sid) await state.blocks.clear(sid);
             continue;
           }
 
