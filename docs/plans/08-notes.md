@@ -792,6 +792,29 @@ idle gate it never re-prompts.
   Future trigger: a runaway-loop watchdog (e.g. around `doom_loop`) — the
   stop primitive is proven, no re-spike needed.
 
+## Phase 27 notes (docs, release prep, 2026-10-09)
+
+- README accuracy sweep (the 27.3 review focus): fixed four stale claims —
+  (1) the "What it does" slash-commands paragraph still described the Phase 17
+  server-side design (empty template + toast); all four commands are TUI
+  keymap-layer modals since Phase 18. (2) `strict` row claimed per-edit lint
+  "throws" — `runPerEditLint` only ever reports (the edit already landed).
+  (3) `/df-profile` argument form "not wired up" — `tui.tsx` wires it
+  (direct switch + toast). (4) min-version `v2.0.0+` → `v2.x`, tested on
+  `v2.0.26`.
+- Added the missing pieces: `dev_framework_verify` in the custom-tools bullet,
+  a new **Enforcement layers** table (pre-flight hard block; guardrails =
+  `execute.before` load-bearing + `permission.evaluate` defense-in-depth;
+  per-edit lint report-only; gate async-bounded + defensive stopping veto),
+  and a debugging note (plugin runs in the serve backend — TUI env never
+  reaches it — use `--standalone --print-logs`; no `cli.json` interaction).
+- Example config check: `examples/go-service/.opencode-dev-framework.yml`
+  loads clean via `loadConfig` (profile standard, `gate.max_blocks` 3).
+  No changes needed.
+- Version bumped `0.2.4` → `0.3.0` (Phases 21–26: SDK upgrade, typed hooks,
+  storage-backed blocks, `execute.after` lint, permission layer, verify
+  tool). Tag + push remain user actions (never push from agent sessions).
+
 ## References
 
 - OpenCode plugin docs: <https://opencode.ai/docs/plugins>

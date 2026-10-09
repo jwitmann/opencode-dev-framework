@@ -487,13 +487,21 @@ stayed registered — every subsequent tool call threw permanently
 
 ## Phase 27 — Docs, checklist, release prep
 
-- [ ] 27.1 `08-notes.md` phase sections; README min-version
+- [x] 27.1 `08-notes.md` phase sections; README min-version
   ("requires OpenCode 2.x, tested on 2.0.26"), enforcement table,
   `cli.json` note if applicable; examples config check.
-- [ ] 27.2 Full validation
+  Done: 4 stale README claims fixed, enforcement table + verify tool +
+  debugging note added, example loads clean, Phase 27 notes written.
+- [x] 27.2 Full validation
   (`format:check` → `lint` → `lint:md` → `typecheck` → `test` → `build`).
-- [ ] 27.3 Peer-review skill gate (focus: docs accuracy); version bump + tag
+- [x] 27.3 Peer-review skill gate (focus: docs accuracy); version bump + tag
   (user action, never push).
+  Skill tool uninstallable → inline 3-specialist pass done BEFORE writing
+  this line: every factual claim cross-checked (all 4 commands in
+  `tui.tsx` keymap layer; `runPerEditLint` never throws; df-profile arg
+  wired; zero `cli.json` refs in code; example loads; `df version` →
+  0.3.0). No Blocking, no Should-fix. Version bumped to 0.3.0; tag + push
+  are user actions.
 
 ## Phase 28 — Effect-API rewrite (post-process, UNSCHEDULED)
 

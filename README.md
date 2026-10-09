@@ -36,20 +36,16 @@ reimplemented as an OpenCode-native plugin.
 - **Custom tools.** `dev_framework_init` scaffolds project-level agents,
   skills, local rules directory, and config; `dev_framework_set_profile` changes the profile
   in-session without restarting; `dev_framework_status` reports the current
-  profile, guardrails, gate, and tracked changed files.
+  profile, guardrails, gate, and tracked changed files; `dev_framework_verify`
+  runs the completion gate on demand and returns the summary to the agent.
 - **CLI installer.** `df init` auto-detects your language and writes a config
   with sensible commands; `df profile <name>` changes the profile from the
   shell; `df status` / `df version` report template state and the version.
-- **Slash commands.** The plugin registers four commands. None of them feed
-  anything to the LLM:
-  - `/df-status` and `/df-help` are TUI commands (bundled `./tui` companion module)
-    that open an instant modal dialog.
-  - `/df-profile <profile>` and `/df-verify` are server-side commands. They are
-    registered with an empty template so the argument (e.g. `standard`) is
-    captured by the plugin and the model never sees it; the result is shown as a
-    toast and the user turn is suppressed.
-  - The `dev_framework_init` and `dev_framework_set_profile` custom *tools* remain
-    available for in-agent use.
+- **Slash commands.** The plugin registers four TUI commands that open instant
+  modal dialogs and never feed anything to the LLM: `/df-status`, `/df-help`,
+  `/df-profile` (bare for a picker, or with an argument), and `/df-verify`
+  (runs the gate manually). The `dev_framework_*` custom *tools* above remain
+  available for in-agent use.
 
 ## Profiles
 
@@ -58,7 +54,18 @@ reimplemented as an OpenCode-native plugin.
 | `off`      | disabled   | not reported  | no           | no         | no              | Plugin registers no hooks at all. |
 | `advisory` | warn       | warn          | yes          | warn only  | warned, not blocked | Nothing blocks; everything is logged. |
 | `standard` | deny       | error         | yes          | deny edits | blocks completion | The default when a config file exists. |
-| `strict`   | deny       | error         | yes          | deny edits | blocks completion | Also lints changed files in the gate and throws on per-edit lint failures. |
+| `strict`   | deny       | error         | yes          | deny edits | blocks completion | Also lints changed files in the gate; per-edit lint failures are reported loudly (error level — the edit already landed, so nothing throws there). |
+
+## Enforcement layers
+
+How each mechanism is enforced on OpenCode `v2` (verified on `v2.0.26`):
+
+| Mechanism | Primary layer | Backstop / fallback | Strength |
+| --------- | ------------- | ------------------- | -------- |
+| Pre-flight gate | `tool.execute.before` deny | — | **Hard block** on every build: the edit never lands. |
+| Protected paths + dangerous commands | `tool.execute.before` deny/throw | `permission.evaluate` native layer (deny) | **Hard block** via the backstop; the native layer is defense-in-depth (the pipeline runs before-hooks first, so it only sees calls the backstop passed). |
+| Per-edit lint | `tool.execute.after` track + lint | `filesystem.changed` event (this release) | Report-only: the edit already landed, so failures log loudly but never throw. |
+| Completion gate | `session.idle` re-prompt via `session.prompt` | `session.stopping` hard-stop veto, if the core dispatches it | **Async, bounded** by `gate.max_blocks` (re-prompt, not a veto); hard stop only on builds with core support. `/df-status` shows which mode is active. |
 
 ## Install
 
@@ -74,7 +81,7 @@ Then add the plugin to your project's `opencode.json`:
 }
 ```
 
-Requires OpenCode `v2.0.0+` (`@opencode/plugin` `^2`). On `v1.18.18–1.18.31` use the `v1` branch
+Requires OpenCode `v2.x` (`@opencode/plugin` `^2`) — tested on `v2.0.26`. On `v1.18.18–1.18.31` use the `v1` branch
 of this plugin (`plugin` key). The `./tui` companion (`/df-status` and `/df-help`
 modals) is auto-discovered from the npm entry on `v2` — no separate `tui.json` needed.
 
@@ -205,8 +212,8 @@ They open instantly and **never** feed text back to the LLM:
 - `/df-help` — lists the available dev-framework commands in a modal dialog.
 - `/df-profile` — opens a profile picker (off / advisory / standard / strict) in
   a modal dialog; selecting one switches the active profile immediately (written
-  to the config file). Run it **bare** — the argument form
-  (`/df-profile standard`) is not wired up in this build.
+  to the config file). With an argument (`/df-profile standard`) it switches
+  directly with a toast instead of the picker.
 - `/df-verify` — runs the configured verification suite (the completion gate)
   manually and shows a pass/fail summary in a modal dialog.
 
@@ -254,6 +261,17 @@ For persistent debug traces, set `OPENCODE_DEV_FRAMEWORK_LOG_FILE`:
 ```bash
 OPENCODE_DEV_FRAMEWORK_LOG_FILE=/tmp/odf.log opencode run
 ```
+
+Plugin code runs in the `opencode serve` backend, not in your terminal
+process — a variable exported only in the TUI shell never reaches it. For
+full server logs plus the plugin trace, run a private server:
+
+```bash
+OPENCODE_DEV_FRAMEWORK_LOG_FILE=/tmp/odf.log opencode run --standalone --print-logs
+```
+
+(There is no `cli.json` interaction: the plugin never reads or writes CLI
+config; the flags above are stock OpenCode CLI options.)
 
 See `AGENTS.md` and `docs/plans/` for the architecture and implementation
 plan.
