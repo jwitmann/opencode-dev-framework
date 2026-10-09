@@ -98,7 +98,7 @@ describe("Phase 26.1: dev_framework_verify tool (server-side gate, reshaped ship
 
   it("reports gate failure in content instead of throwing", async () => {
     writeConfig(
-      "profile: standard\ncommands:\n  typecheck: \"exit 3\"\ngate:\n  run_tests: false\n  lint_changed: false\n  skip_unchanged: false\n",
+      'profile: standard\ncommands:\n  typecheck: "exit 3"\ngate:\n  run_tests: false\n  lint_changed: false\n  skip_unchanged: false\n',
     );
     const { ctx, addedTools } = createMockCtx();
     const mod = plugin as unknown as { setup: (c: unknown) => Promise<unknown> };

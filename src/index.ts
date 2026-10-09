@@ -500,12 +500,7 @@ const plugin = Plugin.define({
               return;
             }
           }
-          const verdict = toPermissionGuard(
-            state.config,
-            action,
-            event.resources,
-            state.directory,
-          );
+          const verdict = toPermissionGuard(state.config, action, event.resources, state.directory);
           if (verdict === null) {
             await safeLog(
               state,
