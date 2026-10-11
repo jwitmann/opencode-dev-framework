@@ -56,7 +56,14 @@ describe("plugin entry point (V2)", () => {
     };
     const mod = plugin as unknown as { setup: (c: unknown) => Promise<unknown> };
     const result = (await mod.setup(ctx)) as (() => Promise<void> | void) | undefined;
-    for (const name of ["context", "generate", "compaction", "title", "stopping"]) {
+    for (const name of [
+      "context",
+      "generate",
+      "compaction",
+      "title",
+      "stopping",
+      "experimental.stopping",
+    ]) {
       expect(sessionNames).toContain(name);
     }
     expect(permissionNames).toContain("evaluate");

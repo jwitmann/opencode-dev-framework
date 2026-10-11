@@ -506,6 +506,39 @@ stayed registered — every subsequent tool call threw permanently
   `style: apply biome formatting` fixup, `ac58c67`), then pushed:
   commit `7f84b81` "Release v0.3.0", tag `v0.3.0`, `package.json` at 0.3.0.
 
+## Phase 29 — `experimental.stopping` dogfood (§13.6, plan 10)
+
+Dogfood the fork's V2 pre-terminal hook (branch
+`feat/experimental-session-stopping`, commit `d6389406a0`; contract
+`01-design.md` §4): register `experimental.stopping` ALONGSIDE the legacy
+`stopping` probe — same dist works on mainline builds.
+
+- [x] 29.1 `src/index.ts`: V2 probe (§1c) reusing `runCompletion` /
+  `actOnVerdict`; fail → `decision = { shouldContinue: true, text }`,
+  pass/stand-down → abstain; no provider scoping; per-vote info log with
+  `continuations`/`step` for upstream receipts.
+- [x] 29.2 `src/block-store.ts` + `src/index.ts` + `src/registry.ts`:
+  `StopHookKind` (`stopping` | `experimental.stopping`), monotonic
+  upgrade, legacy `true` reads as the old level; `getStopKind` hydrated
+  on setup.
+- [x] 29.3 `src/format-status.ts`: four enforcement levels —
+  none (config-only) → idle-fallback → legacy probe → new hook.
+- [x] 29.4 Tests: `tests/experimental-stopping.test.ts` (co-registration,
+  fail→grant, pass→abstain, pre-increment observed + local max_blocks
+  stand-down, legacy mapping, monotonicity, status levels, store
+  round-trip); smoke/title registration lists extended.
+- [x] 29.5 Live validation on the fork (standalone fork server in
+  `~/animeRSS`, break typecheck via untracked `dogfood-stopping/` scratch
+  file): block→continue, pass→exit, 2-grant cap silence + receipts —
+  done 2026-10-11, model `kimi-code-plan-global/kimi-for-coding`, full
+  receipts in `docs/plans/08-notes.md` ("§13.6 dogfood receipts").
+  Fork auth prerequisite: `OPENCODE_DISABLE_CHANNEL_DB=1` so the fork
+  uses the shared `opencode.db` (its `channel=local` otherwise isolates
+  it on an empty `opencode-local.db` with no provider connections).
+- [x] 29.6 Peer-review skill gate (3 specialists, no Blocking; 1 real
+  Should-fix fixed + tested, rest fixed-or-justified in `08-notes.md`);
+  committed on a framework-repo branch (`feat/experimental-stopping-dogfood`).
+
 ## Phase 28 — Effect-API rewrite (post-process, UNSCHEDULED)
 
 - [ ] Deferred. See `08-notes.md` "Future work — Effect-API rewrite".

@@ -846,6 +846,92 @@ idle gate it never re-prompts.
   `format:check` had passed, cause unknown), then pushed release commit
   `7f84b81` with tag `v0.3.0`; CI publishes to npm from the tag.
 
+## Phase 29 notes (`experimental.stopping` dogfood, 2026-10-11)
+
+- Consumer probe for the fork's V2 hook (`feat/experimental-session-stopping`,
+  `d6389406a0`; contract `01-design.md` §4, read-only ground truth in
+  `~/opencode` + `~/opencode-session-stopping`). Working repo is this
+  framework repo on its own branch; the fork is never touched from here.
+- `grep "as any" src/` = 2 hits now (was 1): the legacy `stopping` probe
+  (§1b) + the new `experimental.stopping` probe (§1c). Both stay until the
+  SDK types the hook — typing either away would silently drop the
+  registration on the core that dispatches it.
+- Two code-vs-design deviations already committed in the fork core (do NOT
+  "fix" from here): the vote's `step` is a dedicated `executedSteps`
+  counter, not `step - 1`; the durable-counter reset runs on `!continuing`
+  alone, not `!force && !continuing` (`session.resume` starts forced
+  drains).
+- Enforcement levels in `/df-status`: none (config-only) → idle-fallback →
+  legacy probe → new hook. Kind is monotonic in memory + storage; legacy
+  `true` flag values read back as the old level.
+- Live validation (§5 of plan 10) status: recorded when run — receipts go
+  to the upstream PR/dogfood note, not into the plan.
+
+### §13.6 dogfood receipts (2026-10-11, fork standalone + `~/animeRSS`)
+
+- Model `kimi-code-plan-global/kimi-for-coding`, agent `build`, runs via
+  `run --standalone --print-logs` (`--print-logs` is what captures server
+  logs/vote lines; without it only the agent transcript lands in the log).
+  Scratch break: untracked `dogfood-stopping/dogfood.go` (`int` vs
+  `string`), deleted after validation; `go build ./...` green again.
+- Run A (block→continue→rework→pass): main session
+  `continuations:0 decision:blocked step:4` (grant, turn continued) →
+  agent fixed scratch + verified build → `continuations:1
+  decision:pass` (abstain, natural exit). Same 0→1 shape in spawned
+  subagent sessions. `RUN EXIT:0`.
+- Run B (persistent failure, report-only, no subagents): single session,
+  `continuations:0 blocked step:2` → `continuations:1 blocked step:3` →
+  third stop silent (no vote line — core cap, voters not called) →
+  `RUN EXIT:0`. Exactly the 2-grant-then-silence contract.
+- Legacy `stopping` probe stayed registered-but-silent on the fork (2/2
+  vote lines both `experimental.stopping`); same dist keeps working on
+  mainline where only the legacy hook exists.
+
+### Fork auth prerequisite (found the hard way)
+
+- The fork run via `bun dev` reports `channel=local`, so
+  `database-path.ts` isolates it on `opencode-local.db` (6 MB, empty)
+  while the installed builds use `opencode.db` (18 GB, all connections).
+  Credentials live in the DB (`CredentialTable`), so the fork saw 23
+  models and `Model unavailable` for subscription providers — same
+  version, same `auth.json`, same directory.
+- Fix: `OPENCODE_DISABLE_CHANNEL_DB=1` → fork uses the shared
+  `opencode.db` → 117 models, identical to mainline. Console dynamic
+  providers (`kimi-code-plan-global`, `opencode-go`) are backend-issued
+  entitlements, not fork source — no fork change needed or wanted.
+
+### Peer-review dispositions (3-specialist pass, 2026-10-11 — no Blocking)
+
+- Fixed: §1c voter body wrapped in try/catch → any internal failure
+  abstains (fail-closed default untouched), never throws into core; new
+  test pins it (throwing `step` getter → resolves, decision unchanged).
+  Fail-before verified by construction (pre-fix the voter had no catch).
+  §1b left as-is (pre-existing shape, validated legacy path — same
+  justification pattern as the fork's own intentional deviations).
+- Fixed: `sessionID` non-string guard in §1c; `maxStopKind` single helper
+  with collapsed `readStopKind` read-through; `stopKindRank` rename;
+  `continuationMessage` doc now names all three paths; plan-10 line ref
+  de-pinned (§1b marker).
+- Reviewer note checked and REJECTED: "revert to blind storage write" —
+  the read is required for cross-restart monotonicity; a fresh process
+  blind-writing its own lower level would downgrade a stored higher one.
+- Reviewer note checked and dropped: "redundant `?` + default" — the `?`
+  lives only on the interface (correct), the impl already omits it.
+- Deferred (follow-ups, not this phase): one shared gate-verdict helper
+  across §1b/§1c/idle (independent paths are defense-in-depth — one
+  shared bug would kill all three enforcement levels at once);
+  `tests/helpers.ts` extraction + moving store cases to
+  `block-store.test.ts` (test-only churn, pre-existing copy idiom);
+  `format-status` impossible-state branch, `HookState` shape fork,
+  per-test `fire` helper, `disposers` plumbing.
+- Latent-only, no action: concurrent-vote TOCTOU (cosmetic status label),
+  double block-count if a future core dispatches both hooks, `/df-status`
+  lag on shared backends, per-vote full-gate cost (bounded by the 2-grant
+  cap), flag-recorded-while-`off` (capability vs policy, pre-existing).
+- Rollback note: pre-Phase-27 dists read the persisted stop level only as
+  `true`; rolling back loses the string level (reads as unsupported).
+  Forward migration (`true` → `"stopping"`) is handled.
+
 ## References
 
 - OpenCode plugin docs: <https://opencode.ai/docs/plugins>

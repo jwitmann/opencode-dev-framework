@@ -9,7 +9,9 @@
  * a broken storage backend degrades to pre-Phase-23 behavior instead of
  * breaking the gate.
  *
- * Stored values are only block counts (`number`) and one `boolean` flag.
+ * Stored values are only block counts (`number`) and one stop-level flag
+ * (`"stopping"` for the legacy probe, `"experimental.stopping"` for the V2
+ * hook; pre-Phase-27 `true` reads back as the legacy level).
  * Never store secrets, prompts, or file contents here.
  *
  * Key namespacing: counts are keyed `df:blocks:<sessionID>` (OpenCode
@@ -25,8 +27,34 @@ export type StorageLike = Pick<Context["storage"], "get" | "set" | "remove">;
 export const BLOCK_COUNT_KEY_PREFIX = "df:blocks:";
 export const STOP_SUPPORTED_KEY = "df:stopSupported";
 
+/**
+ * Which pre-terminal hook fired. `stopping` is the legacy V1-shape probe
+ * (PR #44712); `experimental.stopping` is the V2 contract (single mutable
+ * event, `decision` grant). The new hook outranks the old: once it has
+ * fired, the level never downgrades back to the legacy probe.
+ */
+export type StopHookKind = "stopping" | "experimental.stopping";
+
 function blockKey(sessionID: string): string {
   return `${BLOCK_COUNT_KEY_PREFIX}${sessionID}`;
+}
+
+function asStopKind(value: unknown): StopHookKind | null {
+  if (value === "experimental.stopping") return "experimental.stopping";
+  // Legacy boolean flag (pre-Phase-27) means the old probe fired.
+  if (value === true || value === "stopping") return "stopping";
+  return null;
+}
+
+function stopKindRank(kind: StopHookKind): number {
+  return kind === "experimental.stopping" ? 1 : 0;
+}
+
+/** Monotonic max: a third hook level later only touches this function. */
+function maxStopKind(current: StopHookKind | null, next: StopHookKind | null): StopHookKind | null {
+  if (current === null) return next;
+  if (next === null) return current;
+  return stopKindRank(next) > stopKindRank(current) ? next : current;
 }
 
 /** Accept only sane counts; anything else (foreign/corrupt value) is treated as missing. */
@@ -43,7 +71,15 @@ export interface BlockStore {
   /** Live entries (mirrors the L1 map; used by tests). */
   readonly size: number;
   getStopSupported(): Promise<boolean>;
-  setStopSupported(): Promise<void>;
+  /**
+   * Record that a stopping hook fired. Defaults to the legacy `stopping`
+   * probe (preserves pre-Phase-27 call sites); pass
+   * `"experimental.stopping"` for the V2 hook. Monotonic: a stored new-hook
+   * level is never downgraded by a later legacy-probe call.
+   */
+  setStopSupported(kind?: StopHookKind): Promise<void>;
+  /** Which hook fired, or null when neither has (legacy `true` reads as the old probe). */
+  getStopKind(): Promise<StopHookKind | null>;
   /** True once any storage call has failed (in-memory fallback in use). */
   isDegraded(): boolean;
 }
@@ -53,7 +89,7 @@ export function createBlockStore(
   memory?: Map<string, number>,
 ): BlockStore {
   const counts = memory ?? new Map<string, number>();
-  let stopMemory = false;
+  let stopMemory: StopHookKind | null = null;
   let degraded = false;
 
   async function readCount(sessionID: string): Promise<number> {
@@ -69,6 +105,19 @@ export function createBlockStore(
       degraded = true;
       return counts.get(sessionID) ?? 0;
     }
+  }
+
+  async function readStopKind(): Promise<StopHookKind | null> {
+    // Single read-through: memory holds a level, but storage may hold a
+    // higher one written by a newer setup sharing the backend — take the max.
+    if (storage != null) {
+      try {
+        stopMemory = maxStopKind(stopMemory, asStopKind(await storage.get(STOP_SUPPORTED_KEY)));
+      } catch {
+        degraded = true;
+      }
+    }
+    return stopMemory;
   }
 
   async function writeCount(sessionID: string, count: number): Promise<void> {
@@ -103,25 +152,22 @@ export function createBlockStore(
       return counts.size;
     },
     async getStopSupported(): Promise<boolean> {
-      if (stopMemory) return true;
-      if (storage == null) return false;
-      try {
-        const stored = await storage.get(STOP_SUPPORTED_KEY);
-        if (stored === true) {
-          stopMemory = true;
-          return true;
-        }
-        return false;
-      } catch {
-        degraded = true;
-        return false;
-      }
+      return (await readStopKind()) !== null;
     },
-    async setStopSupported(): Promise<void> {
-      stopMemory = true;
+    getStopKind(): Promise<StopHookKind | null> {
+      return readStopKind();
+    },
+    async setStopSupported(kind: StopHookKind = "stopping"): Promise<void> {
+      // Monotonic: never downgrade a recorded new-hook level. The storage
+      // read is required, not redundant — without it a fresh process would
+      // blind-write its own (possibly lower) level over a stored higher one.
+      stopMemory = maxStopKind(stopMemory, kind) ?? kind;
       if (storage == null) return;
       try {
-        await storage.set(STOP_SUPPORTED_KEY, true);
+        const next =
+          maxStopKind(asStopKind(await storage.get(STOP_SUPPORTED_KEY)), stopMemory) ?? kind;
+        stopMemory = next;
+        await storage.set(STOP_SUPPORTED_KEY, next);
       } catch {
         degraded = true;
       }
