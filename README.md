@@ -67,7 +67,7 @@ How each mechanism is enforced on OpenCode `v2` (verified on `v2.0.26`):
 | Pre-flight gate | `tool.execute.before` deny | — | **Hard block** on every build: the edit never lands. |
 | Protected paths + dangerous commands | `tool.execute.before` deny/throw | `permission.evaluate` native layer (deny) | **Hard block** via the backstop; the native layer is defense-in-depth (the pipeline runs before-hooks first, so it only sees calls the backstop passed). |
 | Per-edit lint | `tool.execute.after` track + lint | `filesystem.changed` event (this release) | Report-only: the edit already landed, so failures log loudly but never throw. |
-| Completion gate | `session.idle` re-prompt via `session.prompt` | `session.stopping` hard-stop veto / `experimental.stopping` turn-continuation, if the core dispatches either | **Async, bounded** by `gate.max_blocks` (re-prompt, not a veto); hard stop / continuation only on builds with core support. `/df-status` shows which mode is active. |
+| Completion gate | `session.idle` re-prompt via `session.prompt` | `session.stopping` hard-stop veto / `experimental.stopping` turn-continuation ([upstream PR](https://github.com/anomalyco/opencode/pull/54487)), if the core dispatches either | **Async, bounded** by `gate.max_blocks` (re-prompt, not a veto); hard stop / continuation only on builds with core support. `/df-status` shows which mode is active. |
 
 ## Install
 
