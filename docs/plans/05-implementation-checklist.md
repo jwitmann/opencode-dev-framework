@@ -506,6 +506,31 @@ stayed registered — every subsequent tool call threw permanently
   `style: apply biome formatting` fixup, `ac58c67`), then pushed:
   commit `7f84b81` "Release v0.3.0", tag `v0.3.0`, `package.json` at 0.3.0.
 
+## Phase 29 — `experimental.stopping` dogfood (§13.6, plan 10)
+
+Dogfood the fork's V2 pre-terminal hook (branch
+`feat/experimental-session-stopping`, commit `d6389406a0`; contract
+`01-design.md` §4): register `experimental.stopping` ALONGSIDE the legacy
+`stopping` probe — same dist works on mainline builds.
+
+- [x] 29.1 `src/index.ts`: V2 probe (§1c) reusing `runCompletion` /
+  `actOnVerdict`; fail → `decision = { shouldContinue: true, text }`,
+  pass/stand-down → abstain; no provider scoping; per-vote info log with
+  `continuations`/`step` for upstream receipts.
+- [x] 29.2 `src/block-store.ts` + `src/index.ts` + `src/registry.ts`:
+  `StopHookKind` (`stopping` | `experimental.stopping`), monotonic
+  upgrade, legacy `true` reads as the old level; `getStopKind` hydrated
+  on setup.
+- [x] 29.3 `src/format-status.ts`: four enforcement levels —
+  none (config-only) → idle-fallback → legacy probe → new hook.
+- [x] 29.4 Tests: `tests/experimental-stopping.test.ts` (co-registration,
+  fail→grant, pass→abstain, pre-increment observed + local max_blocks
+  stand-down, legacy mapping, monotonicity, status levels, store
+  round-trip); smoke/title registration lists extended.
+- [ ] 29.5 Live validation on the fork (`bun dev ~/animeRSS`, break
+  typecheck): block→continue, pass→exit, 2-grant cap silence + receipts.
+- [ ] 29.6 Peer-review skill gate; commit on a framework-repo branch.
+
 ## Phase 28 — Effect-API rewrite (post-process, UNSCHEDULED)
 
 - [ ] Deferred. See `08-notes.md` "Future work — Effect-API rewrite".

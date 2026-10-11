@@ -1,3 +1,4 @@
+import type { StopHookKind } from "./block-store.js";
 import type { ChangedFileTracker } from "./gate.js";
 import type { RunCommand } from "./host.js";
 import type { LogFn } from "./logger.js";
@@ -34,8 +35,14 @@ export interface HookState {
   /** mtime (ms) of the config file at last load; used to detect out-of-process
    * edits (e.g. a `/df-profile` change made from the TUI module). */
   configMtime?: number;
-  /** True once core has actually dispatched `session.stopping` (hard stops active). */
+  /** True once core has actually dispatched a stopping hook (hard stops active). */
   stopHookSupported?: boolean;
+  /**
+   * Which hook fired: the legacy `stopping` probe or the V2
+   * `experimental.stopping` contract. The new hook outranks the old; absent
+   * until either fires (idle re-prompt fallback is the active level).
+   */
+  stopHookKind?: StopHookKind;
 }
 
 /**

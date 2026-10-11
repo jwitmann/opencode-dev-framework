@@ -21,7 +21,7 @@ import { Plugin } from "@opencode/plugin";
 import type { Context } from "@opencode/plugin/promise/plugin";
 import { stat } from "node:fs/promises";
 import { join } from "node:path";
-import { type BlockStore, createBlockStore } from "./block-store.js";
+import { type BlockStore, createBlockStore, type StopHookKind } from "./block-store.js";
 import { clearConfigCache, loadConfig } from "./config.js";
 import { type ChangedFileTracker, createChangedFileTracker } from "./gate.js";
 import {
@@ -66,11 +66,15 @@ export interface HookState {
   precommitAvailable?: boolean;
   configMtime?: number;
   /**
-   * Set once the `session.stopping` hook has actually been invoked by core —
-   * i.e. this OpenCode build supports pre-break gate vetoes (hard stops).
-   * Until then the idle re-prompt fallback is the only post-flight lever.
+   * Set once a stopping hook has actually been invoked by core — i.e. this
+   * OpenCode build supports pre-break gate vetoes (hard stops). Until then
+   * the idle re-prompt fallback is the only post-flight lever.
+   * `stopHookKind` records WHICH hook fired (`stopping` legacy probe vs
+   * `experimental.stopping` V2 contract); the new hook outranks the old and
+   * the level never downgrades. `/df-status` renders the active level.
    */
   stopHookSupported?: boolean;
+  stopHookKind?: StopHookKind;
 }
 
 let activeState: HookState | null = null;
@@ -121,6 +125,25 @@ async function reloadConfigIfChanged(state: HookState): Promise<void> {
 }
 
 type StoppingOutput = { stop?: boolean; message?: string };
+
+/**
+ * V2 `experimental.stopping` contract (single mutable event). Mirrors the
+ * fork's `SessionStopping` (`packages/plugin/src/effect/session.ts`):
+ * default `{ shouldContinue: false }` (fail-closed); `continuations` is the
+ * pre-increment grant count this turn (core caps at 2 and goes silent past
+ * it without calling voters); empty/whitespace `text` abstains.
+ */
+type ExperimentalStoppingDecision =
+  | { shouldContinue: false }
+  | { shouldContinue: true; text: string };
+
+interface ExperimentalStoppingEvent {
+  readonly sessionID: string;
+  readonly step: number;
+  readonly stepsLimit?: number;
+  readonly continuations: number;
+  decision: ExperimentalStoppingDecision;
+}
 
 /**
  * Turn a completion verdict into the continuation message fed back to the
@@ -203,6 +226,20 @@ function runCompletion(state: HookState, sessionID: string): Promise<CompletionV
     blockCounts: state.blocks,
     log: (level, message, extra) => safeLog(state, level, message, extra),
   });
+}
+
+/**
+ * Record that a stopping hook fired at `kind`. Monotonic: the V2
+ * `experimental.stopping` level outranks the legacy `stopping` probe, so a
+ * late legacy dispatch never downgrades an already-recorded new-hook level
+ * (both the in-memory flag and the persisted store upgrade only).
+ */
+async function recordStopLevel(state: HookState, kind: StopHookKind): Promise<void> {
+  if (state.stopHookKind !== "experimental.stopping") {
+    state.stopHookKind = kind;
+  }
+  state.stopHookSupported = true;
+  await state.blocks.setStopSupported(kind);
 }
 
 // Helpers to normalize V2 event shapes (data vs properties vs direct)
@@ -309,10 +346,12 @@ const plugin = Plugin.define({
     };
     activeState = state;
 
-    // Hydrate the hard-stop probe flag: a previous setup may have seen core
-    // dispatch `session.stopping`. A storage failure degrades to in-memory
-    // counts (pre-Phase-23 behavior) and is logged, never thrown.
-    state.stopHookSupported = await blocks.getStopSupported();
+    // Hydrate the hard-stop probe level: a previous setup may have seen core
+    // dispatch `stopping` or `experimental.stopping`. A storage failure
+    // degrades to in-memory counts (pre-Phase-23 behavior) and is logged,
+    // never thrown.
+    state.stopHookKind = (await blocks.getStopKind()) ?? undefined;
+    state.stopHookSupported = state.stopHookKind !== undefined;
     if (blocks.isDegraded()) {
       await log(
         "warn",
@@ -393,9 +432,10 @@ const plugin = Plugin.define({
     // The first invocation flips `stopHookSupported` so /df-status can show
     // which enforcement level is active.
     // DEFENSIVE: "stopping" is not in SessionHooks as of 2.0.x; fires only
-    // if a future core dispatches it (see PR #44712). This is the ONLY
-    // remaining any-cast in src/ — all other hooks are fully typed so the
-    // compiler guards future SDK upgrades.
+    // if a future core dispatches it (see PR #44712). One of two any-casts
+    // in src/ (this probe + the `experimental.stopping` probe in §1c) —
+    // all other hooks are fully typed so the compiler guards future SDK
+    // upgrades.
     try {
       trackRegistration(
         // biome-ignore lint/suspicious/noExplicitAny: defensive stopping probe, not in SessionHooks (PR #44712)
@@ -410,8 +450,7 @@ const plugin = Plugin.define({
               (out as { sessionID?: string }).sessionID ??
               getEventSessionID(input) ??
               "unknown";
-            state.stopHookSupported = true;
-            await state.blocks.setStopSupported();
+            await recordStopLevel(state, "stopping");
             await reloadConfigIfChanged(state);
             if (state.config.profile === "off") return;
             const verdict = await runCompletion(state, sessionID);
@@ -433,6 +472,68 @@ const plugin = Plugin.define({
         state,
         "warn",
         "could not register session.stopping hook; using session.idle re-prompt fallback only",
+      );
+    }
+
+    // 1c) V2 pre-terminal continuation vote — `experimental.stopping`.
+    // Same verdict mapping as §1b, in the new contract shape: gate fail →
+    // `decision = { shouldContinue: true, text: message }` (core admits it
+    // as a synthetic steer and continues the turn); gate pass/stand-down →
+    // leave the fail-closed default (abstain). Registered ALONGSIDE the
+    // legacy probe, not replacing it — the same dist keeps working on
+    // mainline builds that lack the new core. No provider scoping: the
+    // event carries no model, so a providerID option would never fire.
+    // `event.continuations` is the pre-increment grant count (core caps at
+    // 2 and goes silent past it without calling voters); local policy stays
+    // tighter-or-equal via the verdict runner's own max_blocks/stand-down,
+    // never fighting the core cap — expect silence after 2 grants.
+    // DEFENSIVE: "experimental.stopping" is not in SessionHooks on released
+    // cores; fires only on builds dispatching it. Same any-cast pattern as
+    // §1b (the only two in src/).
+    try {
+      trackRegistration(
+        // biome-ignore lint/suspicious/noExplicitAny: defensive stopping probe, not in SessionHooks on released cores
+        await (ctx.session as any).hook(
+          "experimental.stopping",
+          // biome-ignore lint/suspicious/noExplicitAny: core dispatches a single mutable event
+          async (event: any) => {
+            if (activeState !== state) return;
+            // Core always dispatches a single mutable event object; a
+            // non-object would leave the grant with nowhere to land, so bail
+            // (fail-closed is the core's job on malformed dispatch).
+            if (event === null || typeof event !== "object") return;
+            const vote = event as Partial<ExperimentalStoppingEvent>;
+            const sessionID: string = vote.sessionID ?? getEventSessionID(event) ?? "unknown";
+            await recordStopLevel(state, "experimental.stopping");
+            await reloadConfigIfChanged(state);
+            if (state.config.profile === "off") return;
+            const verdict = await runCompletion(state, sessionID);
+            const message = await actOnVerdict(state, verdict);
+            await safeLog(state, "info", "experimental.stopping vote", {
+              sessionID,
+              step: vote.step,
+              continuations: vote.continuations,
+              decision: verdict.decision,
+            });
+            if (message !== null) {
+              (event as ExperimentalStoppingEvent).decision = {
+                shouldContinue: true,
+                text: message,
+              };
+            }
+          },
+        ),
+      );
+      await safeLog(
+        state,
+        "info",
+        "registered experimental.stopping hook; if this OpenCode build dispatches it, gate failures continue the turn with steer text",
+      );
+    } catch {
+      await safeLog(
+        state,
+        "warn",
+        "could not register experimental.stopping hook; legacy stopping probe and session.idle re-prompt remain",
       );
     }
 

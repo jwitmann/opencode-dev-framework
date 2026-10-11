@@ -27,7 +27,9 @@ reimplemented as an OpenCode-native plugin.
   cadence. On failure inside `gate.max_blocks` the plugin re-prompts the session with
   the failure summary. On OpenCode builds that dispatch the `session.stopping` hook
   (PR #44712) the same verdict vetoes loop exit *before* the agent stops — a true hard
-  stop; `/df-status` shows which mode is active.
+  stop — and on builds with the V2 `experimental.stopping` hook the failure continues
+  the turn with steer text instead; `/df-status` shows which mode is active
+  (idle-fallback → legacy probe → new hook).
 - **Pre-flight gate (optional).** When a `preflight:` task list is configured, edit
   tools are **denied** (standard/strict) until the agent writes its pre-flight findings
   to `.opencode/opencode-dev-framework/preflight.md`. Use it for work that requires
@@ -65,7 +67,7 @@ How each mechanism is enforced on OpenCode `v2` (verified on `v2.0.26`):
 | Pre-flight gate | `tool.execute.before` deny | — | **Hard block** on every build: the edit never lands. |
 | Protected paths + dangerous commands | `tool.execute.before` deny/throw | `permission.evaluate` native layer (deny) | **Hard block** via the backstop; the native layer is defense-in-depth (the pipeline runs before-hooks first, so it only sees calls the backstop passed). |
 | Per-edit lint | `tool.execute.after` track + lint | `filesystem.changed` event (this release) | Report-only: the edit already landed, so failures log loudly but never throw. |
-| Completion gate | `session.idle` re-prompt via `session.prompt` | `session.stopping` hard-stop veto, if the core dispatches it | **Async, bounded** by `gate.max_blocks` (re-prompt, not a veto); hard stop only on builds with core support. `/df-status` shows which mode is active. |
+| Completion gate | `session.idle` re-prompt via `session.prompt` | `session.stopping` hard-stop veto / `experimental.stopping` turn-continuation, if the core dispatches either | **Async, bounded** by `gate.max_blocks` (re-prompt, not a veto); hard stop / continuation only on builds with core support. `/df-status` shows which mode is active. |
 
 ## Install
 
@@ -229,8 +231,9 @@ itself).
   `session.stopping` veto (PR #44712 is open; the earlier PR #41811 was never merged),
   so on failure inside `gate.max_blocks` the plugin re-prompts via
   `ctx.session.prompt()` from the `session.idle` event. The plugin still registers the
-  `session.stopping` hook defensively: on builds that dispatch it, the same verdict
-  vetoes loop exit before the agent stops — a true hard stop. `/df-status` shows which
+  `session.stopping` hook defensively — and the V2 `experimental.stopping` hook
+  alongside it: on builds that dispatch either, the same verdict
+  vetoes loop exit / continues the turn before the agent stops. `/df-status` shows which
   mode is active. Until then, the user can always close the session, so treat the gate
   as the strongest available enforcement, not an unbreakable lock. The **pre-flight**
   gate, by contrast, is a genuine hard block on every build: it denies edit tools in

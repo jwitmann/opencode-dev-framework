@@ -846,6 +846,27 @@ idle gate it never re-prompts.
   `format:check` had passed, cause unknown), then pushed release commit
   `7f84b81` with tag `v0.3.0`; CI publishes to npm from the tag.
 
+## Phase 29 notes (`experimental.stopping` dogfood, 2026-10-11)
+
+- Consumer probe for the fork's V2 hook (`feat/experimental-session-stopping`,
+  `d6389406a0`; contract `01-design.md` §4, read-only ground truth in
+  `~/opencode` + `~/opencode-session-stopping`). Working repo is this
+  framework repo on its own branch; the fork is never touched from here.
+- `grep "as any" src/` = 2 hits now (was 1): the legacy `stopping` probe
+  (§1b) + the new `experimental.stopping` probe (§1c). Both stay until the
+  SDK types the hook — typing either away would silently drop the
+  registration on the core that dispatches it.
+- Two code-vs-design deviations already committed in the fork core (do NOT
+  "fix" from here): the vote's `step` is a dedicated `executedSteps`
+  counter, not `step - 1`; the durable-counter reset runs on `!continuing`
+  alone, not `!force && !continuing` (`session.resume` starts forced
+  drains).
+- Enforcement levels in `/df-status`: none (config-only) → idle-fallback →
+  legacy probe → new hook. Kind is monotonic in memory + storage; legacy
+  `true` flag values read back as the old level.
+- Live validation (§5 of plan 10) status: recorded when run — receipts go
+  to the upstream PR/dogfood note, not into the plan.
+
 ## References
 
 - OpenCode plugin docs: <https://opencode.ai/docs/plugins>

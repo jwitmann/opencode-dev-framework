@@ -59,14 +59,21 @@ describe("constitution injection on title hook (Phase 22)", () => {
     return { ctx, sessionHooks, toolHooks, disposers };
   }
 
-  it("registers context, generate, compaction, title, stopping and execute.before hooks", async () => {
+  it("registers context, generate, compaction, title, stopping, experimental.stopping and execute.before hooks", async () => {
     const { ctx, sessionHooks, toolHooks } = createMockCtx();
     const mod = plugin as unknown as { setup: (c: unknown) => Promise<unknown> };
 
     const cleanup = (await mod.setup(ctx)) as () => Promise<void> | void;
     expect(typeof cleanup).toBe("function");
 
-    for (const name of ["context", "generate", "compaction", "title", "stopping"]) {
+    for (const name of [
+      "context",
+      "generate",
+      "compaction",
+      "title",
+      "stopping",
+      "experimental.stopping",
+    ]) {
       expect(sessionHooks.has(name), `session hook ${name} registered`).toBe(true);
     }
     expect(toolHooks.has("execute.before")).toBe(true);
