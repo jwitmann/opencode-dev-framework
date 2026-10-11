@@ -16,6 +16,8 @@ committed there.
 ## 2. Ground truth (read-only, in `~/opencode`)
 
 - Branch `feat/experimental-session-stopping`, commit `d6389406a0`.
+- Upstream PR (canonical home — branch/commit/design pointers below are
+  the validation-time snapshot): <https://github.com/anomalyco/opencode/pull/54487>.
 - Contract: `docs/01-design.md` §4 in
   `/home/jerome/opencode-session-stopping/docs/01-design.md`
   (hook name `experimental.stopping`, single mutable event).

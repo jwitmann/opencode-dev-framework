@@ -508,7 +508,8 @@ stayed registered — every subsequent tool call threw permanently
 
 ## Phase 29 — `experimental.stopping` dogfood (§13.6, plan 10)
 
-Dogfood the fork's V2 pre-terminal hook (branch
+Dogfood the fork's V2 pre-terminal hook (upstream PR
+<https://github.com/anomalyco/opencode/pull/54487>; branch
 `feat/experimental-session-stopping`, commit `d6389406a0`; contract
 `01-design.md` §4): register `experimental.stopping` ALONGSIDE the legacy
 `stopping` probe — same dist works on mainline builds.

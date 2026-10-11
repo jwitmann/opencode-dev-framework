@@ -848,6 +848,9 @@ idle gate it never re-prompts.
 
 ## Phase 29 notes (`experimental.stopping` dogfood, 2026-10-11)
 
+Upstream PR: <https://github.com/anomalyco/opencode/pull/54487>
+(`anomalyco/opencode#54487`).
+
 - Consumer probe for the fork's V2 hook (`feat/experimental-session-stopping`,
   `d6389406a0`; contract `01-design.md` §4, read-only ground truth in
   `~/opencode` + `~/opencode-session-stopping`). Working repo is this

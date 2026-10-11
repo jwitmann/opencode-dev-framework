@@ -1,5 +1,8 @@
 # Handover: `experimental.stopping` fork PR (from framework dogfood)
 
+Upstream PR: <https://github.com/anomalyco/opencode/pull/54487>
+(`anomalyco/opencode#54487`, open, targeting `dev`).
+
 Consumer-side validation is DONE and released. This note hands everything
 the fork session needs to write the upstream PR for
 `feat/experimental-session-stopping` (`d6389406a0`, fork HEAD verified
