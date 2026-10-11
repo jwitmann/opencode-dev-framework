@@ -527,8 +527,14 @@ Dogfood the fork's V2 pre-terminal hook (branch
   fail→grant, pass→abstain, pre-increment observed + local max_blocks
   stand-down, legacy mapping, monotonicity, status levels, store
   round-trip); smoke/title registration lists extended.
-- [ ] 29.5 Live validation on the fork (`bun dev ~/animeRSS`, break
-  typecheck): block→continue, pass→exit, 2-grant cap silence + receipts.
+- [x] 29.5 Live validation on the fork (standalone fork server in
+  `~/animeRSS`, break typecheck via untracked `dogfood-stopping/` scratch
+  file): block→continue, pass→exit, 2-grant cap silence + receipts —
+  done 2026-10-11, model `kimi-code-plan-global/kimi-for-coding`, full
+  receipts in `docs/plans/08-notes.md` ("§13.6 dogfood receipts").
+  Fork auth prerequisite: `OPENCODE_DISABLE_CHANNEL_DB=1` so the fork
+  uses the shared `opencode.db` (its `channel=local` otherwise isolates
+  it on an empty `opencode-local.db` with no provider connections).
 - [ ] 29.6 Peer-review skill gate; commit on a framework-repo branch.
 
 ## Phase 28 — Effect-API rewrite (post-process, UNSCHEDULED)

@@ -867,6 +867,39 @@ idle gate it never re-prompts.
 - Live validation (§5 of plan 10) status: recorded when run — receipts go
   to the upstream PR/dogfood note, not into the plan.
 
+### §13.6 dogfood receipts (2026-10-11, fork standalone + `~/animeRSS`)
+
+- Model `kimi-code-plan-global/kimi-for-coding`, agent `build`, runs via
+  `run --standalone --print-logs` (`--print-logs` is what captures server
+  logs/vote lines; without it only the agent transcript lands in the log).
+  Scratch break: untracked `dogfood-stopping/dogfood.go` (`int` vs
+  `string`), deleted after validation; `go build ./...` green again.
+- Run A (block→continue→rework→pass): main session
+  `continuations:0 decision:blocked step:4` (grant, turn continued) →
+  agent fixed scratch + verified build → `continuations:1
+  decision:pass` (abstain, natural exit). Same 0→1 shape in spawned
+  subagent sessions. `RUN EXIT:0`.
+- Run B (persistent failure, report-only, no subagents): single session,
+  `continuations:0 blocked step:2` → `continuations:1 blocked step:3` →
+  third stop silent (no vote line — core cap, voters not called) →
+  `RUN EXIT:0`. Exactly the 2-grant-then-silence contract.
+- Legacy `stopping` probe stayed registered-but-silent on the fork (2/2
+  vote lines both `experimental.stopping`); same dist keeps working on
+  mainline where only the legacy hook exists.
+
+### Fork auth prerequisite (found the hard way)
+
+- The fork run via `bun dev` reports `channel=local`, so
+  `database-path.ts` isolates it on `opencode-local.db` (6 MB, empty)
+  while the installed builds use `opencode.db` (18 GB, all connections).
+  Credentials live in the DB (`CredentialTable`), so the fork saw 23
+  models and `Model unavailable` for subscription providers — same
+  version, same `auth.json`, same directory.
+- Fix: `OPENCODE_DISABLE_CHANNEL_DB=1` → fork uses the shared
+  `opencode.db` → 117 models, identical to mainline. Console dynamic
+  providers (`kimi-code-plan-global`, `opencode-go`) are backend-issued
+  entitlements, not fork source — no fork change needed or wanted.
+
 ## References
 
 - OpenCode plugin docs: <https://opencode.ai/docs/plugins>
