@@ -69,10 +69,12 @@ entitlements, not fork source.
    not auth; subscription entitlements are withheld the same way for
    `channel=local` builds (see DB note above — separate mechanism,
    same symptom family).
-3. Known core deviations (already committed in the fork, do not "fix"
+3. Known core deviation (already committed in the fork, do not "fix"
    from the consumer side): vote `step` is a dedicated `executedSteps`
-   counter, not `step - 1`; durable-counter reset runs on `!continuing`
-   alone, not `!force && !continuing`.
+   counter, not `step - 1`. (A second deviation noted earlier —
+   durable-counter reset gated on `!continuing` alone — is gone:
+   `6d6e841e91` reworked the counter to be drain-owned, carried across
+   reloads/moves, with no entry vote.)
 
 ## Open items (fork session's job)
 

@@ -856,11 +856,12 @@ idle gate it never re-prompts.
   (§1b) + the new `experimental.stopping` probe (§1c). Both stay until the
   SDK types the hook — typing either away would silently drop the
   registration on the core that dispatches it.
-- Two code-vs-design deviations already committed in the fork core (do NOT
+- One code-vs-design deviation committed in the fork core (do NOT
   "fix" from here): the vote's `step` is a dedicated `executedSteps`
-  counter, not `step - 1`; the durable-counter reset runs on `!continuing`
-  alone, not `!force && !continuing` (`session.resume` starts forced
-  drains).
+  counter, not `step - 1`. (A second deviation noted earlier —
+  durable-counter reset on `!continuing` alone — was reworked away in
+  fork `6d6e841e91`: the counter is now drain-owned, carried across
+  reloads/moves, with no entry vote.)
 - Enforcement levels in `/df-status`: none (config-only) → idle-fallback →
   legacy probe → new hook. Kind is monotonic in memory + storage; legacy
   `true` flag values read back as the old level.
