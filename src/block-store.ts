@@ -46,8 +46,15 @@ function asStopKind(value: unknown): StopHookKind | null {
   return null;
 }
 
-function rank(kind: StopHookKind): number {
+function stopKindRank(kind: StopHookKind): number {
   return kind === "experimental.stopping" ? 1 : 0;
+}
+
+/** Monotonic max: a third hook level later only touches this function. */
+function maxStopKind(current: StopHookKind | null, next: StopHookKind | null): StopHookKind | null {
+  if (current === null) return next;
+  if (next === null) return current;
+  return stopKindRank(next) > stopKindRank(current) ? next : current;
 }
 
 /** Accept only sane counts; anything else (foreign/corrupt value) is treated as missing. */
@@ -101,33 +108,18 @@ export function createBlockStore(
   }
 
   async function readStopKind(): Promise<StopHookKind | null> {
-    if (stopMemory !== null) {
-      // Memory already holds a level, but storage may hold a higher one
-      // written by a newer setup sharing the backend — take the max.
-      if (storage == null) return stopMemory;
+    // Single read-through: memory holds a level, but storage may hold a
+    // higher one written by a newer setup sharing the backend — take the max.
+    if (storage != null) {
       try {
-        const stored = asStopKind(await storage.get(STOP_SUPPORTED_KEY));
-        if (stored !== null && rank(stored) > rank(stopMemory)) {
-          stopMemory = stored;
-        }
-        return stopMemory;
+        stopMemory = maxStopKind(stopMemory, asStopKind(await storage.get(STOP_SUPPORTED_KEY)));
       } catch {
         degraded = true;
-        return stopMemory;
       }
     }
-    if (storage == null) return null;
-    try {
-      const stored = asStopKind(await storage.get(STOP_SUPPORTED_KEY));
-      if (stored !== null) {
-        stopMemory = stored;
-      }
-      return stored;
-    } catch {
-      degraded = true;
-      return null;
-    }
+    return stopMemory;
   }
+
   async function writeCount(sessionID: string, count: number): Promise<void> {
     counts.set(sessionID, count);
     if (storage == null) return;
@@ -166,16 +158,14 @@ export function createBlockStore(
       return readStopKind();
     },
     async setStopSupported(kind: StopHookKind = "stopping"): Promise<void> {
-      // Monotonic: never downgrade a recorded new-hook level.
-      if (stopMemory !== null && rank(stopMemory) >= rank(kind)) {
-        kind = stopMemory;
-      } else {
-        stopMemory = kind;
-      }
+      // Monotonic: never downgrade a recorded new-hook level. The storage
+      // read is required, not redundant — without it a fresh process would
+      // blind-write its own (possibly lower) level over a stored higher one.
+      stopMemory = maxStopKind(stopMemory, kind) ?? kind;
       if (storage == null) return;
       try {
-        const stored = asStopKind(await storage.get(STOP_SUPPORTED_KEY));
-        const next = stored !== null && rank(stored) >= rank(kind) ? stored : kind;
+        const next =
+          maxStopKind(asStopKind(await storage.get(STOP_SUPPORTED_KEY)), stopMemory) ?? kind;
         stopMemory = next;
         await storage.set(STOP_SUPPORTED_KEY, next);
       } catch {

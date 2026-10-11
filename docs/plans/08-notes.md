@@ -900,6 +900,38 @@ idle gate it never re-prompts.
   providers (`kimi-code-plan-global`, `opencode-go`) are backend-issued
   entitlements, not fork source — no fork change needed or wanted.
 
+### Peer-review dispositions (3-specialist pass, 2026-10-11 — no Blocking)
+
+- Fixed: §1c voter body wrapped in try/catch → any internal failure
+  abstains (fail-closed default untouched), never throws into core; new
+  test pins it (throwing `step` getter → resolves, decision unchanged).
+  Fail-before verified by construction (pre-fix the voter had no catch).
+  §1b left as-is (pre-existing shape, validated legacy path — same
+  justification pattern as the fork's own intentional deviations).
+- Fixed: `sessionID` non-string guard in §1c; `maxStopKind` single helper
+  with collapsed `readStopKind` read-through; `stopKindRank` rename;
+  `continuationMessage` doc now names all three paths; plan-10 line ref
+  de-pinned (§1b marker).
+- Reviewer note checked and REJECTED: "revert to blind storage write" —
+  the read is required for cross-restart monotonicity; a fresh process
+  blind-writing its own lower level would downgrade a stored higher one.
+- Reviewer note checked and dropped: "redundant `?` + default" — the `?`
+  lives only on the interface (correct), the impl already omits it.
+- Deferred (follow-ups, not this phase): one shared gate-verdict helper
+  across §1b/§1c/idle (independent paths are defense-in-depth — one
+  shared bug would kill all three enforcement levels at once);
+  `tests/helpers.ts` extraction + moving store cases to
+  `block-store.test.ts` (test-only churn, pre-existing copy idiom);
+  `format-status` impossible-state branch, `HookState` shape fork,
+  per-test `fire` helper, `disposers` plumbing.
+- Latent-only, no action: concurrent-vote TOCTOU (cosmetic status label),
+  double block-count if a future core dispatches both hooks, `/df-status`
+  lag on shared backends, per-vote full-gate cost (bounded by the 2-grant
+  cap), flag-recorded-while-`off` (capability vs policy, pre-existing).
+- Rollback note: pre-Phase-27 dists read the persisted stop level only as
+  `true`; rolling back loses the string level (reads as unsupported).
+  Forward migration (`true` → `"stopping"`) is handled.
+
 ## References
 
 - OpenCode plugin docs: <https://opencode.ai/docs/plugins>

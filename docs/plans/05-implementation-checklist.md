@@ -535,7 +535,9 @@ Dogfood the fork's V2 pre-terminal hook (branch
   Fork auth prerequisite: `OPENCODE_DISABLE_CHANNEL_DB=1` so the fork
   uses the shared `opencode.db` (its `channel=local` otherwise isolates
   it on an empty `opencode-local.db` with no provider connections).
-- [ ] 29.6 Peer-review skill gate; commit on a framework-repo branch.
+- [x] 29.6 Peer-review skill gate (3 specialists, no Blocking; 1 real
+  Should-fix fixed + tested, rest fixed-or-justified in `08-notes.md`);
+  committed on a framework-repo branch (`feat/experimental-stopping-dogfood`).
 
 ## Phase 28 — Effect-API rewrite (post-process, UNSCHEDULED)
 

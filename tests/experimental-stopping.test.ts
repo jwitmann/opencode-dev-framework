@@ -218,6 +218,25 @@ gate:
     expect(second.decision).toEqual({ shouldContinue: false });
   });
 
+  it("voter failure abstains without rejecting (never throws into core)", async () => {
+    const { sessionHooks } = await setupWith(FAILING_YML);
+    const hook = sessionHooks.get("experimental.stopping");
+    expect(hook).toBeDefined();
+    const fire = hook as (event: unknown) => Promise<void>;
+
+    // The gate itself blocks (FAILING_YML), but reading the vote blows up
+    // mid-voter — the probe must abstain (fail-closed default untouched)
+    // and resolve, never propagate into core.
+    const event = vote("voter-error-s1");
+    Object.defineProperty(event, "step", {
+      get() {
+        throw new Error("core field boom");
+      },
+    });
+    await expect(fire(event)).resolves.toBeUndefined();
+    expect(event.decision).toEqual({ shouldContinue: false });
+  });
+
   it("legacy stopping probe still maps fail → stop=false + message", async () => {
     const { sessionHooks } = await setupWith(FAILING_YML);
     const hook = sessionHooks.get("stopping");

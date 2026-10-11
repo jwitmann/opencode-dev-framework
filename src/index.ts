@@ -147,9 +147,10 @@ interface ExperimentalStoppingEvent {
 
 /**
  * Turn a completion verdict into the continuation message fed back to the
- * agent when blocked. Shared by the `session.stopping` hard-stop path and
- * the `session.idle` re-prompt fallback so wording (and block counting) is
- * identical on either core support level.
+ * agent when blocked. Shared by the `session.stopping` hard-stop path, the
+ * `experimental.stopping` continuation vote, and the `session.idle`
+ * re-prompt fallback so wording (and block counting) is identical on every
+ * core support level.
  */
 function continuationMessage(verdict: Extract<CompletionVerdict, { decision: "blocked" }>): string {
   const why =
@@ -503,23 +504,42 @@ const plugin = Plugin.define({
             // (fail-closed is the core's job on malformed dispatch).
             if (event === null || typeof event !== "object") return;
             const vote = event as Partial<ExperimentalStoppingEvent>;
-            const sessionID: string = vote.sessionID ?? getEventSessionID(event) ?? "unknown";
-            await recordStopLevel(state, "experimental.stopping");
-            await reloadConfigIfChanged(state);
-            if (state.config.profile === "off") return;
-            const verdict = await runCompletion(state, sessionID);
-            const message = await actOnVerdict(state, verdict);
-            await safeLog(state, "info", "experimental.stopping vote", {
-              sessionID,
-              step: vote.step,
-              continuations: vote.continuations,
-              decision: verdict.decision,
-            });
-            if (message !== null) {
-              (event as ExperimentalStoppingEvent).decision = {
-                shouldContinue: true,
-                text: message,
-              };
+            const sessionID: string =
+              (typeof vote.sessionID === "string" && vote.sessionID) ||
+              getEventSessionID(event) ||
+              "unknown";
+            // Never let a voter failure escape into core: on any error
+            // abstain (leave the fail-closed default) instead of losing the
+            // turn to an undefined core reaction. A throwing voter stops the
+            // turn per the contract — that decision belongs to core, not to
+            // a logging or gate-backend failure inside this probe.
+            try {
+              await recordStopLevel(state, "experimental.stopping");
+              await reloadConfigIfChanged(state);
+              if (state.config.profile === "off") return;
+              const verdict = await runCompletion(state, sessionID);
+              const message = await actOnVerdict(state, verdict);
+              await safeLog(state, "info", "experimental.stopping vote", {
+                sessionID,
+                step: vote.step,
+                continuations: vote.continuations,
+                decision: verdict.decision,
+              });
+              if (message !== null) {
+                (event as ExperimentalStoppingEvent).decision = {
+                  shouldContinue: true,
+                  text: message,
+                };
+              }
+            } catch (error) {
+              try {
+                await safeLog(state, "warn", "experimental.stopping vote failed; abstaining", {
+                  sessionID,
+                  error: error instanceof Error ? error.message : String(error),
+                });
+              } catch {
+                // best-effort only — the abstain itself must not throw
+              }
             }
           },
         ),

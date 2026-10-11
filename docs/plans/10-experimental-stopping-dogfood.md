@@ -47,7 +47,7 @@ interface SessionStopping {
 
 ## 3. Current state (this repo)
 
-- `src/index.ts:387-437` (§1b) registers a defensive `"stopping"` probe in
+- `src/index.ts` (§1b marker) registers a defensive `"stopping"` probe in
   the **old V1 shape** (`out.stop = false` + `out.message`, PR #44712).
   It is the ONLY `any`-cast in `src/` — deliberate, because the hook is
   not in `SessionHooks` on released cores.
