@@ -117,3 +117,26 @@ model work ends, nothing pending, not mid-continuation
   stays the load-bearing wall. Their OpenCode adapter settled on
   `context`-injection only with no post-response worker — same boundary
   reality our `idle` + subscriber net assumes.
+
+## Portable lessons from #212 (useful, not load-bearing)
+
+- Permission rules are mutable at runtime. A `session-update`-style call can
+  replace the whole ruleset, and a later hook can flip an earlier denial to
+  `allow`. Never trust `permission.evaluate` ordering alone — `execute.before`
+  stays the wall because it runs in the pipeline before the call lands.
+  No code change; confirms Phase 25's conclusion in `08-notes.md`.
+- Installer discipline: journal owned entries, remove only owned entries on
+  uninstall, preserve foreign hooks. Matches `installer.ts` behavior — keep
+  it that way when touching install/update paths.
+- Hook dedup by marker prefix (`startsWith`) is cheaper than full-text
+  `includes()` on every request. Only worth adopting in `context` injection
+  if constitution checks ever show up in profiles; today the cost is noise.
+- Cost calibration from their trials: turn-start refresh ~132s / 18 tool
+  calls with no delta; governed admission ~180s; OpenCode runs hit 6-min
+  bounds without finishing. Our gate has the same shape — keep
+  `skip_unchanged` cheap and the default `timeout` bounded; an expensive
+  gate on every idle is the failure mode to avoid.
+- Detached continuations are unsafe without serialization: their
+  same-session probe got both answers in one stream, so "child exited 0"
+  proves nothing. Another vote for in-drain `synthetic` over detached
+  `prompt` once `idle` ships.
