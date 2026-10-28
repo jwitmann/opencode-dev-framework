@@ -106,27 +106,19 @@ profile from the shell; `df version` prints the plugin version.
 ## Local development and testing
 
 To test the plugin from source without publishing to npm, point OpenCode at the
-local repository path in your project's `opencode.jsonc` **and** in a `tui.json`.
-The TUI module (`/df-status`, `/df-help` modals) is **not** auto-discovered for
-local filesystem paths — it only loads when the package is listed in the TUI
-config. OpenCode reads `tui.json` from the global config dir
-(`~/.config/opencode/tui.json`) and the project dir (`.opencode/tui.json`).
-
-`opencode.jsonc`:
+local repository **root** in your project's `opencode.jsonc`:
 
 ```json
 {
-  "plugins": [{ "package": "/home/jerome/opencode-dev-framework/dist" }]
+  "plugins": [{ "package": "/home/jerome/opencode-dev-framework" }]
 }
 ```
 
-The path must be the package's **`dist/` directory**, not the repository
-root. Verified on OpenCode `v2.0.26`: for local directory entries the server
-resolves the entrypoint as `<dir>/index.js` and ignores `package.json`
-`main`, so a repo-root path fails silently with `Plugin entrypoint not
-found` (visible only via `/plugins` or server logs) and no hook runs at
-all. Rebuild after every source change (`npm run build`) since OpenCode
-loads `dist/index.js` directly:
+The root path resolves through the package's `exports` map, so one entry
+loads **both** parts: the server (`dist/index.js` — hooks, guardrails, gate,
+custom tools) and the TUI (`tui.tsx` — `/df-status`, `/df-help` modals).
+Rebuild after every source change (`npm run build`) since OpenCode loads the
+compiled `dist/` output:
 
 ```bash
 npm run build
@@ -134,10 +126,22 @@ npm run build
 
 ### Important caveats
 
-- Plugin arrays **merge** across config files (global `opencode.jsonc`,
-  project `./opencode.jsonc`, `./.opencode/opencode.jsonc`), so a stale entry
-  in another file adds to — never replaces — the registration above. If a
-  session loads an unexpected plugin source, check all three locations.
+- Register the plugin **exactly once** per project. Plugin arrays **merge**
+  across config files (global `opencode.jsonc`, project `./opencode.jsonc`,
+  `./.opencode/opencode.json[c]`), so a second entry in another file —
+  even one pointing at a different path of the same repo such as `dist/`
+  — loads the same plugin ID twice and the duplicate fails with
+  `Duplicate plugin ID: opencode-dev-framework` (check
+  `opencode api get "/api/plugin?location[directory]=/path/to/project"`).
+  If a session loads an unexpected plugin source, check all three locations.
+- Do **not** point the entry at `dist/` directly: a bare directory without
+  `package.json`/`exports` resolves only the server part, so the TUI
+  commands (`/df-status`, `/df-help`) never load. (On OpenCode `v2.0.x` the
+  entrypoint resolved as `<dir>/index.js` and ignored `package.json`, which
+  is why older revisions of this section recommended `dist/` — verified on
+  `v2.2.0` that the root path resolves correctly through `exports`. The
+  `.opencode/tui.json` listing from that era is likewise no longer needed:
+  one `plugins` entry loads every part.)
 - OpenCode caches downloaded plugins in
   `~/.cache/opencode/packages/opencode-dev-framework*/`. If you previously
   loaded a published version and then switch to a local source, clear that

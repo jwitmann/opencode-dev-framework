@@ -936,6 +936,27 @@ Upstream PR: <https://github.com/anomalyco/opencode/pull/54487>
   `true`; rolling back loses the string level (reads as unsupported).
   Forward migration (`true` → `"stopping"`) is handled.
 
+## Duplicate plugin ID from dual registration (v2.2.0, 2026-10-28)
+
+`~/finnomena`, `~/animeRSS`, and `~/tvmRSS` all failed to load the plugin
+with `Duplicate plugin ID: opencode-dev-framework` (visible via
+`opencode api get "/api/plugin?location[directory]=..."`, NOT in
+`opencode.log` — the server log shows only harmless `loading plugin` lines
+for both entries). Root cause: each project registered the plugin **twice**
+with the same `Plugin.define` id — root `opencode.jsonc` pointed at
+`.../opencode-dev-framework/dist` (per the old README advice) while
+`.opencode/opencode.json` pointed at the repo root. On v2.0.x the
+dist-entry was required (entrypoint resolved as `<dir>/index.js`,
+`package.json` ignored) and the root-entry failed, so the pair was
+accidentally harmless; on v2.2.0 core resolves local directories through
+`package.json` `exports`, so BOTH entries load `dist/index.js` and the
+second fails the ID check. Fix: single entry pointing at the repo root
+(server+TUI via `exports`), duplicate `.opencode/opencode.json` deleted.
+Verified all three locations report one `active` entry with
+`features: {server: true, tui: true}`. README install section rewritten
+accordingly. This was NOT caused by the Bun/Node upgrade — `dist/index.js`
+imports cleanly under Bun 1.4.4.
+
 ## References
 
 - OpenCode plugin docs: <https://opencode.ai/docs/plugins>
