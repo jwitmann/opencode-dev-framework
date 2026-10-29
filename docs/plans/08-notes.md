@@ -993,6 +993,15 @@ proven broken — phpstan degrades gracefully via autoloading where golangci
 hard false-positives — so the default stands and `{dir}` is available if a
 PHP user proves otherwise.
 
+## `/df-status` dialog polish (2026-10-29)
+
+Two TUI-only fixes, same dialog: the message duplicated the dialog title
+(`renderConfigStatus` header vs `title` — stripped the header, shared
+renderer untouched for the tool path) and long content got no presentation
+hint (status + verify now request `large` + `centered`; position and
+scrolling stay core-owned — needs eyeball confirmation, fallback is a custom
+`dialog.show()` layout).
+
 ## `/df-runtime` + runtime-status snapshot (2026-10-29)
 
 `/df-status` is config-only by construction: the TUI frontend runs in a
