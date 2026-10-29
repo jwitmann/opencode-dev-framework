@@ -18,18 +18,20 @@ reimplemented as an OpenCode-native plugin.
 - **Per-edit lint.** Runs your configured linter on each file the agent edits
   and reports failures loudly. Optionally delegates per-file linting to
   `pre-commit run --files` when `precommit: auto` is set.
-- **Completion gate.** When the session goes idle (`session.idle`/`session.status:idle`),
-  runs typecheck, tests, and (optionally) lint on changed files — changed files are
+- **Completion gate.** At the would-go-idle boundary (`session.hook("experimental.idle")`,
+  with an `idle` alias registered for a future rename), runs typecheck, tests,
+  and (optionally) lint on changed files — changed files are
   tracked from edit events and cross-checked against `git status`, so the gate cannot
   silently skip due to an event-shape mismatch. In `standard`/`strict`, sessions that
   changed files must also produce a **peer-review artifact**
   (`.opencode/opencode-dev-framework/review.md`) covering the delegation rule's review
-  cadence. On failure inside `gate.max_blocks` the plugin re-prompts the session with
-  the failure summary. On OpenCode builds that dispatch the `session.stopping` hook
-  (PR #44712) the same verdict vetoes loop exit *before* the agent stops — a true hard
-  stop — and on builds with the V2 `experimental.stopping` hook the failure continues
-  the turn with steer text instead; `/df-status` shows which mode is active
-  (idle-fallback → legacy probe → new hook).
+  cadence. On failure inside `gate.max_blocks` the plugin admits a synthetic
+  continuation in the same execution with the failure summary. The
+  `event.subscribe` idle net catches the boundaries the hook skips
+  (interruption, failure, steer-parked drains) — deduped so one boundary never
+  runs the gate twice, synthetic-first with `prompt` only as fallback.
+  `/df-status` shows `Continuation (idle): active` once the hook has completed
+  an evaluation, else the event-subscribe fallback.
 - **Pre-flight gate (optional).** When a `preflight:` task list is configured, edit
   tools are **denied** (standard/strict) until the agent writes its pre-flight findings
   to `.opencode/opencode-dev-framework/preflight.md`. Use it for work that requires
@@ -60,14 +62,15 @@ reimplemented as an OpenCode-native plugin.
 
 ## Enforcement layers
 
-How each mechanism is enforced on OpenCode `v2` (verified on `v2.0.26`):
+How each mechanism is enforced on OpenCode `v2` (idle hook landed via
+[`anomalyco/opencode#59437`](https://github.com/anomalyco/opencode/pull/59437)):
 
 | Mechanism | Primary layer | Backstop / fallback | Strength |
 | --------- | ------------- | ------------------- | -------- |
 | Pre-flight gate | `tool.execute.before` deny | — | **Hard block** on every build: the edit never lands. |
 | Protected paths + dangerous commands | `tool.execute.before` deny/throw | `permission.evaluate` native layer (deny) | **Hard block** via the backstop; the native layer is defense-in-depth (the pipeline runs before-hooks first, so it only sees calls the backstop passed). |
 | Per-edit lint | `tool.execute.after` track + lint | `filesystem.changed` event (this release) | Report-only: the edit already landed, so failures log loudly but never throw. |
-| Completion gate | `session.idle` re-prompt via `session.prompt` | `session.stopping` hard-stop veto / `experimental.stopping` turn-continuation ([upstream PR](https://github.com/anomalyco/opencode/pull/54487)), if the core dispatches either | **Async, bounded** by `gate.max_blocks` (re-prompt, not a veto); hard stop / continuation only on builds with core support. `/df-status` shows which mode is active. |
+| Completion gate | `session.hook("experimental.idle")` (+ `idle` alias) → `session.synthetic` (same execution) | `event.subscribe` idle net for the boundaries the hook skips (deduped; synthetic-first, `prompt` fallback) | **Async, bounded** by `gate.max_blocks`. `/df-status` shows `Continuation (idle): active` vs the event-subscribe fallback. `execute.before` stays the only true hard wall. |
 
 ## Install
 
@@ -231,14 +234,16 @@ itself).
 
 ## Limitations
 
-- **Post-flight enforcement depends on core support.** OpenCode v2.0.12 has no
-  `session.stopping` veto (PR #44712 is open; the earlier PR #41811 was never merged),
-  so on failure inside `gate.max_blocks` the plugin re-prompts via
-  `ctx.session.prompt()` from the `session.idle` event. The plugin still registers the
-  `session.stopping` hook defensively — and the V2 `experimental.stopping` hook
-  alongside it: on builds that dispatch either, the same verdict
-  vetoes loop exit / continues the turn before the agent stops. `/df-status` shows which
-  mode is active. Until then, the user can always close the session, so treat the gate
+- **Post-flight enforcement is a same-execution continuation, not a veto.**
+  At the would-go-idle boundary the `experimental.idle` hook (landed via
+  [`anomalyco/opencode#59437`](https://github.com/anomalyco/opencode/pull/59437))
+  runs the gate, and on failure inside `gate.max_blocks` admits a synthetic
+  continuation in the same execution. The `event.subscribe` idle net covers
+  the boundaries the hook skips (interruption, failure, steer-parked drains),
+  deduped so one boundary never runs the gate twice. On builds without the
+  hook only the net applies. `/df-status` shows which lever completed an
+  evaluation (`Continuation (idle): active` vs the event-subscribe fallback).
+  The user can always close the session, so treat the gate
   as the strongest available enforcement, not an unbreakable lock. The **pre-flight**
   gate, by contrast, is a genuine hard block on every build: it denies edit tools in
   `tool.execute.before`, before the edit lands.

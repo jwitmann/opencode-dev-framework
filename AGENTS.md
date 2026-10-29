@@ -12,9 +12,16 @@ The plugin provides:
   style-guide auto-discovery.
 - Protected-path guardrails and dangerous-command blocking (`tool.hook("execute.before")`).
 - Per-edit lint feedback, with optional `pre-commit` delegation (`event.subscribe` on `filesystem.changed`).
-- A completion gate (tests / type-check / lint) that runs on `session.idle`/`session.status:idle` and, on failure inside `gate.max_blocks`, re-prompts the session via `session.prompt` (V2 async replacement for `session.stopping`).
+- A completion gate (tests / type-check / lint) that runs at the would-go-idle
+  boundary (`session.hook("experimental.idle")`, same execution via
+  `session.synthetic`) with an `event.subscribe` idle net for the boundaries
+  the hook skips — on failure inside `gate.max_blocks`, admits a synthetic
+  continuation (synthetic-first, `prompt` only as fallback).
 
-In V2 there is no synchronous `session.stopping` veto — the gate is **async re-injection**, not a hard block. `gate.max_blocks` is plugin-owned (no core 3-cap). See `docs/plans/08-notes.md`.
+There is no synchronous pre-stop veto — the gate continues the turn via
+`synthetic` at the idle boundary (same execution), with the event net as
+fallback for skip paths. `gate.max_blocks` is plugin-owned (no core 3-cap).
+See `docs/plans/12-idle-hook-cutover.md` and `docs/plans/04-hook-mapping.md`.
 
 ## Tech stack
 
@@ -99,14 +106,12 @@ OpenCode loads the plugin via Bun at runtime, but all development and CI on this
 ### Don't
 
 - Don't rewrite `opencode.json` automatically from the plugin.
-- Don't claim the completion gate can hard-block OpenCode from finishing on
-  current v2 releases. Up to v2.0.12 there is no `session.stopping` veto in
-  core (PR #44712 open, PR #41811 closed unmerged) — the gate re-prompts via
-  `session.prompt` on `session.idle`/`session.status:idle` up to
-  `gate.max_blocks` (plugin-owned, no core 3-cap), but it is **async
-  re-injection**, not a hard veto — the user can still close the session. The
-  plugin registers `session.stopping` defensively and upgrades to a hard stop
-  automatically on builds that dispatch it (see `/df-status`). The
+- Don't claim the completion gate can hard-block OpenCode from finishing.
+  The gate continues the turn via `synthetic` at the idle boundary (same
+  execution), bounded by `gate.max_blocks` (plugin-owned, no core 3-cap) —
+  it is a **bounded continuation**, not a veto, and the user can still close
+  the session. The `event.subscribe` idle net covers the boundaries the hook
+  skips (see `/df-status` `Continuation (idle)`). The
   **pre-flight** gate, by contrast, genuinely hard-blocks: it denies edit
   tools in `tool.execute.before` before the edit lands.
 - Don't add heavy dependencies without discussing.

@@ -1,4 +1,4 @@
-# Cutover: `idle`-first continuation (DECIDED, NOT IMPLEMENTED)
+# Cutover: `idle`-first continuation (IMPLEMENTED in `ee47e3a`)
 
 Date: 2026-10-27. Working directory: this repo (`~/opencode-dev-framework`).
 No code changes in this note. Commit locally; never push without request.
@@ -17,7 +17,8 @@ probes:
   unchanged.
 
 Do NOT implement against the draft. Implement against the landed hook
-(see "Landing" below). Implementation still needs an explicit go.
+(see "Landing" below). Implemented in `ee47e3a`; the spec below is the
+record.
 
 ## Landing (verified 2026-10-29 from upstream `dev`)
 
@@ -85,7 +86,7 @@ model work ends, nothing pending, not mid-continuation
   → edits: execute.before pre-flight deny (true hard wall, unaffected)
 ```
 
-## Cut spec (execute on explicit go; precondition already met via #59437)
+## Cut spec (executed in `ee47e3a`; record — precondition met via #59437)
 
 1. `src/index.ts` — delete §1b `stopping` probe + §1c
    `experimental.stopping` probe, `StoppingOutput` /
@@ -109,7 +110,7 @@ model work ends, nothing pending, not mid-continuation
 5. `src/format-status.ts` + `src/registry.ts` — status lines become
    `Continuation (idle): active` vs
    `Continuation (idle): not dispatched — event-subscribe fallback`.
-6. `src/harness.ts`, `src/gate.ts` — no changes. The verdict runner already
+6. `src/harness.ts`, `src/gate.ts` — comment-only changes. The verdict runner already
    satisfies "plugin bounds its own loop".
 7. `docs/plans/04-hook-mapping.md` — update the Completion-gate row:
    `session.hook("experimental.idle")` primary (synthetic, same execution, bounded by
@@ -126,13 +127,14 @@ model work ends, nothing pending, not mid-continuation
 
 ## Tests (vitest, existing harness style)
 
-- Remove stopping-vote mocks; mock `session.hook("idle")` + `session.synthetic`.
+- Remove stopping-vote mocks; mock `session.hook("experimental.idle")` (+ `idle`
+  alias) + `session.synthetic`.
 - `blocked → synthetic called with continuationMessage, blockCount+1`.
 - `pass → no synthetic, counts cleared`.
 - `hook throws → no synthetic, no handled-stamp` (subscriber must run).
 - `subscriber skips when stamp fresh, runs when stale/absent`.
-- Keep `tests/experimental-stopping.test.ts` until the cut lands, then delete
-  with the probes (note the deletion in the cut commit message).
+- `tests/experimental-stopping.test.ts` deleted in the cut; replaced by
+  `tests/idle-continuation.test.ts` (7 tests, fail-before proven).
 
 ## Independent corroboration
 
