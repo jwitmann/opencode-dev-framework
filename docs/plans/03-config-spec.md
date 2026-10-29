@@ -40,7 +40,7 @@ Commands are strings. They may contain substitution tokens.
 | `commands.test` | Full test command. | `{files}` expands to changed files if used. |
 | `commands.typecheck` | Type-check command. | — |
 | `commands.format` | Default formatter for edited files. | `{file}` expands to the edited file path. |
-| `commands.lint` | Default linter for edited files. | `{file}` expands to the edited file path. |
+| `commands.lint` | Default linter for edited files. | `{file}` expands to the edited file path, `{dir}` to its directory (package context for directory-scoped linters like `golangci-lint`). |
 | `commands.test_changed` | Scoped test command when `gate.scope` is `changed`. | `{files}` expands to changed files. |
 
 Per-extension overrides:
@@ -51,7 +51,7 @@ commands:
     .go: gofumpt -w {file}
     .py: ruff format {file}
   lint:
-    .go: golangci-lint run {file}
+    .go: golangci-lint run {dir}
     .py: ruff check {file}
 ```
 
@@ -234,7 +234,7 @@ commands:
   format:
     .go: gofumpt -w {file}
   lint:
-    .go: golangci-lint run {file}
+    .go: golangci-lint run {dir}
 
 protect:
   - .env*

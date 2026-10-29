@@ -98,7 +98,7 @@ export function detectProject(directory: string): DetectionResult {
     result.commands.test = "go test ./...";
     result.commands.typecheck = "go build ./...";
     result.commands.format = "gofumpt -w {file}";
-    result.commands.lint = "golangci-lint run {file}";
+    result.commands.lint = "golangci-lint run {dir}";
     return result;
   }
 

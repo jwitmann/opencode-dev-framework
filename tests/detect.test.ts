@@ -44,7 +44,7 @@ describe("detectProject", () => {
     expect(result.language).toBe("go");
     expect(result.commands.test).toBe("go test ./...");
     expect(result.commands.typecheck).toBe("go build ./...");
-    expect(result.commands.lint).toBe("golangci-lint run {file}");
+    expect(result.commands.lint).toBe("golangci-lint run {dir}");
   });
 
   it("detects Python", () => {
@@ -83,13 +83,13 @@ describe("detectedConfigYaml", () => {
     const yaml = detectedConfigYaml("go", {
       test: "go test ./...",
       typecheck: "go build ./...",
-      lint: "golangci-lint run {file}",
+      lint: "golangci-lint run {dir}",
     });
     expect(yaml).toContain("profile: standard");
     expect(yaml).toContain("# Detected language: go");
     expect(yaml).toContain("test: go test ./...");
     expect(yaml).toContain("typecheck: go build ./...");
-    expect(yaml).toContain("lint: golangci-lint run {file}");
+    expect(yaml).toContain("lint: golangci-lint run {dir}");
   });
 
   it("renders per-extension command maps", () => {

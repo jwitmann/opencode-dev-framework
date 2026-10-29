@@ -99,7 +99,7 @@ describe("writeDetectedConfig", () => {
     const content = await readFile(join(dir, ".opencode-dev-framework.yml"), "utf8");
     expect(content).toContain("test: go test ./...");
     expect(content).toContain("typecheck: go build ./...");
-    expect(content).toContain("lint: golangci-lint run {file}");
+    expect(content).toContain("lint: golangci-lint run {dir}");
   });
 
   it("skips an existing config when skipExisting is true", async () => {

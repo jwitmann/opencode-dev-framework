@@ -63,6 +63,29 @@ describe("resolveLintCommand", () => {
     const config = resolve({ profile: "standard", commands: { lint: "golangci-lint run ./..." } });
     expect(resolveLintCommand(config, "main.go")).toEqual(["golangci-lint", "run", "./..."]);
   });
+
+  it("substitutes the {dir} token with the file's directory", () => {
+    const config = resolve({ profile: "standard", commands: { lint: "golangci-lint run {dir}" } });
+    expect(resolveLintCommand(config, "pkg/api/server.go")).toEqual([
+      "golangci-lint",
+      "run",
+      "pkg/api",
+    ]);
+  });
+
+  it("substitutes {file} and {dir} together", () => {
+    const config = resolve({ profile: "standard", commands: { lint: "echo {file} {dir}" } });
+    expect(resolveLintCommand(config, "pkg/api/server.go")).toEqual([
+      "echo",
+      "pkg/api/server.go",
+      "pkg/api",
+    ]);
+  });
+
+  it("resolves {dir} to dot for bare filenames", () => {
+    const config = resolve({ profile: "standard", commands: { lint: "golangci-lint run {dir}" } });
+    expect(resolveLintCommand(config, "main.go")).toEqual(["golangci-lint", "run", "."]);
+  });
 });
 
 describe("matchExclude", () => {

@@ -8,7 +8,7 @@ commands:
   test: "go test ./..."
   test_changed: "go test ./... -run Test -count=1"
   lint:
-    ".go": "golangci-lint run {file}"
+    ".go": "golangci-lint run {dir}"
   format:
     ".go": "gofmt -w {file}"
 

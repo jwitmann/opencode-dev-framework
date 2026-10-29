@@ -4,7 +4,7 @@
  * hook wiring lives in src/index.ts.
  */
 
-import { basename, extname, isAbsolute, relative } from "node:path";
+import { basename, dirname, extname, isAbsolute, relative } from "node:path";
 import picomatch from "picomatch";
 import { normalizeCommandMap, splitCommand } from "./command-utils.js";
 import type { CommandResult, RunCommand } from "./host.js";
@@ -55,9 +55,11 @@ export function matchExclude(
 
 /**
  * Resolve the lint command for a file: the per-extension override wins over
- * the default command. The `{file}` token is replaced with the file path;
- * commands without the token run as-is. Returns undefined when no lint
- * command is configured at all.
+ * the default command. The `{file}` token is replaced with the file path and
+ * `{dir}` with the file's directory (package context for tools like
+ * golangci-lint, which cannot typecheck a lone file); commands with neither
+ * token run as-is. Returns undefined when no lint command is configured
+ * at all.
  */
 export function resolveLintCommand(config: ResolvedConfig, filePath: string): string[] | undefined {
   const { default: defaultCommand, byExtension } = normalizeCommandMap(config.commands.lint);
@@ -65,7 +67,10 @@ export function resolveLintCommand(config: ResolvedConfig, filePath: string): st
   if (template === undefined) {
     return undefined;
   }
-  return splitCommand(template).map((token) => token.replaceAll("{file}", filePath));
+  const dir = dirname(filePath);
+  return splitCommand(template).map((token) =>
+    token.replaceAll("{file}", filePath).replaceAll("{dir}", dir),
+  );
 }
 
 export function resolvePreCommitCommand(filePath: string): string[] {

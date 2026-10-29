@@ -957,6 +957,19 @@ Verified all three locations report one `active` entry with
 accordingly. This was NOT caused by the Bun/Node upgrade — `dist/index.js`
 imports cleanly under Bun 1.4.4.
 
+## `{dir}` lint token for directory-scoped linters (Go, 2026-10-29)
+
+Per-edit lint runs templates via `spawn` with no shell (`host.ts`), and
+`resolveLintCommand` only substituted `{file}` — so the Go default
+`golangci-lint run {file}` ran in single-file mode with no package
+context, false-positiving `undefined:` typecheck errors on every file.
+Proven on a clean tree; never a consumer-config problem. Fix: `{dir}`
+expands to the edited file's directory (`dirname`), Go default is now
+`golangci-lint run {dir}`, documented in `03-config-spec.md`. No-shell
+execution means spaces in paths stay safe (single argv element, no
+splitting). `gofumpt -w {file}` and the other per-file templates are
+unaffected — only directory-scoped linters need `{dir}`.
+
 ## References
 
 - OpenCode plugin docs: <https://opencode.ai/docs/plugins>

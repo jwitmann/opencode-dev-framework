@@ -167,7 +167,7 @@ commands:
   typecheck: "go build ./..."
   test: "go test ./..."
   lint:
-    ".go": "golangci-lint run {file}"
+    ".go": "golangci-lint run {dir}"
 
 protect:
   - ".env*"
