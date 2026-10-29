@@ -244,7 +244,7 @@ itself).
   hook only the net applies. `/df-status` shows which lever completed an
   evaluation (`Continuation (idle): active` vs the event-subscribe fallback).
   The user can always close the session, so treat the gate
-  as the strongest available enforcement, not an unbreakable lock. The **pre-flight**
+  as the strongest available enforcement, not an unbreakable lock. The missing piece — a pre-terminal vote hook — is proposed upstream ([`anomalyco/opencode#54487`](https://github.com/anomalyco/opencode/pull/54487), open); until it lands, the above is the enforcement story. The **pre-flight**
   gate, by contrast, is a genuine hard block on every build: it denies edit tools in
   `tool.execute.before`, before the edit lands.
 - **Guardrails run inside OpenCode.** The `tool.execute.before` hook runs
