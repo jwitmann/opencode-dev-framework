@@ -277,7 +277,10 @@ The README and docs must clearly state:
 
 - This is a community project, not affiliated with OpenCode or the original
   dev-framework team.
-- The completion gate blocks finishing on OpenCode builds that support
-  `session.stopping` (PR #44712); on older builds it is advisory/loud.
+- The completion gate continues the turn via `synthetic` at the idle
+  boundary (`session.hook("experimental.idle")`, same execution), bounded
+  by `gate.max_blocks`; the `event.subscribe` idle net covers the
+  boundaries the hook skips. The pre-flight `tool.execute.before` deny is
+  the only true hard block.
 - Some features rely on OpenCode native config (`permission`, `formatter`),
   which may evolve.
