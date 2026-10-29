@@ -45,6 +45,8 @@ describe("TUI plugin module", () => {
 
   it("opens a status dialog when /df-status runs", async () => {
     let alertCalled = false;
+    let alertOptions: { title: string; message: string } | undefined;
+    let setOptions: { size?: string; centered?: boolean } | undefined;
     const layers: Array<{ commands?: Array<{ id: string; run: unknown }> }> = [];
     const ctx: Record<string, unknown> = {
       location: { directory: "/project" },
@@ -56,8 +58,12 @@ describe("TUI plugin module", () => {
       },
       ui: {
         dialog: {
-          alert: async () => {
+          alert: async (opts: { title: string; message: string }) => {
             alertCalled = true;
+            alertOptions = opts;
+          },
+          set: (opts: { size?: string; centered?: boolean }) => {
+            setOptions = opts;
           },
           select: async () => undefined,
           show: () => {},
@@ -73,6 +79,11 @@ describe("TUI plugin module", () => {
       | undefined;
     await cmd?.run();
     expect(alertCalled).toBe(true);
+    // The dialog title carries the heading; the message must not repeat it.
+    expect(alertOptions?.title).toBe("opencode-dev-framework status");
+    expect(alertOptions?.message.split("\n")[0]).not.toBe("opencode-dev-framework status");
+    // Long content gets the large centered presentation.
+    expect(setOptions).toEqual({ size: "large", centered: true });
   });
 
   it("opens a profile picker when /df-profile runs without an argument", async () => {

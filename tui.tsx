@@ -39,10 +39,17 @@ export default Plugin.define({
               run: () => {
                 const dir = getDirectory();
                 const config = loadConfig(dir);
-                void ctx.ui.dialog.alert({
+                // The dialog title already carries the heading; drop the
+                // duplicated first line from the shared text renderer.
+                const message = renderConfigStatus(config).split("\n").slice(2).join("\n");
+                const shown = ctx.ui.dialog.alert({
                   title: "opencode-dev-framework status",
-                  message: renderConfigStatus(config),
+                  message,
                 });
+                // Presentation is core-owned (alert takes no layout opts);
+                // large+centered is the available lever for long content.
+                ctx.ui.dialog.set({ size: "large", centered: true });
+                void shown;
               },
             },
             {
@@ -103,10 +110,12 @@ export default Plugin.define({
                 const dir = getDirectory();
                 const config = loadConfig(dir);
                 const { summary, report } = await verifyGate(runCommand, dir, config);
-                await ctx.ui.dialog.alert({
+                const shown = ctx.ui.dialog.alert({
                   title: report.ok ? "dev-framework gate passed" : "dev-framework gate failed",
                   message: summary,
                 });
+                ctx.ui.dialog.set({ size: "large", centered: true });
+                await shown;
                 ctx.ui.toast.show({ message: summary, variant: report.ok ? "success" : "error" });
               },
             },
