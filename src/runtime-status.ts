@@ -39,10 +39,7 @@ export function snapshotPath(directory: string): string {
  * neither candidate parses. */
 async function resolveFrameworkVersion(): Promise<string> {
   const here = dirname(fileURLToPath(import.meta.url));
-  const candidates = [
-    join(here, "..", "package.json"),
-    join(here, "..", "..", "package.json"),
-  ];
+  const candidates = [join(here, "..", "package.json"), join(here, "..", "..", "package.json")];
   for (const candidate of candidates) {
     try {
       const pkg = JSON.parse(await readFile(candidate, "utf8")) as {
@@ -86,7 +83,9 @@ function isContinuationState(value: unknown): value is ContinuationState {
 
 export async function readRuntimeStatus(directory: string): Promise<RuntimeStatus | null> {
   try {
-    const parsed = JSON.parse(await readFile(snapshotPath(directory), "utf8")) as Partial<RuntimeStatus>;
+    const parsed = JSON.parse(
+      await readFile(snapshotPath(directory), "utf8"),
+    ) as Partial<RuntimeStatus>;
     if (typeof parsed.frameworkVersion !== "string" || typeof parsed.updatedAt !== "string") {
       return null;
     }

@@ -30,7 +30,9 @@ describe("runtime status snapshot", () => {
     expect(typeof snapshot?.frameworkVersion).toBe("string");
     expect(snapshot?.frameworkVersion.length).toBeGreaterThan(0);
     expect(typeof snapshot?.updatedAt).toBe("string");
-    expect(snapshotPath(dir)).toBe(join(dir, ".opencode/opencode-dev-framework/runtime-status.json"));
+    expect(snapshotPath(dir)).toBe(
+      join(dir, ".opencode/opencode-dev-framework/runtime-status.json"),
+    );
   });
 
   it("resolves the real plugin version from the repo package.json", async () => {
