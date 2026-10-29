@@ -34,9 +34,9 @@ describe("TUI plugin module", () => {
     await mod.setup(ctx);
     expect(layers).toHaveLength(1);
     const commands = layers[0].commands ?? [];
-    expect(commands).toHaveLength(4);
+    expect(commands).toHaveLength(5);
     const ids = commands.map((c) => c.id).sort();
-    expect(ids).toEqual(["df-help", "df-profile", "df-status", "df-verify"]);
+    expect(ids).toEqual(["df-help", "df-profile", "df-runtime", "df-status", "df-verify"]);
     for (const c of commands) {
       expect(c.slash?.name).toBe(c.id);
       expect(c.run).toBeTypeOf("function");
@@ -84,6 +84,54 @@ describe("TUI plugin module", () => {
     expect(alertOptions?.message.split("\n")[0]).not.toBe("opencode-dev-framework status");
     // Long content gets the large centered presentation.
     expect(setOptions).toEqual({ size: "large", centered: true });
+  });
+
+  it("opens a runtime dialog with snapshot version and hook method", async () => {
+    const { mkdtempSync, rmSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const { writeRuntimeStatus } = await import("../src/runtime-status");
+    const dir = mkdtempSync(join(tmpdir(), "df-tui-runtime-"));
+    try {
+      await writeRuntimeStatus(dir, { idleHookVia: "experimental.idle", continuation: "armed" });
+      let alertMessage = "";
+      let setCalled = false;
+      const layers: Array<{ commands?: Array<{ id: string; run: unknown }> }> = [];
+      const ctx: Record<string, unknown> = {
+        location: { directory: dir },
+        data: { location: { default: () => ({ directory: dir }) } },
+        keymap: {
+          layer: (fn: () => { commands: unknown[] }) => {
+            layers.push(fn() as never);
+          },
+        },
+        ui: {
+          dialog: {
+            alert: async (opts: { message: string }) => {
+              alertMessage = opts.message;
+            },
+            set: () => {
+              setCalled = true;
+            },
+            select: async () => undefined,
+            show: () => {},
+            clear: () => {},
+          },
+          toast: { show: () => {} },
+        },
+      };
+      const mod = tuiModule as unknown as { setup: (c: unknown) => Promise<void> };
+      await mod.setup(ctx);
+      const cmd = layers[0].commands?.find((c) => c.id === "df-runtime") as
+        | { run: () => unknown }
+        | undefined;
+      await cmd?.run();
+      expect(alertMessage).toContain("registered via experimental.idle");
+      expect(alertMessage).toMatch(/v\d+\.\d+\.\d+/);
+      expect(setCalled).toBe(true);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it("opens a profile picker when /df-profile runs without an argument", async () => {

@@ -993,6 +993,23 @@ proven broken — phpstan degrades gracefully via autoloading where golangci
 hard false-positives — so the default stands and `{dir}` is available if a
 PHP user proves otherwise.
 
+## `/df-runtime` + runtime-status snapshot (2026-10-29)
+
+`/df-status` is config-only by construction: the TUI frontend runs in a
+different process with no access to server hook state, so it could never
+answer "which hook method is in use". New cross-process bridge instead of
+overloading the dialog: the server writes
+`.opencode/opencode-dev-framework/runtime-status.json` best-effort after
+hook registration (`idleHookVia`: which key the core accepted, or `none`)
+and on every continuation dispatch (`idle`/`fallback`/`armed`), stamping the
+plugin version resolved from its own `package.json`. New `/df-runtime`
+command renders version + hook method + dispatch history + snapshot age;
+missing/corrupt snapshots render as "not reported yet", never as a negative
+hook claim. `renderRuntimeStatus` is pure (unit-tested); file I/O is the
+only impure seam. This also answers the earlier 3-state proposal: the
+registration outcome is recorded, just surfaced in the new command rather
+than the config dialog.
+
 ## References
 
 - OpenCode plugin docs: <https://opencode.ai/docs/plugins>

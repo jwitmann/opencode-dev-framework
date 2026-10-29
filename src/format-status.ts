@@ -1,4 +1,5 @@
 import type { HookState } from "./registry.js";
+import type { RuntimeStatus } from "./runtime-status.js";
 import type { ResolvedConfig } from "./types.js";
 
 function formatCommandMap(
@@ -120,6 +121,7 @@ export function renderHelp(): string {
   lines.push("/df-profile   Change the profile to off, advisory, standard, or strict");
   lines.push("/df-verify    Run the completion gate manually");
   lines.push("/df-help      Show this message");
+  lines.push("/df-runtime   Show plugin version and live hook/gate runtime state");
   return lines.join("\n");
 }
 
@@ -169,5 +171,34 @@ export function renderStatus(config: ResolvedConfig, state?: HookState | null): 
     }
   }
 
+  return lines.join("\n");
+}
+
+/**
+ * Render the runtime snapshot for the TUI `/df-runtime` command: plugin
+ * version, which session-hook method the core accepted, and dispatch
+ * history. A null snapshot (server hasn't reported yet) renders as such —
+ * never as a negative claim about the hook.
+ */
+export function renderRuntimeStatus(snapshot: RuntimeStatus | null): string {
+  const lines: string[] = ["dev-framework runtime", ""];
+  if (snapshot === null) {
+    lines.push("No runtime snapshot reported yet — open a session in this");
+    lines.push("project so the server plugin can record hook state.");
+    return lines.join("\n");
+  }
+  lines.push(`Framework: v${snapshot.frameworkVersion} (snapshot as of ${snapshot.updatedAt})`);
+  lines.push(
+    snapshot.idleHookVia === "none"
+      ? "Idle hook: not registered — event-subscribe fallback only"
+      : `Idle hook: registered via ${snapshot.idleHookVia}`,
+  );
+  if (snapshot.continuation === "idle") {
+    lines.push("Continuation: active — gate failures continue the same execution");
+  } else if (snapshot.continuation === "fallback") {
+    lines.push("Continuation: event-subscribe fallback fired for a skipped boundary");
+  } else {
+    lines.push("Continuation: armed — registered, not yet dispatched");
+  }
   return lines.join("\n");
 }

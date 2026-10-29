@@ -38,6 +38,7 @@ import { lintFile, detectPreCommitAvailability, isLintFailure, summarizeLint } f
 import { createLogger, type LogFn, type LogLevel } from "./logger.js";
 import { checkToolCall, extractFilePath, FILE_TOOLS, toPermissionGuard } from "./protect.js";
 import { loadConstitution } from "./rules.js";
+import { writeRuntimeStatus, type IdleHookVia } from "./runtime-status.js";
 import type { ResolvedConfig } from "./types.js";
 
 // ---------------------------------------------------------------------------
@@ -431,6 +432,9 @@ const plugin = Plugin.define({
     // `prompt` here — only `synthetic` keeps the same execution.
     // DEFENSIVE: any-cast because the installed @opencode/plugin may predate
     // the hook; fires only on builds dispatching it.
+    // idleHookVia feeds the runtime-status snapshot (`/df-runtime`): which
+    // key the core accepted, so the TUI can report the hook method.
+    let idleHookVia: IdleHookVia = "none";
     const handleIdleContinuation = async (event: unknown): Promise<void> => {
       if (activeState !== state) return;
       if (event === null || typeof event !== "object") return;
@@ -468,6 +472,7 @@ const plugin = Plugin.define({
           // Pass/stand-down: completed evaluation, nothing to admit.
           stampIdleHandled(state, sessionID);
           state.continuationLevel = "idle";
+          void writeRuntimeStatus(state.directory, { idleHookVia, continuation: "idle" });
           return;
         }
         // Blocked: admit a synthetic continuation (same execution).
@@ -482,6 +487,7 @@ const plugin = Plugin.define({
         await ctx.session.synthetic({ sessionID, text: message });
         stampIdleHandled(state, sessionID);
         state.continuationLevel = "idle";
+        void writeRuntimeStatus(state.directory, { idleHookVia, continuation: "idle" });
         await safeLog(
           state,
           "info",
@@ -514,10 +520,14 @@ const plugin = Plugin.define({
           // biome-ignore lint/suspicious/noExplicitAny: defensive idle hook, absent from SessionHooks on older cores
           await (ctx.session as any).hook(name, handleIdleContinuation),
         );
+        if (idleHookVia === "none") idleHookVia = name;
       } catch {
         await safeLog(state, "warn", `could not register session hook ${name}`, { hook: name });
       }
     }
+    // Record the registration outcome for `/df-runtime` even before the
+    // first dispatch: "armed" is a real state, not a missing one.
+    void writeRuntimeStatus(state.directory, { idleHookVia, continuation: "armed" });
     await safeLog(
       state,
       "info",
@@ -947,7 +957,10 @@ const plugin = Plugin.define({
             if (wasIdleHandledRecently(state, sessionID)) continue;
 
             const verdict = await runCompletion(state, sessionID);
-            if (state.continuationLevel === undefined) state.continuationLevel = "fallback";
+            if (state.continuationLevel === undefined) {
+              state.continuationLevel = "fallback";
+              void writeRuntimeStatus(state.directory, { idleHookVia, continuation: "fallback" });
+            }
             const message = await actOnVerdict(state, verdict);
             if (message === null) continue;
             const blockInfo =

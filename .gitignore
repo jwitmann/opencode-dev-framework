@@ -2,5 +2,7 @@ node_modules/
 dist/
 .DS_Store
 *.log
+# runtime hook snapshot (written live by the server plugin, never committed)
+/.opencode/opencode-dev-framework/runtime-status.json
 # project-root only: local plugin registration, never committed
 /opencode.jsonc

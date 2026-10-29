@@ -4,7 +4,8 @@ import { Plugin } from "@opencode/plugin/tui";
 import { changeProfile, verifyGate } from "./dist/commands.js";
 import { loadConfig } from "./dist/config.js";
 import { runCommand } from "./dist/host.js";
-import { renderConfigStatus, renderHelp } from "./dist/format-status.js";
+import { renderConfigStatus, renderHelp, renderRuntimeStatus } from "./dist/format-status.js";
+import { readRuntimeStatus } from "./dist/runtime-status.js";
 import type { Profile } from "./dist/types.js";
 
 const PROFILES: Profile[] = ["off", "advisory", "standard", "strict"];
@@ -97,6 +98,24 @@ export default Plugin.define({
                   const message = await changeProfile(dir, selected as Profile);
                   ctx.ui.toast.show({ message, variant: "success" });
                 }
+              },
+            },
+            {
+              id: "df-runtime",
+              title: "dev-framework runtime",
+              description: "Show plugin version and live hook/gate runtime state",
+              group: "dev-framework",
+              palette: true,
+              slash: { name: "df-runtime" },
+              run: async () => {
+                const dir = getDirectory();
+                const snapshot = await readRuntimeStatus(dir);
+                const shown = ctx.ui.dialog.alert({
+                  title: "dev-framework runtime",
+                  message: renderRuntimeStatus(snapshot),
+                });
+                ctx.ui.dialog.set({ size: "large", centered: true });
+                await shown;
               },
             },
             {

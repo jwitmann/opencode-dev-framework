@@ -212,12 +212,16 @@ complete example.
 
 ## Slash commands
 
-All four slash commands are **TUI commands** registered by the bundled `./tui`
+All five slash commands are **TUI commands** registered by the bundled `./tui`
 companion module (see *Local development* above for the `tui.json` requirement).
 They open instantly and **never** feed text back to the LLM:
 
 - `/df-status` — shows the current profile, guardrails, completion gate, and
   configured commands in a modal dialog.
+- `/df-runtime` — shows the plugin version and live hook/gate runtime state
+  (which idle-hook method the core accepted, dispatch history) in a modal
+  dialog. Read from a snapshot the server writes per project; reports
+  "not reported yet" before the first session instead of guessing.
 - `/df-help` — lists the available dev-framework commands in a modal dialog.
 - `/df-profile` — opens a profile picker (off / advisory / standard / strict) in
   a modal dialog; selecting one switches the active profile immediately (written
