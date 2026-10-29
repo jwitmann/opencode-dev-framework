@@ -27,6 +27,7 @@ describe("renderStatus format honesty", () => {
     const config = loadConfig(dir);
     const status = renderStatus(config);
     expect(status).toContain("format: true (ignored — formatting is OpenCode core's job)");
+    expect(status).toContain("format: (ignored — formatting is OpenCode core's job)");
     expect(status).toContain("gofumpt -w {file}");
   });
 });

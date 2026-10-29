@@ -97,7 +97,7 @@ export function renderConfigStatus(config: ResolvedConfig): string {
   );
   lines.push("  lint:");
   lines.push(formatCommandMap(config.commands.lint, "    "));
-  lines.push("  format:");
+  lines.push("  format: (ignored — formatting is OpenCode core's job)");
   lines.push(formatCommandMap(config.commands.format, "    "));
   lines.push("");
   lines.push("Constitution rules:");
