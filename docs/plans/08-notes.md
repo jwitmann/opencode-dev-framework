@@ -970,6 +970,29 @@ execution means spaces in paths stay safe (single argv element, no
 splitting). `gofumpt -w {file}` and the other per-file templates are
 unaffected — only directory-scoped linters need `{dir}`.
 
+## `commands.format` is declared but never executed (2026-10-29)
+
+Audit of the `{file}`/`{dir}` class found a doc-reality gap, not a second
+scope bug: `commands.format` and `on_edit.format` are parsed (`config.ts`),
+generated (`detect.ts`), and displayed (`format-status.ts`) — but no format
+runner exists anywhere in `src/` (`runPerEditLint` only calls `lintFile`;
+the gate runs typecheck/test/lint only). Docs claimed otherwise
+(`03-config-spec.md` "Run formatter on edited files", README "the plugin
+runs them on edited files"). Correction, verified against [OpenCode's
+formatter docs](https://opencode.ai/docs/formatters/): formatting is core's
+job (built-in formatters, background run after write/edit, disabled by
+default, `"formatter": true` to enable, custom commands via `$FILE`) — so
+the plugin fields are not a missing feature but deliberate non-duplication.
+Status marks `format: … (ignored — formatting is OpenCode core's job)`,
+spec + README point at core's `formatter` config. Open question, owner's
+call: whether `detect.ts` should keep generating format defaults for fields
+the plugin ignores (left as-is; changing init output is a behavior decision,
+not a fix). PHP `phpstan analyse {file}` reviewed in the same audit: same
+shape as the Go bug (cross-file analyzer, per-file invocation) but not
+proven broken — phpstan degrades gracefully via autoloading where golangci
+hard false-positives — so the default stands and `{dir}` is available if a
+PHP user proves otherwise.
+
 ## References
 
 - OpenCode plugin docs: <https://opencode.ai/docs/plugins>

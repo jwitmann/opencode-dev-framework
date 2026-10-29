@@ -60,7 +60,7 @@ export function renderConfigStatus(config: ResolvedConfig): string {
   }
   lines.push("");
   lines.push("On edit:");
-  lines.push(`  format: ${config.on_edit.format}`);
+  lines.push(`  format: ${config.on_edit.format} (ignored — formatting is OpenCode core's job)`);
   lines.push(`  lint: ${config.on_edit.lint}`);
   lines.push(`  precommit: ${config.precommit}`);
   lines.push("");

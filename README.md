@@ -251,9 +251,12 @@ itself).
   after OpenCode's own permission system; it adds project rules on top, it
   does not replace OpenCode permissions.
 - **Formatting and linting are delegated.** The plugin does not reimplement
-  formatters or linters; you declare your formatter and linter commands in
+  formatters or linters; you declare your linter commands in
   `.opencode-dev-framework.yml` and the plugin runs them on edited files and
-  at the completion gate. It does not automatically rewrite `opencode.json`
+  at the completion gate. Formatting is OpenCode core's job (`formatter` in
+  `opencode.json`, off by default) — the plugin's `commands.format` /
+  `on_edit.format` are accepted but ignored, deliberately not duplicated.
+  The plugin does not automatically rewrite `opencode.json`
   formatter/permission fragments.
 
 ## Development

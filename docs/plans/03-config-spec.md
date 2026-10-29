@@ -39,7 +39,7 @@ Commands are strings. They may contain substitution tokens.
 |---|---|---|
 | `commands.test` | Full test command. | `{files}` expands to changed files if used. |
 | `commands.typecheck` | Type-check command. | — |
-| `commands.format` | Default formatter for edited files. | `{file}` expands to the edited file path. |
+| `commands.format` | Declared formatter (ignored — formatting is handled by OpenCode core's `formatter` config in `opencode.json`). | Tokens unused by this plugin; core uses `$FILE` in its own commands. |
 | `commands.lint` | Default linter for edited files. | `{file}` expands to the edited file path, `{dir}` to its directory (package context for directory-scoped linters like `golangci-lint`). |
 | `commands.test_changed` | Scoped test command when `gate.scope` is `changed`. | `{files}` expands to changed files. |
 
@@ -138,7 +138,7 @@ on_edit:
 
 | Key | Type | Default | Description |
 |---|---|---|---|
-| `format` | `boolean` | `true` | Run formatter on edited files. |
+| `format` | `boolean` | `true` | Accepted but ignored: formatting is OpenCode core's job (`formatter` in `opencode.json`, off by default), not this plugin's. |
 | `lint` | `boolean` | `true` | Run linter on edited files and report output. |
 
 ### `exclude`
