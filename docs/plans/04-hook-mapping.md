@@ -12,7 +12,7 @@
 | Protected-path guardrail | `preToolUse` | `permission.hook("evaluate")` (deny) + `tool.hook("execute.before")` (backstop, throw) | Yes (deny/throw) | Phase 25: pipeline runs before-hooks FIRST (proven), so evaluate only sees calls the backstop passed — native layer is defense-in-depth; `execute.before` is the load-bearing wall. Advisory warns stay debug in evaluate (no double noise). |
 | Format on edit | `postToolUse` | `formatter` + `event.subscribe` on `filesystem.changed` | Indirectly | Formatter auto-runs; plugin supplements. |
 | Lint on edit | `postToolUse` | `event.subscribe` on `filesystem.changed` | No | Run linter; can delegate to `pre-commit`. |
-| Completion gate | `agentStop` | `event.subscribe` on `session.idle`/`session.status:idle` → `session.prompt` | **Async bounded** (`gate.max_blocks`) | V2 re-prompts, no `session.stopping` veto. |
+| Completion gate | `agentStop` | `session.hook("experimental.idle")` → `session.synthetic` (same execution) | **Async bounded** (`gate.max_blocks`) | Idle-first (12-idle-hook-cutover). Hook skips (interruption, failure, steer-parked drains) fall through to the `event.subscribe` net below. `execute.before` stays the only true hard wall. |
 | Specialist agents | `agents/` | OpenCode subagents / `tool.transform` | N/A | Out of scope. |
 | Workflows / skills | `skills/` | `command.transform` / `tool.transform` / `tui.tsx` | N/A | Out of scope. |
 
@@ -43,13 +43,19 @@
 
 **Actions:** `event.data.file` → `tracker.add`, `lintFile` with `precommit` auto-detect, `strict` throws. `exclude` handled in `lintFile`.
 
-### `session.idle` / `session.status:idle` via `event.subscribe` (V2 gate)
+### `session.hook("experimental.idle")` (V2 gate, primary)
 
-**Purpose:** Completion gate.
+**Purpose:** Completion gate, same execution.
 
-**Actions:** `runGate` on `changedFiles`, `clearChangedFiles`, `summarizeGate`, `block_on_failure`→`error` else `warn`. On failure inside `max_blocks`, `session.prompt({sessionID, text: stoppingMessage})` (async, plugin-owned, no core 3-cap). After `max_blocks` warn + stand down.
+**Actions:** stale-guard → `reloadConfigIfChanged` → `off` check → resolve `sessionID` (`event.sessionID ?? getEventSessionID`) → `runCompletion` → `actOnVerdict` → completed evaluation stamps `lastIdleHandled(sessionID)`. Blocked → `session.synthetic({ sessionID, text })` (same execution; never `prompt` here) + info log. Throw path logs warn, abstains, does NOT stamp (subscriber net retries). `background` ignored (gate evaluates the tree, never waits on running work).
 
-**V1 `session.stopping` removed in V2.**
+**Forward-compat:** the unprefixed `idle` alias is registered alongside `experimental.idle` so a future stabilization rename is a non-event; a 1s same-boundary double-fire guard makes that safe.
+
+### `session.idle` / `session.status:idle` via `event.subscribe` (V2 gate net)
+
+**Purpose:** Completion gate fallback for the boundaries the hook skips.
+
+**Actions:** skip when `lastIdleHandled(sessionID)` is fresh (5s — the hook just handled this boundary; only the hook stamps). Otherwise `runGate` on `changedFiles`, `clearChangedFiles`, `summarizeGate`, `block_on_failure`→`error` else `warn`. On failure inside `max_blocks`, `session.synthetic({sessionID, text: stoppingMessage})` (synthetic-first; `prompt` fallback). After `max_blocks` warn + stand down.
 
 ### TUI slash commands `/df-verify`, `/df-profile`, `/df-status`, `/df-help`
 

@@ -1,10 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  BLOCK_COUNT_KEY_PREFIX,
-  createBlockStore,
-  STOP_SUPPORTED_KEY,
-  type StorageLike,
-} from "../src/block-store";
+import { BLOCK_COUNT_KEY_PREFIX, createBlockStore, type StorageLike } from "../src/block-store";
 
 /** In-memory ctx.storage stub that records every key it sees. */
 function stubStorage() {
@@ -65,14 +60,11 @@ describe("block store (Phase 23)", () => {
     expect(store.size).toBe(2);
   });
 
-  it("namespaces keys by session and flag", async () => {
+  it("namespaces count keys by session", async () => {
     const { storage, seen } = stubStorage();
     const store = createBlockStore(storage);
     await store.increment("sess-1");
-    await store.setStopSupported();
     expect(seen).toContain(`set:${BLOCK_COUNT_KEY_PREFIX}sess-1`);
-    expect(seen).toContain(`set:${STOP_SUPPORTED_KEY}`);
-    expect(await store.getStopSupported()).toBe(true);
   });
 
   it("persists across two store instances over shared storage (reload)", async () => {
@@ -87,16 +79,6 @@ describe("block store (Phase 23)", () => {
     expect(await second.increment("sess")).toBe(3);
   });
 
-  it("round-trips the stop-supported flag across instances", async () => {
-    const { storage } = stubStorage();
-    const first = createBlockStore(storage);
-    expect(await first.getStopSupported()).toBe(false);
-    await first.setStopSupported();
-
-    const second = createBlockStore(storage);
-    expect(await second.getStopSupported()).toBe(true);
-  });
-
   it("falls back to memory when storage throws (and reports degraded)", async () => {
     const store = createBlockStore(throwingStorage());
     expect(store.isDegraded()).toBe(false);
@@ -106,9 +88,6 @@ describe("block store (Phase 23)", () => {
     await store.clear("s");
     expect(await store.get("s")).toBe(0);
     expect(store.isDegraded()).toBe(true);
-    // Stop flag still works in memory.
-    await store.setStopSupported();
-    expect(await store.getStopSupported()).toBe(true);
   });
 
   it("ignores corrupt stored values instead of propagating them", async () => {

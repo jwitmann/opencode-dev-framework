@@ -11,17 +11,19 @@
  * - ctx.event.subscribe() -> file tracking + gate enforcement via re-prompt
  * - ctx.tool.transform(...) -> custom tools
  *
- * Gate enforcement: no synchronous `session.stopping`. On `session.idle`
- * / `session.status:idle` we run the gate and if it fails inside budget we
- * call `ctx.session.prompt({ sessionID, text: stoppingMessage })` to wake the
- * agent — async re-injection preserving the enforcement intent (see docs/plans/08-notes).
+ * Gate enforcement: no synchronous pre-stop veto. On `experimental.idle`
+ * (same execution) we run the gate and if it fails inside budget we admit
+ * `ctx.session.synthetic({ sessionID, text: stoppingMessage })` — the
+ * continuation runs before the session goes idle (see
+ * docs/plans/12-idle-hook-cutover.md). The `event.subscribe` idle net
+ * stays as a deduped fallback for the boundaries the hook skips.
  */
 
 import { Plugin } from "@opencode/plugin";
 import type { Context } from "@opencode/plugin/promise/plugin";
 import { stat } from "node:fs/promises";
 import { join } from "node:path";
-import { type BlockStore, createBlockStore, type StopHookKind } from "./block-store.js";
+import { type BlockStore, createBlockStore } from "./block-store.js";
 import { clearConfigCache, loadConfig } from "./config.js";
 import { type ChangedFileTracker, createChangedFileTracker } from "./gate.js";
 import {
@@ -66,15 +68,22 @@ export interface HookState {
   precommitAvailable?: boolean;
   configMtime?: number;
   /**
-   * Set once a stopping hook has actually been invoked by core — i.e. this
-   * OpenCode build supports pre-break gate vetoes (hard stops). Until then
-   * the idle re-prompt fallback is the only post-flight lever.
-   * `stopHookKind` records WHICH hook fired (`stopping` legacy probe vs
-   * `experimental.stopping` V2 contract); the new hook outranks the old and
-   * the level never downgrades. `/df-status` renders the active level.
+   * Which lever completed a gate evaluation most recently in this process:
+   * `"idle"` once the `experimental.idle` hook has (same-execution
+   * continuation active), `"fallback"` when only the `event.subscribe`
+   * idle re-prompt net has. Absent until either fires. Memory-only: a
+   * reload re-derives it on the next idle boundary. `/df-status` renders
+   * the active level.
    */
-  stopHookSupported?: boolean;
-  stopHookKind?: StopHookKind;
+  continuationLevel?: "idle" | "fallback";
+  /**
+   * Dedup map for the idle-first cutover: sessionID → `Date.now()` at the
+   * last COMPLETED hook evaluation (pass, blocked-admitted, and standdown
+   * all stamp; throw/early-return do not). The `event.subscribe` idle net
+   * skips when the stamp is fresh so one boundary never runs the gate
+   * twice. Memory-only; worst case on reload is one extra suite run.
+   */
+  lastIdleHandled: Map<string, number>;
 }
 
 let activeState: HookState | null = null;
@@ -124,33 +133,12 @@ async function reloadConfigIfChanged(state: HookState): Promise<void> {
   }
 }
 
-type StoppingOutput = { stop?: boolean; message?: string };
-
-/**
- * V2 `experimental.stopping` contract (single mutable event). Mirrors the
- * fork's `SessionStopping` (`packages/plugin/src/effect/session.ts`):
- * default `{ shouldContinue: false }` (fail-closed); `continuations` is the
- * pre-increment grant count this turn (core caps at 2 and goes silent past
- * it without calling voters); empty/whitespace `text` abstains.
- */
-type ExperimentalStoppingDecision =
-  | { shouldContinue: false }
-  | { shouldContinue: true; text: string };
-
-interface ExperimentalStoppingEvent {
-  readonly sessionID: string;
-  readonly step: number;
-  readonly stepsLimit?: number;
-  readonly continuations: number;
-  decision: ExperimentalStoppingDecision;
-}
-
 /**
  * Turn a completion verdict into the continuation message fed back to the
- * agent when blocked. Shared by the `session.stopping` hard-stop path, the
- * `experimental.stopping` continuation vote, and the `session.idle`
- * re-prompt fallback so wording (and block counting) is identical on every
- * core support level.
+ * agent when blocked. Shared by the `experimental.idle` hook (same
+ * execution, via synthetic) and the `event.subscribe` idle re-prompt
+ * fallback so wording (and block counting) is identical on every
+ * enforcement level.
  */
 function continuationMessage(verdict: Extract<CompletionVerdict, { decision: "blocked" }>): string {
   const why =
@@ -230,17 +218,23 @@ function runCompletion(state: HookState, sessionID: string): Promise<CompletionV
 }
 
 /**
- * Record that a stopping hook fired at `kind`. Monotonic: the V2
- * `experimental.stopping` level outranks the legacy `stopping` probe, so a
- * late legacy dispatch never downgrades an already-recorded new-hook level
- * (both the in-memory flag and the persisted store upgrade only).
+ * Record a completed idle-hook evaluation for the dedup map. Stamp ONLY on
+ * the completed-evaluation paths (pass, blocked-admitted, standdown);
+ * throw/early-return paths must not stamp so the subscriber net retries.
  */
-async function recordStopLevel(state: HookState, kind: StopHookKind): Promise<void> {
-  if (state.stopHookKind !== "experimental.stopping") {
-    state.stopHookKind = kind;
-  }
-  state.stopHookSupported = true;
-  await state.blocks.setStopSupported(kind);
+function stampIdleHandled(state: HookState, sessionID: string): void {
+  state.lastIdleHandled.set(sessionID, Date.now());
+}
+
+/**
+ * True when the idle hook completed an evaluation for this session inside
+ * `windowMs`. The hook itself uses a short window (same-boundary
+ * double-fire guard for the dual key registration below); the subscriber
+ * net uses the full window (one boundary, one gate run).
+ */
+function wasIdleHandledRecently(state: HookState, sessionID: string, windowMs = 5_000): boolean {
+  const at = state.lastIdleHandled.get(sessionID);
+  return at !== undefined && Date.now() - at < windowMs;
 }
 
 // Helpers to normalize V2 event shapes (data vs properties vs direct)
@@ -344,15 +338,14 @@ const plugin = Plugin.define({
       blockCounts,
       blocks,
       configMtime,
+      lastIdleHandled: new Map<string, number>(),
     };
     activeState = state;
 
-    // Hydrate the hard-stop probe level: a previous setup may have seen core
-    // dispatch `stopping` or `experimental.stopping`. A storage failure
-    // degrades to in-memory counts (pre-Phase-23 behavior) and is logged,
-    // never thrown.
-    state.stopHookKind = (await blocks.getStopKind()) ?? undefined;
-    state.stopHookSupported = state.stopHookKind !== undefined;
+    // Surface a broken storage backend early (best-effort, never thrown).
+    // With the stop-level hydration gone there is no setup-time storage
+    // read left, so this rarely fires here — the store still degrades
+    // lazily on first use and reports via isDegraded().
     if (blocks.isDegraded()) {
       await log(
         "warn",
@@ -424,138 +417,112 @@ const plugin = Plugin.define({
       );
     }
 
-    // 1b) Hard-stop completion gate — `session.stopping` (OpenCode PR #44712).
-    // Fires before the agent loop breaks on natural exit: a blocked verdict
-    // sets stop=false + message and the loop re-enters, so gate failures
-    // physically prevent completion. Registered defensively: on builds
-    // without core support the hook is simply never dispatched, and the
-    // session.idle fallback below provides re-prompt enforcement instead.
-    // The first invocation flips `stopHookSupported` so /df-status can show
-    // which enforcement level is active.
-    // DEFENSIVE: "stopping" is not in SessionHooks as of 2.0.x; fires only
-    // if a future core dispatches it (see PR #44712). One of two any-casts
-    // in src/ (this probe + the `experimental.stopping` probe in §1c) —
-    // all other hooks are fully typed so the compiler guards future SDK
-    // upgrades.
-    try {
-      trackRegistration(
-        // biome-ignore lint/suspicious/noExplicitAny: defensive stopping probe, not in SessionHooks (PR #44712)
-        await (ctx.session as any).hook(
-          "stopping",
-          // biome-ignore lint/suspicious/noExplicitAny: core may dispatch (input, output) or a single mutable event
-          async (input: any, output?: StoppingOutput) => {
-            if (activeState !== state) return;
-            const out: StoppingOutput = output ?? input ?? {};
-            const sessionID: string =
-              input?.sessionID ??
-              (out as { sessionID?: string }).sessionID ??
-              getEventSessionID(input) ??
-              "unknown";
-            await recordStopLevel(state, "stopping");
-            await reloadConfigIfChanged(state);
-            if (state.config.profile === "off") return;
-            const verdict = await runCompletion(state, sessionID);
-            const message = await actOnVerdict(state, verdict);
-            if (message !== null) {
-              out.stop = false;
-              out.message = message;
-            }
+    // 1b) Idle-first completion gate — `experimental.idle` (landed upstream
+    // via anomalyco/opencode#59437; see docs/plans/12-idle-hook-cutover.md).
+    // Fires where a session would otherwise go idle, inside the same
+    // execution: a blocked verdict admits a synthetic continuation and the
+    // runner re-checks the inbox instead of idling. Pass/stand-down admit
+    // nothing. Registered defensively: on builds without core support the
+    // hook is simply never dispatched, and the session.idle event net below
+    // provides re-prompt enforcement instead (deduped via lastIdleHandled).
+    // Both the current `experimental.idle` key and the unprefixed `idle`
+    // alias are registered so a future stabilization rename is a non-event;
+    // the same-boundary double-fire guard below makes that safe. Never
+    // `prompt` here — only `synthetic` keeps the same execution.
+    // DEFENSIVE: any-cast because the installed @opencode/plugin may predate
+    // the hook; fires only on builds dispatching it.
+    const handleIdleContinuation = async (event: unknown): Promise<void> => {
+      if (activeState !== state) return;
+      if (event === null || typeof event !== "object") return;
+      // Never let a gate failure escape into core: an uncaught throw fails
+      // the drain (Failed terminal), it does NOT fail open to idle. So on
+      // any error — including a hostile event shape blowing up sessionID
+      // resolution — abstain (admit nothing) and leave unstamped; the
+      // subscriber net retries at the next idle.
+      let sessionID: string | undefined;
+      try {
+        sessionID =
+          (typeof (event as { sessionID?: unknown }).sessionID === "string" &&
+            ((event as { sessionID: string }).sessionID as string)) ||
+          getEventSessionID(event);
+        if (!sessionID) return;
+        await reloadConfigIfChanged(state);
+        if (state.config.profile === "off") return;
+        if (!state.config.gate) {
+          await safeLog(
+            state,
+            "warn",
+            "plugin config is incomplete (missing gate section), skipping completion gate",
+            { directory: state.directory },
+          );
+          return;
+        }
+        // Same-boundary double-fire guard for the dual key registration
+        // above (a future core dispatching both names for one boundary).
+        // Short window on purpose: any legitimate re-fire needs a full
+        // model round-trip first, which never lands inside a second.
+        if (wasIdleHandledRecently(state, sessionID, 1_000)) return;
+        const verdict = await runCompletion(state, sessionID);
+        const message = await actOnVerdict(state, verdict);
+        if (message === null || verdict.decision !== "blocked") {
+          // Pass/stand-down: completed evaluation, nothing to admit.
+          stampIdleHandled(state, sessionID);
+          state.continuationLevel = "idle";
+          return;
+        }
+        // Blocked: admit a synthetic continuation (same execution).
+        // `background` is intentionally ignored — the gate evaluates the
+        // working tree, it never waits on running work.
+        if (typeof ctx.session.synthetic !== "function") {
+          await safeLog(state, "warn", "gate blocked but no session.synthetic API available", {
+            sessionID,
+          });
+          return;
+        }
+        await ctx.session.synthetic({ sessionID, text: message });
+        stampIdleHandled(state, sessionID);
+        state.continuationLevel = "idle";
+        await safeLog(
+          state,
+          "info",
+          `completion gate continued session ${sessionID} via idle hook`,
+          {
+            sessionID,
+            blockCount: verdict.blockCount,
+            maxBlocks: verdict.maxBlocks,
           },
-        ),
-      );
-      await safeLog(
-        state,
-        "info",
-        "registered session.stopping hook; if this OpenCode build dispatches it, gate failures become hard stops before loop exit",
-      );
-    } catch {
-      await safeLog(
-        state,
-        "warn",
-        "could not register session.stopping hook; using session.idle re-prompt fallback only",
-      );
+        );
+      } catch (error) {
+        try {
+          await safeLog(
+            state,
+            "warn",
+            "idle continuation failed; abstaining (subscriber net retries)",
+            {
+              sessionID,
+              error: error instanceof Error ? error.message : String(error),
+            },
+          );
+        } catch {
+          // best-effort only — the abstain itself must not throw
+        }
+      }
+    };
+    for (const name of ["experimental.idle", "idle"] as const) {
+      try {
+        trackRegistration(
+          // biome-ignore lint/suspicious/noExplicitAny: defensive idle hook, absent from SessionHooks on older cores
+          await (ctx.session as any).hook(name, handleIdleContinuation),
+        );
+      } catch {
+        await safeLog(state, "warn", `could not register session hook ${name}`, { hook: name });
+      }
     }
-
-    // 1c) V2 pre-terminal continuation vote — `experimental.stopping`.
-    // Same verdict mapping as §1b, in the new contract shape: gate fail →
-    // `decision = { shouldContinue: true, text: message }` (core admits it
-    // as a synthetic steer and continues the turn); gate pass/stand-down →
-    // leave the fail-closed default (abstain). Registered ALONGSIDE the
-    // legacy probe, not replacing it — the same dist keeps working on
-    // mainline builds that lack the new core. No provider scoping: the
-    // event carries no model, so a providerID option would never fire.
-    // `event.continuations` is the pre-increment grant count (core caps at
-    // 2 and goes silent past it without calling voters); local policy stays
-    // tighter-or-equal via the verdict runner's own max_blocks/stand-down,
-    // never fighting the core cap — expect silence after 2 grants.
-    // DEFENSIVE: "experimental.stopping" is not in SessionHooks on released
-    // cores; fires only on builds dispatching it. Same any-cast pattern as
-    // §1b (the only two in src/).
-    try {
-      trackRegistration(
-        // biome-ignore lint/suspicious/noExplicitAny: defensive stopping probe, not in SessionHooks on released cores
-        await (ctx.session as any).hook(
-          "experimental.stopping",
-          // biome-ignore lint/suspicious/noExplicitAny: core dispatches a single mutable event
-          async (event: any) => {
-            if (activeState !== state) return;
-            // Core always dispatches a single mutable event object; a
-            // non-object would leave the grant with nowhere to land, so bail
-            // (fail-closed is the core's job on malformed dispatch).
-            if (event === null || typeof event !== "object") return;
-            const vote = event as Partial<ExperimentalStoppingEvent>;
-            const sessionID: string =
-              (typeof vote.sessionID === "string" && vote.sessionID) ||
-              getEventSessionID(event) ||
-              "unknown";
-            // Never let a voter failure escape into core: on any error
-            // abstain (leave the fail-closed default) instead of losing the
-            // turn to an undefined core reaction. A throwing voter stops the
-            // turn per the contract — that decision belongs to core, not to
-            // a logging or gate-backend failure inside this probe.
-            try {
-              await recordStopLevel(state, "experimental.stopping");
-              await reloadConfigIfChanged(state);
-              if (state.config.profile === "off") return;
-              const verdict = await runCompletion(state, sessionID);
-              const message = await actOnVerdict(state, verdict);
-              await safeLog(state, "info", "experimental.stopping vote", {
-                sessionID,
-                step: vote.step,
-                continuations: vote.continuations,
-                decision: verdict.decision,
-              });
-              if (message !== null) {
-                (event as ExperimentalStoppingEvent).decision = {
-                  shouldContinue: true,
-                  text: message,
-                };
-              }
-            } catch (error) {
-              try {
-                await safeLog(state, "warn", "experimental.stopping vote failed; abstaining", {
-                  sessionID,
-                  error: error instanceof Error ? error.message : String(error),
-                });
-              } catch {
-                // best-effort only — the abstain itself must not throw
-              }
-            }
-          },
-        ),
-      );
-      await safeLog(
-        state,
-        "info",
-        "registered experimental.stopping hook; if this OpenCode build dispatches it, gate failures continue the turn with steer text",
-      );
-    } catch {
-      await safeLog(
-        state,
-        "warn",
-        "could not register experimental.stopping hook; legacy stopping probe and session.idle re-prompt remain",
-      );
-    }
+    await safeLog(
+      state,
+      "info",
+      "registered experimental.idle hook (+ idle alias); gate failures continue the same execution via synthetic",
+    );
 
     // 2a) Native permission layer (Phase 25): `permission.evaluate` fires
     // with `{action, resources, effect}` (shapes recorded in the 25.1 spike,
@@ -903,9 +870,12 @@ const plugin = Plugin.define({
       }),
     );
 
-    // 4) Event subscription — file tracking + gate enforcement (V1: event hook)
-    // Keeps the completion gate intent without session.stopping: on idle, run gate;
-    // on failure inside budget, re-prompt the session (async block).
+    // 4) Event subscription — file tracking + gate enforcement net.
+    // Runs the gate on `session.idle` for the boundaries the §1b hook
+    // skipped (interruption, failure, steer-parked drains) or for builds
+    // without the hook. Skips when the hook just handled the same boundary
+    // (dedup map). Synthetic-first admit: after the execution ended, a
+    // synthetic message is the quietest wake; prompt is the fallback.
     const controller = new AbortController();
     const eventLoop = (async () => {
       try {
@@ -921,9 +891,12 @@ const plugin = Plugin.define({
 
           if (isSessionDeletedEvent(type)) {
             // session.deleted: cleanup block counts (memory + storage) and
-            // forget the session's directory mapping if present.
+            // the idle dedup stamp for the session.
             const sid = getEventSessionID(event);
-            if (sid) await state.blocks.clear(sid);
+            if (sid) {
+              await state.blocks.clear(sid);
+              state.lastIdleHandled.delete(sid);
+            }
             continue;
           }
 
@@ -967,22 +940,28 @@ const plugin = Plugin.define({
             }
             const sessionID = getEventSessionID(event);
             if (!sessionID) continue;
+            // The §1b hook completed an evaluation for this boundary — one
+            // boundary, one gate run. (Deliberately not stamped here: only
+            // the hook stamps, so a hook that never fires can never be
+            // starved by the net.)
+            if (wasIdleHandledRecently(state, sessionID)) continue;
 
             const verdict = await runCompletion(state, sessionID);
+            if (state.continuationLevel === undefined) state.continuationLevel = "fallback";
             const message = await actOnVerdict(state, verdict);
             if (message === null) continue;
             const blockInfo =
               verdict.decision === "blocked"
                 ? ` (block ${verdict.blockCount}/${verdict.maxBlocks})`
                 : "";
-            // blocked -> re-prompt the session (fallback when session.stopping
-            // is not dispatched by this OpenCode build)
+            // blocked -> admit a continuation (net for the boundaries the
+            // hook skipped: interruption, failure, steer-parked drains).
             try {
-              // Prefer prompt (creates a user turn and wakes the agent); fallback to synthetic if prompt not available
-              if (typeof ctx.session.prompt === "function") {
-                await ctx.session.prompt({ sessionID, text: message });
-              } else if (typeof ctx.session.synthetic === "function") {
+              // Prefer synthetic (quiet wake, no user turn); fallback to prompt if synthetic not available
+              if (typeof ctx.session.synthetic === "function") {
                 await ctx.session.synthetic({ sessionID, text: message });
+              } else if (typeof ctx.session.prompt === "function") {
+                await ctx.session.prompt({ sessionID, text: message });
               } else {
                 await safeLog(
                   state,

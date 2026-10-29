@@ -5,19 +5,43 @@ No code changes in this note. Commit locally; never push without request.
 
 ## Decision
 
-When upstream `anomalyco/opencode#58508` merges, the framework goes
-`idle`-first and drops the `experimental.stopping` probes:
+The idle hook is live on upstream `dev` (see "Landing" below), so the
+framework goes `idle`-first and drops the `experimental.stopping`
+probes:
 
-- Primary: `ctx.session.hook("idle", …)` → `synthetic`, same execution.
+- Primary: `ctx.session.hook("experimental.idle", …)` → `synthetic`, same execution.
 - Net: existing `event.subscribe` idle re-prompt stays, deduped, catching
   everything the hook skips (parked steers, hook throw).
 - Wall: `tool.execute.before` pre-flight deny stays the only true hard gate.
 - Cap and receipt: `evaluateCompletion` + `max_blocks` + standdown confession,
   unchanged.
 
-Do NOT implement against the draft. Implement after merge.
+Do NOT implement against the draft. Implement against the landed hook
+(see "Landing" below). Implementation still needs an explicit go.
 
-## Hook shape (verified 2026-10-27 from the draft diff)
+## Landing (verified 2026-10-29 from upstream `dev`)
+
+- `anomalyco/opencode#58508` never merged (`closed`, `merged: false`,
+  died as a conflicted draft Oct 28). Its replacement
+  `anomalyco/opencode#59437` ("add /goal with a client-side done
+  check", self-described as "Alternative to #58508... It has the same
+  idle hook") merged Oct 29 00:05 UTC.
+- `SessionIdle` (`{ sessionID, background }`), `SessionIdleBackground`
+  (shell/subagent/image), and the `experimental.idle` key verified
+  present in BOTH `packages/plugin/src/effect/session.ts` and
+  `packages/plugin/src/promise/session.ts` on `dev`.
+- Runner behavior verified in `packages/core/src/session/runner/llm.ts`
+  (drain fires `hooks.trigger("session", "experimental.idle",
+  { sessionID, background })` inside `restore(...)` at the
+  would-go-idle point), `packages/core/src/session/execution.ts`
+  (`stepped` threaded through `Moved`/`Reloaded`), and
+  `packages/core/src/plugin/hooks.ts` (trigger has no error boundary —
+  see retained gap #1). Canonical registration from the merged tree
+  (`packages/core/src/plugin/goal.ts`):
+  `ctx.session.hook("experimental.idle", (event) =>
+  idle(event.sessionID, event.background)...)`.
+
+## Hook shape (verified 2026-10-29 from the landed `dev` tree, ex #59437)
 
 - Event is `{ sessionID, background }`. The framework ignores `background`.
 - `stepped` rides through `Moved` / `Reloaded`; a move/reload landing at the
@@ -33,8 +57,14 @@ Do NOT implement against the draft. Implement after merge.
 
 ## Retained gaps
 
-1. Hook throw fails open to idle. The subscriber re-runs the gate a turn
-   later, loudly — delayed, not silent. Accept.
+1. Hook throw fails the drain loudly, NOT open to idle:
+   `PluginHooks.trigger` re-yields each callback with no error boundary
+   and the drain has no catch around the idle trigger, so an uncaught
+   throw becomes a Failed terminal (claim released, failure
+   notification). Fail-open comes only from our handler catching
+   internally (cut spec §2 throw path), never from the runner. If our
+   catch ever lets something escape, the execution fails loudly instead
+   of idling — louder than silent, accept.
 2. Parked-`queue` steer completion skips the hook atomically. Subscriber
    catches it next idle. Accept.
 3. Fresh step allowance per block burns `maxSteps` faster than in-turn votes.
@@ -55,14 +85,14 @@ model work ends, nothing pending, not mid-continuation
   → edits: execute.before pre-flight deny (true hard wall, unaffected)
 ```
 
-## Cut spec (execute after #58508 merges)
+## Cut spec (execute on explicit go; precondition already met via #59437)
 
 1. `src/index.ts` — delete §1b `stopping` probe + §1c
    `experimental.stopping` probe, `StoppingOutput` /
    `ExperimentalStoppingEvent` types, `recordStopLevel`. Replace
    `stopHookKind`/`stopHookSupported` with
    `continuationLevel: "idle" | "fallback" | undefined` (single flag, no rank).
-2. `src/index.ts` — add §1b `idle` hook, defensive (`any`-cast, try/catch
+2. `src/index.ts` — add §1b `experimental.idle` hook, defensive (`any`-cast, try/catch
    around registration like the probes today):
    stale-guard → `reloadConfigIfChanged` → `off` check → resolve sessionID
    (`event.sessionID ?? getEventSessionID`) → `runCompletion` →
@@ -82,7 +112,7 @@ model work ends, nothing pending, not mid-continuation
 6. `src/harness.ts`, `src/gate.ts` — no changes. The verdict runner already
    satisfies "plugin bounds its own loop".
 7. `docs/plans/04-hook-mapping.md` — update the Completion-gate row:
-   `session.hook("idle")` primary (synthetic, same execution, bounded by
+   `session.hook("experimental.idle")` primary (synthetic, same execution, bounded by
    `gate.max_blocks`), `event.subscribe` net for skip paths, `execute.before`
    the hard wall.
 

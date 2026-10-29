@@ -8,15 +8,13 @@
  *   configured, edit tools are denied (standard/strict) until the agent has
  *   written the pre-flight artifact. This is a true hard gate: it runs in
  *   `tool.execute.before`, before the edit lands. This is the only fully hard
- *   enforcement available on OpenCode builds without a `session.stopping`
- *   hook.
+ *   enforcement — the idle continuation can only steer, never deny.
  * - **Post-flight**: the completion verdict runner. It unions event-tracked
  *   changed files with `git status --porcelain` (robust against event-shape
  *   mismatches), runs the command gate, and — when `gate.require_review` is
  *   set — requires a peer-review artifact for sessions that changed files.
- *   The verdict is consumed by both the `session.stopping` hook (hard stop,
- *   when the OpenCode build supports it) and the `session.idle` fallback
- *   (re-prompt).
+ *   The verdict is consumed by the `experimental.idle` hook (same-execution
+ *   synthetic continuation) and the `session.idle` event net (re-prompt).
  */
 
 import { readFile } from "node:fs/promises";
@@ -166,9 +164,9 @@ function reviewMissingMessage(changedFiles: string[]): string {
 
 /**
  * Evaluate the completion gate + review requirement and update block state.
- * Pure orchestration: both the `session.stopping` and `session.idle` call
- * sites feed their outcome from here so one session's block count applies to
- * either hook.
+ * Pure orchestration: both the `experimental.idle` hook and the
+ * `session.idle` event net feed their outcome from here so one session's
+ * block count applies to either lever.
  */
 export async function evaluateCompletion(deps: CompletionDeps): Promise<CompletionVerdict> {
   const { run, config, directory, sessionID, tracker, blockCounts } = deps;

@@ -73,14 +73,14 @@ describe("issue #1: teardown must not brick tool calls", () => {
     return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
-  async function waitForPromptCalls(
-    prompt: unknown,
+  async function waitForMockCalls(
+    target: unknown,
     expected: number,
     // Below the default vitest 5s test timeout on purpose: on failure the
     // terminal expect below must be what reports, not a framework timeout.
     timeoutMs = 3000,
   ): Promise<void> {
-    const mock = prompt as { mock: { calls: unknown[][] } };
+    const mock = target as { mock: { calls: unknown[][] } };
     const deadline = Date.now() + timeoutMs;
     // `<` (not `!==`): an overshoot is already a failure — fail fast
     // instead of spinning the full timeout before the expect fires.
@@ -289,7 +289,7 @@ describe("issue #1: teardown must not brick tool calls", () => {
 
   it("rapid setup/teardown cycles with in-flight streams leave no live stale loop (strain probe)", async () => {
     // Gate config that blocks on idle, so event-loop liveness is observable
-    // via ctx.session.prompt: stubbed `false` exits 1 (no child process
+    // via ctx.session.synthetic: stubbed `false` exits 1 (no child process
     // ever spawns — see the host mock at the top of this file) and
     // skip_unchanged is off so the gate runs with no changed files.
     writeFileSync(
@@ -301,7 +301,7 @@ describe("issue #1: teardown must not brick tool calls", () => {
 
     // Reload churn: five rapid setup/teardown pairs with hanging streams.
     const dead: Array<{
-      ctx: { session: { prompt: unknown } };
+      ctx: { session: { prompt: unknown; synthetic: unknown } };
       source: ReturnType<typeof createQueueSource>;
     }> = [];
     for (let i = 0; i < 5; i++) {
@@ -323,26 +323,31 @@ describe("issue #1: teardown must not brick tool calls", () => {
     const cleanupLive = (await mod.setup(live.ctx)) as Cleanup;
 
     // Late events into every dead stream: the stale loops wake, see
-    // `activeState !== state`, and exit — without re-prompting anywhere.
+    // `activeState !== state`, and exit — without admitting anywhere.
     for (const [i, d] of dead.entries()) {
       d.source.push({ type: "session.idle", sessionID: `stress-stale-${i}` });
     }
     await sleep(300);
     for (const d of dead) {
       expect(d.ctx.session.prompt).not.toHaveBeenCalled();
+      expect(d.ctx.session.synthetic).not.toHaveBeenCalled();
     }
     expect(live.ctx.session.prompt).not.toHaveBeenCalled();
+    expect(live.ctx.session.synthetic).not.toHaveBeenCalled();
 
-    // The live loop still enforces: one failing-gate idle → one re-prompt.
+    // The live loop still enforces: one failing-gate idle → one synthetic
+    // admit (synthetic-first since the idle-first cutover; prompt is only
+    // the fallback when synthetic is unavailable).
     liveSource.push({ type: "session.idle", sessionID: "stress-live" });
-    await waitForPromptCalls(live.ctx.session.prompt, 1);
-    expect(live.ctx.session.prompt).toHaveBeenCalledWith(
+    await waitForMockCalls(live.ctx.session.synthetic, 1);
+    expect(live.ctx.session.synthetic).toHaveBeenCalledWith(
       expect.objectContaining({ sessionID: "stress-live" }),
     );
-    // Quiescence: a double-firing loop would land its second prompt just
+    expect(live.ctx.session.prompt).not.toHaveBeenCalled();
+    // Quiescence: a double-firing loop would land its second admit just
     // after the first — settle, then confirm the count is still exactly 1.
     await sleep(200);
-    expect(live.ctx.session.prompt).toHaveBeenCalledTimes(1);
+    expect(live.ctx.session.synthetic).toHaveBeenCalledTimes(1);
 
     await cleanupLive();
   });

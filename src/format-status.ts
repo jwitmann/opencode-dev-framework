@@ -133,21 +133,16 @@ export function renderStatus(config: ResolvedConfig, state?: HookState | null): 
   const lines: string[] = [renderConfigStatus(config)];
 
   if (state) {
-    // Enforcement level: none (no live state — config-only rendering) →
-    // idle-fallback (no hook dispatched yet) → legacy `stopping` probe →
-    // V2 `experimental.stopping` hook. The kind is monotonic: once the new
-    // hook has fired, a late legacy dispatch never downgrades the level.
+    // Enforcement level: the `experimental.idle` hook (same-execution
+    // synthetic continuation) once it has completed an evaluation, else
+    // the `event.subscribe` idle re-prompt net.
     lines.push("");
-    if (!state.stopHookSupported) {
+    if (state.continuationLevel === "idle") {
       lines.push(
-        `Hard stop (stopping / experimental.stopping): not dispatched by this OpenCode build — idle re-prompt fallback`,
-      );
-    } else if (state.stopHookKind === "experimental.stopping") {
-      lines.push(
-        `Hard stop (experimental.stopping): active — gate failures continue the turn with steer text`,
+        `Continuation (idle): active — gate failures continue the same execution via synthetic`,
       );
     } else {
-      lines.push(`Hard stop (stopping): active — gate vetoes loop exit (legacy probe)`);
+      lines.push(`Continuation (idle): not dispatched — event-subscribe fallback`);
     }
 
     if (config.precommit === "auto") {

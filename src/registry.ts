@@ -1,4 +1,3 @@
-import type { StopHookKind } from "./block-store.js";
 import type { ChangedFileTracker } from "./gate.js";
 import type { RunCommand } from "./host.js";
 import type { LogFn } from "./logger.js";
@@ -35,14 +34,12 @@ export interface HookState {
   /** mtime (ms) of the config file at last load; used to detect out-of-process
    * edits (e.g. a `/df-profile` change made from the TUI module). */
   configMtime?: number;
-  /** True once core has actually dispatched a stopping hook (hard stops active). */
-  stopHookSupported?: boolean;
-  /**
-   * Which hook fired: the legacy `stopping` probe or the V2
-   * `experimental.stopping` contract. The new hook outranks the old; absent
-   * until either fires (idle re-prompt fallback is the active level).
-   */
-  stopHookKind?: StopHookKind;
+  /** Which lever completed a gate evaluation most recently in this process:
+   * `"idle"` once the `experimental.idle` hook has (same-execution
+   * continuation active), `"fallback"` when only the `event.subscribe`
+   * idle re-prompt net has. Absent until either fires. Memory-only: a
+   * reload re-derives it on the next idle boundary. */
+  continuationLevel?: "idle" | "fallback";
 }
 
 /**

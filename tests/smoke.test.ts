@@ -26,7 +26,7 @@ describe("plugin entry point (V2)", () => {
     }
   });
 
-  it("registers constitution (context/generate/compaction/title), stopping and guardrail hooks", async () => {
+  it("registers constitution (context/generate/compaction/title), idle and guardrail hooks", async () => {
     const sessionNames: string[] = [];
     const toolNames: string[] = [];
     const permissionNames: string[] = [];
@@ -61,8 +61,8 @@ describe("plugin entry point (V2)", () => {
       "generate",
       "compaction",
       "title",
-      "stopping",
-      "experimental.stopping",
+      "experimental.idle",
+      "idle",
     ]) {
       expect(sessionNames).toContain(name);
     }

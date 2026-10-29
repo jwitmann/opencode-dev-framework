@@ -1,12 +1,12 @@
 /**
  * Completion gate: run typecheck / test / lint-changed commands when the
- * session tries to stop, plus the changed-file tracking that feeds it.
+ * session goes idle, plus the changed-file tracking that feeds it.
  *
  * The gate runs from two call sites:
- * - `session.stopping` (OpenCode PR #44712): on failure, the adapter sets
- *   `stop: false` with a continuation message, up to `gate.max_blocks`.
- * - `session.idle` (fallback on older OpenCode): advisory logging only — by
- *   then the agent's turn has already finished, so failures cannot block.
+ * - `experimental.idle` hook: same-execution synthetic continuation on
+ *   failure, up to `gate.max_blocks`.
+ * - `session.idle` event net: re-prompt fallback for the boundaries the
+ *   hook skips.
  */
 
 import { isAbsolute, relative } from "node:path";
