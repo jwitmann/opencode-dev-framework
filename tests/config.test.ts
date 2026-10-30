@@ -315,7 +315,7 @@ describe("resolveConfig", () => {
   });
 });
 
-describe("gate.acceptance", () => {
+describe("gate acceptance checks", () => {
   it("defaults to an empty list", () => {
     expect(resolveConfig({ profile: "standard" }).gate.acceptance).toEqual([]);
   });
@@ -363,6 +363,16 @@ describe("gate.acceptance", () => {
     );
     expect(() => loadConfig(dir)).toThrowError(
       /Invalid configuration in .*gate\.acceptance\.0\.command/s,
+    );
+  });
+
+  it("rejects a blank command with a readable path", () => {
+    write(
+      ".opencode-dev-framework.yml",
+      "profile: standard\ngate:\n  acceptance:\n    - name: api\n      command: '   '\n",
+    );
+    expect(() => loadConfig(dir)).toThrowError(
+      /Invalid configuration in .*gate\.acceptance\.0\.command.*must not be blank/s,
     );
   });
 

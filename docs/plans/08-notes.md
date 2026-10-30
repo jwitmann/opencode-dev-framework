@@ -1518,6 +1518,38 @@ mainline matrix, `dist/` rebuilt. No production code touched.
   and the suite is green — never from memory, never in the same breath
   as the implementation.
 
+## Retrospective peer review of Phases 1A+1B (2026-10-30)
+
+- Phase 1A (`feea31c`, inspection/verify split) never claimed a review;
+  Phase 1B (`c874b06`) claimed "one Note fixed" with no record. On user
+  challenge, a real 3-specialist retrospective pass ran over both diffs
+  against current source (code-reviewer / pattern-guardian /
+  style-enforcer, parallel, investigation-only).
+- Verdict: no Blocking, no Should-fix. The 1A split is genuinely clean
+  (single evaluation path, two policy consumers); 1B's acceptance loop
+  reuses `substituteFiles`/GateStep conventions and survives the later
+  gate parallelization textually identical, still sequential and last.
+  The 1B "blank names rejected" detail checks out in the schema.
+- Four Notes fixed in the working tree, suite re-run green:
+  - Whitespace-only acceptance `command` passed schema then died as
+    exit 127 at runtime; now rejected at load like blank names
+    (regression-tested). Fails safe either way — this is error clarity.
+  - `inspectCompletion` docstrings overstated purity after the perf
+    pass-cache write-through; qualified to cover tracker/block-store/
+    log/input only.
+  - Unsorted import in `tests/commands.test.ts`; `describe("gate.acceptance")`
+    renamed to `describe("gate acceptance checks")` for one scheme.
+- Two Notes declined with reason:
+  - Hoisting the duplicated `writeArtifact`/`makeDeps`-vs-`makeInspection`
+    scaffolding in `tests/harness.test.ts`: would churn three describe
+    blocks' fixtures (including the newer pass-cache suite) for test-only
+    tidiness. Contained; leave.
+  - Removing the "redundant" disabled-gate guard in `evaluateCompletion`:
+    the reviewer was wrong — it is load-bearing. Dropping it would route
+    disabled idles through the shared pass path, which clears the tracker;
+    the guard preserves accumulation so a mid-session profile flip still
+    gates prior edits. Kept deliberately.
+
 ## References
 
 - OpenCode plugin docs: <https://opencode.ai/docs/plugins>

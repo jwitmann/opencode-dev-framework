@@ -168,10 +168,13 @@ function reviewMissingMessage(changedFiles: string[]): string {
 }
 
 /**
- * Side-effect-free inputs for a completion inspection. The tracker file
- * list is a read-only snapshot: inspection never clears it, never touches
- * block counts, and never admits input — those are policy decisions owned
- * by `evaluateCompletion`.
+ * Side-effect-free inputs for a completion inspection, with one deliberate
+ * exception: the session pass-cache write-through (`passCache.key/summary`
+ * store on clean runs, clear on failures) when the caller opts in by
+ * passing `passCache`. The tracker file list is a read-only snapshot:
+ * inspection never clears it, never touches block counts, never logs, and
+ * never admits input — those are policy decisions owned by
+ * `evaluateCompletion`.
  */
 export interface InspectionDeps {
   run: RunCommand;
@@ -270,10 +273,11 @@ export interface CompletionInspection {
 }
 
 /**
- * Inspect the current completion state without mutating anything: no
- * tracker clearing, no block-count changes, no logging, no input admitted.
- * Both the idle policy (`evaluateCompletion`) and manual verification
- * (`verifyGate`) read from here so they evaluate the same full contract.
+ * Inspect the current completion state without mutating anything except the
+ * opted-in session pass-cache write-through: no tracker clearing, no
+ * block-count changes, no logging, no input admitted. Both the idle policy
+ * (`evaluateCompletion`) and manual verification (`verifyGate`) read from
+ * here so they evaluate the same full contract.
  */
 export async function inspectCompletion(deps: InspectionDeps): Promise<CompletionInspection> {
   const { run, config, directory, trackerFiles } = deps;

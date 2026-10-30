@@ -40,7 +40,10 @@ const acceptanceCheckSchema = z.object({
     .string()
     .min(1, "acceptance check name must not be empty")
     .refine((s) => s.trim().length > 0, "acceptance check name must not be blank"),
-  command: z.string().min(1, "acceptance check command must not be empty"),
+  command: z
+    .string()
+    .min(1, "acceptance check command must not be empty")
+    .refine((s) => s.trim().length > 0, "acceptance check command must not be blank"),
   timeout: z.number().positive("acceptance check timeout must be positive").optional(),
 });
 
