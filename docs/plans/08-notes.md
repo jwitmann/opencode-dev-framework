@@ -1359,6 +1359,25 @@ just kept its contract (verify-on-current-tree) available across the
 pause boundary. The agent's post-resume re-verification is the addendum
 working as designed under interruption.
 
+### Interactive round 4 — post-complete invalidation, live (2026-10-30)
+
+After round 3's `Goal complete`, the fixture-restore shell edit
+(`printf 'broken\n' > state.txt` — my own round-prep, gate-invisible as
+a change event) invalidated the PASS. The idle gate fired on the
+re-broken tree: `test: failed`, synthetic continuation admitted. The
+agent investigated honestly (`cat -A`, `./verify.sh`, `echo "exit:
+$?"`), diagnosed the reset, fixed via shell again (fourth `printf >`
+sighting), re-ran `dev_framework_verify` → `DEV_FRAMEWORK_VERDICT:
+PASS` → done, 5 m 16 s. Row 2 (verify-then-edit invalidation) now
+receipted interactively too — and notably, the shell-edit blind spot
+did NOT save the broken state: with `skip_unchanged: false` the gate
+executes regardless of attribution, so the test caught what the tracker
+couldn't see. Bonus agent behavior: it flagged the pattern ("third
+time state.txt has been reset... something external keeps reverting
+the file... outside my control") instead of silently looping — the
+right loop-avoidance instinct; the external actor was the experimenter,
+owned here.
+
 ## References
 
 - OpenCode plugin docs: <https://opencode.ai/docs/plugins>
