@@ -226,10 +226,15 @@ describe("extractObjectiveText / isNativeGoalListed", () => {
 
   it("detects native goal presence defensively", () => {
     expect(isNativeGoalListed([{ name: "goal" }, { name: "other" }])).toBe(true);
+    // Real core shape: { location, data: [...] } (CommandListOutput).
+    expect(isNativeGoalListed({ location: {}, data: [{ name: "goal" }] })).toBe(true);
+    expect(isNativeGoalListed({ location: {}, data: [{ name: "other" }] })).toBe(false);
     expect(isNativeGoalListed([{ name: "other" }])).toBe(false);
     expect(isNativeGoalListed([])).toBe(false);
+    expect(isNativeGoalListed({ location: {}, data: [] })).toBe(false);
     expect(isNativeGoalListed(undefined)).toBe(false);
     expect(isNativeGoalListed("goal")).toBe(false);
+    expect(isNativeGoalListed({ location: {} })).toBe(false);
     expect(isNativeGoalListed([{ name: 42 }])).toBe(false);
   });
 });
@@ -325,7 +330,9 @@ describe("/df-goal command wiring (server registration)", () => {
           return { dispose: async () => {} };
         }),
         list: vi.fn(async () =>
-          options.goalListed ? [{ name: "goal" }, { name: "other" }] : [{ name: "other" }],
+          options.goalListed
+            ? { location: {}, data: [{ name: "goal" }, { name: "other" }] }
+            : { location: {}, data: [{ name: "other" }] },
         ),
       },
       permission: {

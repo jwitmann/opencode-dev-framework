@@ -196,14 +196,25 @@ export function extractObjectiveText(prompt: unknown): string {
 
 /**
  * Capability probe over `command.list()` output: true when an entry named
- * `goal` is present. Defensive over the listing shape (SDK codegen drifts;
- * core source is truth) — anything unrecognized means unavailable, never
- * an assumed capability.
+ * `goal` is present. The real output shape is `{ location, data: [...] }`
+ * (`CommandListOutput`); a bare array is tolerated for forward
+ * compatibility. Defensive throughout (SDK codegen drifts; core is truth) —
+ * anything unrecognized means unavailable, never an assumed capability.
  */
 export function isNativeGoalListed(listed: unknown): boolean {
-  if (!Array.isArray(listed)) return false;
-  return listed.some(
+  const entries = unwrapCommandEntries(listed);
+  if (entries === null) return false;
+  return entries.some(
     (entry) =>
       entry !== null && typeof entry === "object" && (entry as { name?: unknown }).name === "goal",
   );
+}
+
+function unwrapCommandEntries(listed: unknown): unknown[] | null {
+  if (Array.isArray(listed)) return listed;
+  if (listed !== null && typeof listed === "object") {
+    const data = (listed as { data?: unknown }).data;
+    if (Array.isArray(data)) return data;
+  }
+  return null;
 }
