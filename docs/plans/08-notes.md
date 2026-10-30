@@ -1443,6 +1443,11 @@ mainline matrix, `dist/` rebuilt. No production code touched.
   reviewer-visible session. So the three PR rows keep their status:
   delegation + framework-parity evidence is in; arbitration evidence
   still needs the voter.
+- Revisit trigger (2026-10-30 decision: wait, don't build Phase 3 now):
+  start Phase 3 when `#54487` merges or its contract stabilizes, or
+  when release notes need to claim stopping support — not before.
+  The voter must emit its own log lines from day one (headless core
+  logs are blind to the ordering).
 
 ## References
 
