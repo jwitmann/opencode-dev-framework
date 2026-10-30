@@ -831,21 +831,21 @@ command. Load the local plugin exactly once and rebuild `dist/` first. Run the
 matrix on mainline native-goal core; repeat the enforcement-sensitive rows on a
 current core containing both native `/goal` and our `#54487`.
 
-| Scenario | Required observation |
-|---|---|
-| Initial failure, then fix | `dev_framework_verify` FAIL is visible in the transcript; the goal does not legitimately complete; after the fix PASS is visible and native goal can complete. |
-| Verify, then edit again after PASS | A product edit after PASS invalidates the earlier result: the addendum clause fires in the agent loop and the idle gate rechecks current state rather than accepting the stale PASS. |
-| Green commands, missing review | Full verification returns FAIL for review, demonstrating the manual/idle contract now matches. |
-| Native and framework both fail | Record whether one or two continuations arrive. No deadlock, config edits, or hidden goal restart. |
-| Native reviewer says done while framework fails | Record native status and framework backstop behavior; document this as a known possibility, not an unexpected hard guarantee. |
-| Persistent failure | Observe native stalls/rounds and framework `max_blocks`/stand-down/reset interaction. Confirm there is a bounded path out and an honest unmet-requirement message. |
-| PR-core stopping grant and cap | On `#54487`, failure requests a pre-`Complete()` continuation, the two-grant core cap remains intact, and idle does not duplicate the grant. Persistent failure still ends with an honest unmet-requirement report. |
-| PR-core stopping/idle pass boundary | A passing stopping evaluation does not immediately rerun the same gate at idle; native goal review and native status remain distinct from terminal enforcement. |
-| PR-core interruption and move/reload | A slow verification remains interruptible; documented no-vote boundaries use the fallback without duplicate continuations or an increased budget. |
-| User pause/clear during verification | Native user control wins for native state; framework does not rewrite goal state or issue goal resume. |
-| Compaction during active goal | Objective and verification addendum survive through native reminder/continuation behavior; verification still runs on the current tree. |
-| Older core | `/df-goal` fails clearly while existing guardrails and idle gate continue to work. |
-| No meaningful checks configured | `/df-goal` rejects instead of manufacturing a vacuous PASS; native `/goal` remains available directly. |
+| Scenario | Required observation | Live receipt (2026-10-30) |
+|---|---|---|
+| Initial failure, then fix | `dev_framework_verify` FAIL is visible in the transcript; the goal does not legitimately complete; after the fix PASS is visible and native goal can complete. | ✅ D1 (headless): tracked edit → single verify PASS → native complete, exit 0; idle re-passed 4× on later boundaries. Interactive D-live-1–4: same cycle in TUI, `Goal complete`/`goal met`. |
+| Verify, then edit again after PASS | A product edit after PASS invalidates the earlier result: the addendum clause fires in the agent loop and the idle gate rechecks current state rather than accepting the stale PASS. | ✅ D1b (headless): PASS → re-break → FAIL `test: failed (exit 1)`. Interactive round 4: post-complete shell re-break → idle FAIL → synthetic → agent diagnosed, fixed, re-verified PASS. |
+| Green commands, missing review | Full verification returns FAIL for review, demonstrating the manual/idle contract now matches. | ✅ D3/D3b: agent wrote `review.md` from constitution knowledge before first verify; exact FAIL verdict unit-pinned (`tests/commands.test.ts`), live shows self-remediation. |
+| Native and framework both fail | Record whether one or two continuations arrive. No deadlock, config edits, or hidden goal restart. | ✅ D2c: exactly one synthetic continuation per boundary (1/2, 2/2); native silent; no deadlock, no double-admit. |
+| Native reviewer says done while framework fails | Record native status and framework backstop behavior; document this as a known possibility, not an unexpected hard guarantee. | ➖ Documented, not observed: two labeled-trap runs (`df-goal-diverge/`) produced agreement both times — diligent agent never declares done on FAIL, reviewer never contradicted the gate in any run. Divergence with a diligent agent appears structurally hard to reach; needs a deceived/non-diligent agent class. |
+| Persistent failure | Observe native stalls/rounds and framework `max_blocks`/stand-down/reset interaction. Confirm there is a bounded path out and an honest unmet-requirement message. | ✅ D2c: FAIL ×2 → block → block → stand-down with STILL-unmet message naming the check; fixture untouched, exit 0. |
+| PR-core stopping grant and cap | On `#54487`, failure requests a pre-`Complete()` continuation, the two-grant core cap remains intact, and idle does not duplicate the grant. Persistent failure still ends with an honest unmet-requirement report. | ❌ NOT run: needs a current PR core containing both native `/goal` and `#54487` (rebase onto `#59437` is fork work; Phase 3 entry criterion unmet). |
+| PR-core stopping/idle pass boundary | A passing stopping evaluation does not immediately rerun the same gate at idle; native goal review and native status remain distinct from terminal enforcement. | ❌ NOT run: same PR-core dependency. |
+| PR-core interruption and move/reload | A slow verification remains interruptible; documented no-vote boundaries use the fallback without duplicate continuations or an increased budget. | ❌ NOT run: same PR-core dependency. |
+| User pause/clear during verification | Native user control wins for native state; framework does not rewrite goal state or issue goal resume. | ✅ Pause receipted interactively (rounds 2–3): 40 s runs outran pause twice (boundary-paced, not preemption); with a 45 s slow gate, pause landed (`goal paused`), user resumed, agent re-verified fresh → PASS; framework never touched goal state. `clear` mid-run NOT exercised. |
+| Compaction during active goal | Objective and verification addendum survive through native reminder/continuation behavior; verification still runs on the current tree. | ❌ NOT run: needs context pressure / a long session; no receipt. |
+| Older core | `/df-goal` fails clearly while existing guardrails and idle gate continue to work. | ✅ Sandboxed v2.2.0: `dfGoalPresent: true, goalPresent: false`, §3.3 capability error verbatim, no substitute; guardrails + `dev_framework_verify` work (D6-220 FAIL-review). Idle-backstop engagement on old core unconfirmed. (2.0.26 negative finding: its resolver silently skips conditional-`exports` packages, so the plugin can't load there at all.) |
+| No meaningful checks configured | `/df-goal` rejects instead of manufacturing a vacuous PASS; native `/goal` remains available directly. | ✅ D4 (headless) + D4-220 (old core): rejected pre-delegation with the actionable error; session exited 0, no substitute. |
 
 Capture logs and actual transcript evidence in `docs/plans/08-notes.md` or the
 implementation handoff. Do not record invented expected behavior as a receipt.
@@ -897,23 +897,36 @@ Additional requirements:
 
 ### First verified-goal release
 
-- [ ] Native delegation and unsupported-core behavior were established by a real
-      spike.
-- [ ] Manual and idle verification evaluate the same full completion contract.
-- [ ] Manual verification is free of retry/tracker/continuation mutations.
-- [ ] Named acceptance commands are validated, aggregated, and documented.
-- [ ] `/df-goal` preserves the objective, enforces total length, and delegates
-      exactly once.
-- [ ] `/df-goal` cannot silently become an unverified or advisory substitute.
-- [ ] Existing idle gate behavior and teardown protections remain intact.
-- [ ] Dual-continuation and divergent-verdict limitations are documented without
-      claiming a hard veto or cross-plugin coordination.
+- [x] Native delegation and unsupported-core behavior were established by a real
+      spike. (Phase 0 C-series; receipted in `08-notes.md`.)
+- [x] Manual and idle verification evaluate the same full completion contract.
+      (Phase 1A; `inspectCompletion`, `DEV_FRAMEWORK_VERDICT`.)
+- [x] Manual verification is free of retry/tracker/continuation mutations.
+      (Phase 1A; unit-pinned, no mutations observed live.)
+- [x] Named acceptance commands are validated, aggregated, and documented.
+      (Phase 1B; `gate.acceptance`, `03-config-spec.md`, example yml.)
+- [x] `/df-goal` preserves the objective, enforces total length, and delegates
+      exactly once. (Phase 2; `src/goal.ts`, 23 unit tests; one delegation
+      per run observed live.)
+- [x] `/df-goal` cannot silently become an unverified or advisory substitute.
+      (Phase 2 §3.3 rejections; D4/D4-220 live receipts, no substitute started.)
+- [x] Existing idle gate behavior and teardown protections remain intact.
+      (Full suite green throughout; D2c cap path; teardown tests.)
+- [x] Dual-continuation and divergent-verdict limitations are documented without
+      claiming a hard veto or cross-plugin coordination. (One-tenant D2c;
+      divergence documented-but-unobserved after two trap runs; `03`, `08`.)
 - [ ] Mainline `/df-goal` does not require unmerged `#54487`; a current PR core
       was included in the Phase 0 ordering/capability observations.
-- [ ] The live dogfood matrix has actual receipts, including failure and cap
-      paths.
-- [ ] Full validation and peer review pass.
-- [ ] Changes are committed locally; nothing is pushed without user approval.
+      (First half holds — wrapper is mainline-only. Second half OPEN: no PR
+      core containing both native `/goal` and `#54487` was available; Phase 3
+      entry criterion unmet, not a prerequisite.)
+- [x] The live dogfood matrix has actual receipts, including failure and cap
+      paths. (Headless D1/D1b/D2c/D3/D4 + interactive D-live + divergence
+      trap + sandboxed 2.2.0 old-core; PR-core, compaction, and `clear`
+      rows explicitly open — see §6.5.)
+- [x] Full validation and peer review pass. (Format/lint/typecheck/test/build
+      green per phase; peer-review clean before each commit.)
+- [x] Changes are committed locally; nothing is pushed without user approval.
 
 ### Optional stopping-track completion
 
