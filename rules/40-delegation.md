@@ -50,6 +50,15 @@ does. Use judgment, but never skip the test-grounding and review steps for behav
 changes. If the specialist agents are not installed in this project, perform the same
 checks yourself with the skills in this section.
 
+## Execute plans under `/df-goal`
+
+When the task starts from a written plan (yours or the user's), execute it as
+`/df-goal <objective>` — the objective is the plan inline when short, or
+`Implement the plan in <path>` when long — so native completion requires the
+framework gate's PASS, not just your summary. A `dev_framework_verify` FAIL is
+a verdict: fix the underlying cause and re-verify, never declare the plan met
+without a tool-result PASS in the transcript.
+
 ## Skills
 
 For explicit, repeatable workflows you can invoke the bundled skills:
