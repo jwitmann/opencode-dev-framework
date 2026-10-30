@@ -1206,10 +1206,14 @@ No production code touched except the one shape fix below.
   stood down with the honest STILL-unmet message naming
   `test: failed (exit 1)`. Fixture byte-identical afterwards (only the two
   original files). Bounded path out confirmed, exit 0.
-- Older core (row 10) — NOT run: only v2.2.2 present on this box. The
-  capability-error path is unit-covered (wrong-shape mock era proved it
-  fires) and the shape fix got live coverage, but a true no-native-goal
-  core rejection has no live receipt.
+- Older core (row 10) — RECEIPTED 2026-10-30 on sandboxed v2.2.0 (see
+  subsection below). Before that: 2.0.26 cannot load this plugin at all —
+  its resolver silently skips any package whose `exports` is a conditional
+  object (bisected mini-probe `mini`→`mini4`; string-`exports`/no-package
+  loads, object-`exports` skipped with no error). So the row's premise
+  ("guardrails keep working, only /df-goal refuses") needs a core new
+  enough to load the plugin but old enough to lack native `/goal`: v2.2.0
+  fits (native `/goal` landed in the 2.2.1 line).
 - Pause/clear, compaction (rows 8–9) — NOT run: need an interactive
   session (user control) and context pressure respectively. Deferred.
 - PR-core rows — NOT run: `#54487` rebase onto `#59437` is fork work and
@@ -1257,6 +1261,50 @@ No production code touched except the one shape fix below.
 - D4-style rejection surfaces as core `command execution failed` with the
   full wrapper message — actionable and visible in logs even though the
   waiting agent prose doesn't quote it.
+
+### Older-core receipt — row 10 on sandboxed v2.2.0 (2026-10-30)
+
+Sandbox: `/tmp/opencode/oldcorebox` (`@opencode/cli-linux-x64@2.2.0`
+unpacked from npm, run as an explicit binary path; system `~/.opencode`
+v2.2.2 untouched), fixtures `/tmp/opencode/df-goal-oldcore/` (`d4`
+vacuous yml, `d5` plugin-shape probes, `d6` green-tests-plus-review),
+probe copied from the 2.2.2 matrix, `dist/` rebuilt first. All runs
+`--standalone --print-logs --agent build
+--model kimi-code-plan-global/kimi-for-coding`.
+
+- 2.0.26 negative result: framework entry silently ignored — no `loading
+  plugin` line, no failure, no constitution, while the side-by-side
+  package-less probe loaded. Bisected with throwaway `mini`–`mini4`
+  packages: `main`-only and string-`exports` load; any conditional-object
+  `exports` (even `"."` alone) is skipped silently. Our `package.json`
+  uses conditional `exports`, so 2.0.26 can never load this plugin —
+  row 10's "guardrails keep working" premise cannot hold there. Receipt
+  kept as a loader-compat finding, not a wrapper result.
+- 2.2.0 loads the real plugin: `loading plugin .../dist/index.js`,
+  `constitution injected`, `registered experimental.idle hook`. So 2.2.0
+  is the row's valid core (loads plugin, predates native `/goal`).
+- D4-220 (vacuous yml): probe saw `dfGoalPresent: true`,
+  `goalPresent: false`; wrapper threw the §3.3 capability error verbatim
+  ("native /goal is not available on this core..."), core logged
+  `command execution failed` with the full message, agent stood by,
+  session exited 0. No unverified substitute started. Row 10 first half
+  PASS.
+- D6-220 (green `test: "true"` + `require_review: true`, no review
+  artifact): delegation refused as above, then the agent read the probe
+  source, extracted `DF_DOGFOOD_OBJECTIVE` from env, and executed the
+  objective directly — wrote `hello` to `notes.txt` via the tracked
+  `edit` tool (guardrail `permission.evaluate action=edit effect=allow`,
+  lint-skip logged), ran `dev_framework_verify` → `DEV_FRAMEWORK_VERDICT:
+  FAIL` (review missing — same contract as 2.2.2 D3b). Permission layer,
+  constitution, verify tool, and gate contract all work on the old core.
+  Row 10 second half PASS for guardrails + manual verification.
+- Idle-backstop caveat on 2.2.0: D6 ended in a FAIL state (changed file,
+  no review) with no visible idle continuation or gate line — the
+  session simply ended, exit 0. Consistent with the plan's "no idle-hook
+  assumption" for pre-`#59437` cores, but unconfirmed whether the event
+  net abstained or never fired here. Recorded as unknown, not as
+  working. A dedicated leave-it-failing run would be needed to
+  characterize the old-core backstop.
 
 ## References
 
