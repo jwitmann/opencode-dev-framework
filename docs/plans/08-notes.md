@@ -1407,6 +1407,43 @@ the file... outside my control") instead of silently looping — the
 right loop-avoidance instinct; the external actor was the experimenter,
 owned here.
 
+### PR-core dogfood — dev `feat/experimental-session-stopping` + native /goal (2026-10-30)
+
+`~/opencode` on `feat/experimental-session-stopping` (ahead 1 of
+origin); HEAD contains `#59437` (`merge-base --is-ancestor` confirmed)
+and `experimental.stopping` (`SessionStopping` in the plugin protocol).
+Ran via dev CLI (`bun run --cwd packages/cli src/index.ts`) with
+`OPENCODE_DISABLE_CHANNEL_DB=1` — without it the dev channel uses
+`opencode-local.db` (no auth → `ModelUnavailableError`); the override
+shares the real `opencode.db`. Fixtures
+`/tmp/opencode/df-goal-prcore/` (`p3` vacuous, `p1` fixable
+`./verify.sh`, `p2` `test: "false"` cap 2), probe copied from the
+mainline matrix, `dist/` rebuilt. No production code touched.
+
+- P3 (vacuous): `dfGoalPresent: true`, `goalPresent: TRUE` (native goal
+  exists here), §3.3 refusal verbatim, session exit 0. Rejection path
+  identical across cores.
+- P1 (fixable): delegated (`dfGoalResult: "delegated"`), tracked fix,
+  single verify → `DEV_FRAMEWORK_VERDICT: PASS`, gate passed. Delegation
+  works on the PR core.
+- P2 (persistent): FAIL → block 1/2 + synthetic → FAIL → block 2/2 +
+  synthetic → STILL-unmet stand-down; fixture byte-identical;
+  `~/bin` untouched (no shim repeat); exit 0. Cap path identical to
+  mainline D2c — a stopping-capable core changes nothing for the idle
+  tenant while no stopping voter is registered. No double-admission
+  (only the framework continued; native silent headless, same as
+  mainline).
+- Observability limit (the finding that matters for Phase 3):
+  `--print-logs` on the PR core emits only `config/agent/command/model/
+  provider.updated` events — no goal-status, stopping-vote,
+  idle-admission, or synthetic events. The Phase 0 task-8 ordering
+  table (native review vs. stopping vote vs. idle vs. terminal) CANNOT
+  be built from headless logs. It needs (a) our own stopping voter
+  (Phase 3 implementation) emitting its own log lines plus (b) a
+  reviewer-visible session. So the three PR rows keep their status:
+  delegation + framework-parity evidence is in; arbitration evidence
+  still needs the voter.
+
 ## References
 
 - OpenCode plugin docs: <https://opencode.ai/docs/plugins>
