@@ -1,6 +1,7 @@
 import { join } from "node:path";
 import { loadConfig } from "./config.js";
-import { runGate, summarizeGate, type GateReport } from "./gate.js";
+import type { GateReport } from "./gate.js";
+import { inspectCompletion, type CompletionInspection } from "./harness.js";
 import { setProfileInFile } from "./installer.js";
 import type { RunCommand } from "./host.js";
 import type { Profile, ResolvedConfig } from "./types.js";
@@ -19,18 +20,44 @@ export async function changeProfile(directory: string, profile: Profile): Promis
 }
 
 /**
- * Run the completion gate manually for a project. When `config` is omitted the
- * project config is loaded from disk. `changedFiles` is normally empty for a
- * manual verify (the server's live tracker is not visible from the TUI), so a
- * `scope: changed` gate will report "no changed files".
+ * Manual verification result. `verdict` reports the raw inspection outcome:
+ * PASS only when the gate passes AND review (when required) is satisfied.
+ * Advisory profiles report raw FAIL here — the non-blocking behavior lives
+ * in the idle policy (`evaluateCompletion`), not in this verdict.
+ */
+export interface VerifyResult {
+  report: GateReport;
+  inspection: CompletionInspection;
+  verdict: "PASS" | "FAIL";
+  summary: string;
+}
+
+/**
+ * Run manual verification for a project: the same full completion contract
+ * as the idle gate (gate commands plus review state), without any retry
+ * policy. Side-effect-free by construction: this function receives only a
+ * read-only changed-file snapshot and has no handle on the tracker, the
+ * block store, or session input. Git discovery is included so a verify with
+ * an empty tracker still sees worktree changes.
+ *
+ * When `config` is omitted the project config is loaded from disk.
+ * `changedFiles` is normally the server's live tracker snapshot (empty for
+ * TUI callers); Git-discovered files are unioned in either way.
  */
 export async function verifyGate(
   run: RunCommand,
   directory: string,
   config?: ResolvedConfig,
   changedFiles: string[] = [],
-): Promise<{ report: GateReport; summary: string }> {
+): Promise<VerifyResult> {
   const cfg = config ?? loadConfig(directory);
-  const report = await runGate(run, cfg, changedFiles, { cwd: directory });
-  return { report, summary: summarizeGate(report) };
+  const inspection = await inspectCompletion({
+    run,
+    config: cfg,
+    directory,
+    trackerFiles: changedFiles,
+  });
+  const verdict: VerifyResult["verdict"] = inspection.ok ? "PASS" : "FAIL";
+  const summary = `DEV_FRAMEWORK_VERDICT: ${verdict}\n${inspection.summary}`;
+  return { report: inspection.report, inspection, verdict, summary };
 }

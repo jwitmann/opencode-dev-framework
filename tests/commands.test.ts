@@ -1,4 +1,4 @@
-import { mkdtemp, rm, writeFile, readFile } from "node:fs/promises";
+import { mkdtemp, rm, writeFile, readFile, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -65,5 +65,92 @@ describe("verifyGate helper", () => {
     });
     const { report } = await verifyGate(run, dir, config);
     expect(report.ok).toBe(false);
+  });
+
+  it("returns a PASS verdict with the stable first line when green and reviewed", async () => {
+    await mkdir(join(dir, ".opencode", "opencode-dev-framework"), { recursive: true });
+    await writeFile(join(dir, ".opencode", "opencode-dev-framework", "review.md"), "reviewed");
+    const config = resolveConfig(
+      { profile: "standard", commands: { typecheck: "echo ok" }, gate: { run_tests: false } },
+      join(dir, ".opencode-dev-framework.yml"),
+    );
+    const run: RunCommand = async () => ({ stdout: "", stderr: "", exitCode: 0, timedOut: false });
+    const { verdict, summary } = await verifyGate(run, dir, config, ["src/a.ts"]);
+    expect(verdict).toBe("PASS");
+    expect(summary.startsWith("DEV_FRAMEWORK_VERDICT: PASS")).toBe(true);
+    expect(summary).toContain("completion gate passed");
+  });
+
+  it("returns FAIL when review is required but missing", async () => {
+    const config = resolveConfig(
+      { profile: "standard", commands: { typecheck: "echo ok" }, gate: { run_tests: false } },
+      join(dir, ".opencode-dev-framework.yml"),
+    );
+    const run: RunCommand = async () => ({ stdout: "", stderr: "", exitCode: 0, timedOut: false });
+    const { verdict, summary } = await verifyGate(run, dir, config, ["src/a.ts"]);
+    expect(verdict).toBe("FAIL");
+    expect(summary.startsWith("DEV_FRAMEWORK_VERDICT: FAIL")).toBe(true);
+    expect(summary).toContain("peer-review loop has not run");
+  });
+
+  it("returns FAIL when a command fails even though review exists", async () => {
+    await mkdir(join(dir, ".opencode", "opencode-dev-framework"), { recursive: true });
+    await writeFile(join(dir, ".opencode", "opencode-dev-framework", "review.md"), "reviewed");
+    const config = resolveConfig(
+      { profile: "standard", commands: { typecheck: "exit 1" }, gate: { run_tests: false } },
+      join(dir, ".opencode-dev-framework.yml"),
+    );
+    const run: RunCommand = async () => ({
+      stdout: "",
+      stderr: "boom",
+      exitCode: 1,
+      timedOut: false,
+    });
+    const { verdict, summary } = await verifyGate(run, dir, config, ["src/a.ts"]);
+    expect(verdict).toBe("FAIL");
+    expect(summary).toContain("typecheck: failed");
+  });
+
+  it("reports raw FAIL in advisory (no blocking language, no PASS conversion)", async () => {
+    const config = resolveConfig(
+      { profile: "advisory", commands: { typecheck: "exit 1" }, gate: { run_tests: false } },
+      join(dir, ".opencode-dev-framework.yml"),
+    );
+    const run: RunCommand = async () => ({
+      stdout: "",
+      stderr: "boom",
+      exitCode: 1,
+      timedOut: false,
+    });
+    const { verdict, summary } = await verifyGate(run, dir, config, ["src/a.ts"]);
+    expect(verdict).toBe("FAIL");
+    expect(summary.startsWith("DEV_FRAMEWORK_VERDICT: FAIL")).toBe(true);
+  });
+
+  it("unions git-discovered files with the tracker snapshot", async () => {
+    const config = resolveConfig(
+      { profile: "standard", commands: { typecheck: "true", test: "true" } },
+      join(dir, ".opencode-dev-framework.yml"),
+    );
+    const run: RunCommand = async (command) => {
+      if (command[0] === "git")
+        return { stdout: "?? src/new.ts\n", stderr: "", exitCode: 0, timedOut: false };
+      return { stdout: "", stderr: "", exitCode: 0, timedOut: false };
+    };
+    const { inspection, report } = await verifyGate(run, dir, config, []);
+    // Tracker was empty, but git discovery found the new file and ran the gate.
+    expect(inspection.changedFiles).toEqual(["src/new.ts"]);
+    expect(report.steps.some((s) => s.name === "typecheck" && !s.skipped)).toBe(true);
+  });
+
+  it("does not mutate the caller's changed-file snapshot", async () => {
+    const config = resolveConfig(
+      { profile: "standard", commands: { typecheck: "echo ok" }, gate: { run_tests: false } },
+      join(dir, ".opencode-dev-framework.yml"),
+    );
+    const run: RunCommand = async () => ({ stdout: "", stderr: "", exitCode: 0, timedOut: false });
+    const snapshot = ["src/a.ts"];
+    await verifyGate(run, dir, config, snapshot);
+    expect(snapshot).toEqual(["src/a.ts"]);
   });
 });

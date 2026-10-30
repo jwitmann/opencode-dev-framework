@@ -107,4 +107,29 @@ describe("Phase 26.1: dev_framework_verify tool (server-side gate, reshaped ship
     const result = await tool?.execute({ directory });
     expect(result?.content).toContain("typecheck");
   });
+
+  it("starts content with the stable PASS verdict line on a green gate", async () => {
+    writeConfig(gateConfig());
+    const { ctx, addedTools } = createMockCtx();
+    const mod = plugin as unknown as { setup: (c: unknown) => Promise<unknown> };
+    cleanup = (await mod.setup(ctx)) as () => Promise<void> | void;
+    const tool = addedTools.get("dev_framework_verify");
+    const result = await tool?.execute({ directory });
+    expect(result?.content.startsWith("DEV_FRAMEWORK_VERDICT: PASS")).toBe(true);
+  });
+
+  it("starts content with FAIL on a red gate and admits no session input", async () => {
+    writeConfig(
+      'profile: standard\ncommands:\n  typecheck: "exit 3"\ngate:\n  run_tests: false\n  lint_changed: false\n  skip_unchanged: false\n',
+    );
+    const { ctx, addedTools } = createMockCtx();
+    const mod = plugin as unknown as { setup: (c: unknown) => Promise<unknown> };
+    cleanup = (await mod.setup(ctx)) as () => Promise<void> | void;
+    const tool = addedTools.get("dev_framework_verify");
+    const result = await tool?.execute({ directory });
+    expect(result?.content.startsWith("DEV_FRAMEWORK_VERDICT: FAIL")).toBe(true);
+    // Manual verification only reports: no re-prompt, no synthetic continuation.
+    expect(ctx.session.prompt).not.toHaveBeenCalled();
+    expect(ctx.session.synthetic).not.toHaveBeenCalled();
+  });
 });

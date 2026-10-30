@@ -820,7 +820,7 @@ const plugin = Plugin.define({
         editor.add({
           name: "dev_framework_verify",
           description:
-            "Run the opencode-dev-framework completion gate now (typecheck, tests, changed-file lint) and return the summary. Use for a mid-session gate check without waiting for session idle; unlike the idle gate this never re-prompts, it only reports.",
+            "Run the full opencode-dev-framework completion contract now (typecheck, tests, changed-file lint, peer-review state) and return the summary. The first line is DEV_FRAMEWORK_VERDICT: PASS or FAIL, reporting the raw inspection outcome. Use for a mid-session gate check without waiting for session idle; unlike the idle gate this never re-prompts, it only reports, and it never mutates retry state.",
           input: {
             type: "object",
             properties: {

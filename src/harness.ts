@@ -163,6 +163,111 @@ function reviewMissingMessage(changedFiles: string[]): string {
 }
 
 /**
+ * Side-effect-free inputs for a completion inspection. The tracker file
+ * list is a read-only snapshot: inspection never clears it, never touches
+ * block counts, and never admits input — those are policy decisions owned
+ * by `evaluateCompletion`.
+ */
+export interface InspectionDeps {
+  run: RunCommand;
+  config: ResolvedConfig;
+  directory: string;
+  /** Read-only snapshot of tracker files; never mutated. */
+  trackerFiles: string[];
+}
+
+/**
+ * Raw completion report. `ok` is the unadjudicated outcome (gate passed and
+ * review satisfied); profiles, block counting, and stand-down are applied by
+ * `evaluateCompletion`, and `verifyGate` reports `ok` verbatim as its
+ * PASS/FAIL verdict.
+ */
+export interface CompletionInspection {
+  changedFiles: string[];
+  report: GateReport;
+  reviewRequired: boolean;
+  reviewState: ArtifactState;
+  reviewMissing: boolean;
+  /** True when the gate short-circuited on `skip_unchanged` with no files. */
+  skipped: boolean;
+  /** Raw outcome: gate ok AND review satisfied. No profile/policy applied. */
+  ok: boolean;
+  /** Human- and transcript-readable summary (gate detail or review notice). */
+  summary: string;
+}
+
+/**
+ * Inspect the current completion state without mutating anything: no
+ * tracker clearing, no block-count changes, no logging, no input admitted.
+ * Both the idle policy (`evaluateCompletion`) and manual verification
+ * (`verifyGate`) read from here so they evaluate the same full contract.
+ */
+export async function inspectCompletion(deps: InspectionDeps): Promise<CompletionInspection> {
+  const { run, config, directory, trackerFiles } = deps;
+
+  const disabled: CompletionInspection = {
+    changedFiles: [],
+    report: {
+      ran: false,
+      reason: "completion gate disabled",
+      steps: [],
+      ok: true,
+      failedSteps: [],
+    },
+    reviewRequired: false,
+    reviewState: "present",
+    reviewMissing: false,
+    skipped: false,
+    ok: true,
+    summary: "completion gate disabled (profile off or no gate section)",
+  };
+  if (config.profile === "off" || !config.gate) {
+    return disabled;
+  }
+
+  const gitFiles = await gitChangedFiles(run, directory);
+  const changedFiles = mergeChangedFiles(trackerFiles, gitFiles);
+
+  if (config.gate.skip_unchanged && changedFiles.length === 0) {
+    return {
+      ...disabled,
+      changedFiles,
+      report: { ran: false, reason: "no changed files", steps: [], ok: true, failedSteps: [] },
+      skipped: true,
+      summary: "completion gate skipped: no changed files",
+    };
+  }
+
+  const report: GateReport = await runGate(run, config, changedFiles, { cwd: directory });
+  const gateFailed = report.ran && !report.ok;
+
+  const reviewRequired = config.gate.require_review && changedFiles.length > 0;
+  const reviewState = reviewRequired
+    ? await artifactState(directory, REVIEW_ARTIFACT_REL)
+    : "present";
+  const reviewMissing = reviewRequired && reviewState !== "present";
+
+  const ok = !gateFailed && !reviewMissing;
+  const summary = gateFailed
+    ? summarizeGate(report)
+    : reviewMissing
+      ? reviewMissingMessage(changedFiles)
+      : report.ran
+        ? `completion gate passed\n${summarizeGate(report)}`
+        : `completion gate passed (${report.reason ?? "nothing to run"})`;
+  return {
+    changedFiles,
+    report,
+    reviewRequired,
+    reviewState,
+    reviewMissing,
+    skipped: false,
+    ok,
+    summary,
+  };
+}
+
+/**
  * Evaluate the completion gate + review requirement and update block state.
  * Pure orchestration: both the `experimental.idle` hook and the
  * `session.idle` event net feed their outcome from here so one session's
@@ -175,22 +280,15 @@ export async function evaluateCompletion(deps: CompletionDeps): Promise<Completi
     return { decision: "pass", changedFiles: [] };
   }
 
-  const trackerFiles = tracker.getChangedFiles();
-  const gitFiles = await gitChangedFiles(run, directory);
-  const changedFiles = mergeChangedFiles(trackerFiles, gitFiles);
-
-  if (config.gate.skip_unchanged && changedFiles.length === 0) {
-    return { decision: "pass", changedFiles, note: "completion gate skipped: no changed files" };
-  }
-
-  const report: GateReport = await runGate(run, config, changedFiles, { cwd: directory });
+  const inspection = await inspectCompletion({
+    run,
+    config,
+    directory,
+    trackerFiles: tracker.getChangedFiles(),
+  });
+  const { changedFiles, report } = inspection;
   const gateFailed = report.ran && !report.ok;
-
-  const reviewRequired = config.gate.require_review && changedFiles.length > 0;
-  const reviewState = reviewRequired
-    ? await artifactState(directory, REVIEW_ARTIFACT_REL)
-    : "present";
-  const reviewMissing = reviewRequired && reviewState !== "present";
+  const reviewMissing = inspection.reviewMissing;
 
   if (!gateFailed && !reviewMissing) {
     tracker.clearChangedFiles();
@@ -198,13 +296,15 @@ export async function evaluateCompletion(deps: CompletionDeps): Promise<Completi
     return {
       decision: "pass",
       changedFiles,
-      note: report.ran ? `completion gate passed\n${summarizeGate(report)}` : undefined,
+      // Preserve the historical note shape: detailed on run, skip note on
+      // skip, absent when the gate never ran for any other reason.
+      note: report.ran || inspection.skipped ? inspection.summary : undefined,
     };
   }
 
   // Advisory: report loudly, never block.
   if (!config.gate.block_on_failure) {
-    const summary = gateFailed ? summarizeGate(report) : reviewMissingMessage(changedFiles);
+    const summary = inspection.summary;
     await deps.log("error", `completion gate (advisory — not blocking) saw problems:\n${summary}`);
     return {
       decision: "pass",
@@ -214,7 +314,7 @@ export async function evaluateCompletion(deps: CompletionDeps): Promise<Completi
   }
 
   const reason: "gate" | "review" = gateFailed ? "gate" : "review";
-  const summary = gateFailed ? summarizeGate(report) : reviewMissingMessage(changedFiles);
+  const summary = inspection.summary;
   const maxBlocks = config.gate.max_blocks ?? 3;
   const blockCount = await blockCounts.increment(sessionID);
 

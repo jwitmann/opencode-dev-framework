@@ -9,6 +9,7 @@ import {
   artifactState,
   evaluateCompletion,
   gitChangedFiles,
+  inspectCompletion,
   mergeChangedFiles,
   PREFLIGHT_ARTIFACT_REL,
   preflightBlockReason,
@@ -358,5 +359,138 @@ describe("evaluateCompletion", () => {
     );
     const verdict = await evaluateCompletion(deps);
     expect(verdict.decision).toBe("pass");
+  });
+});
+
+describe("inspectCompletion (side-effect-free inspection)", () => {
+  let dir: string;
+
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), "df-inspect-"));
+  });
+
+  afterEach(async () => {
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  const writeArtifact = async (rel: string, content = "done") => {
+    await mkdir(join(dir, ".opencode", "opencode-dev-framework"), { recursive: true });
+    await writeFile(join(dir, rel), content);
+  };
+
+  function makeInspection(
+    raw: Config,
+    opts: {
+      resultFor?: (command: string[]) => Partial<CommandResult>;
+      trackerFiles?: string[];
+    } = {},
+  ) {
+    const { run } = stubRun(opts.resultFor ?? GITLESS_PASS);
+    const tracker = createChangedFileTracker();
+    for (const f of opts.trackerFiles ?? []) tracker.add(f);
+    // Memory-backed store (no ctx.storage in unit tests).
+    const blockCounts = createBlockStore(undefined);
+    const config = resolve(raw);
+    return { run, config, directory: dir, tracker, blockCounts };
+  }
+
+  it("reports ok for green commands plus valid review, mutating nothing", async () => {
+    await writeArtifact(REVIEW_ARTIFACT_REL);
+    const { run, config, directory, tracker, blockCounts } = makeInspection(
+      { profile: "standard", commands: { typecheck: "true", test: "true" } },
+      { trackerFiles: ["src/a.ts"] },
+    );
+    const inspection = await inspectCompletion({
+      run,
+      config,
+      directory,
+      trackerFiles: tracker.getChangedFiles(),
+    });
+    expect(inspection.ok).toBe(true);
+    expect(inspection.reviewMissing).toBe(false);
+    expect(inspection.summary).toContain("completion gate passed");
+    // No mutation: tracker keeps its files, block counts stay empty.
+    expect(tracker.getChangedFiles()).toEqual(["src/a.ts"]);
+    expect(await blockCounts.get("s1")).toBe(0);
+    expect(blockCounts.size).toBe(0);
+  });
+
+  it("reports reviewMissing when files changed but the review artifact is missing", async () => {
+    const { run, config, directory, tracker, blockCounts } = makeInspection(
+      { profile: "standard", commands: { typecheck: "true", test: "true" } },
+      { trackerFiles: ["src/a.ts"] },
+    );
+    const inspection = await inspectCompletion({
+      run,
+      config,
+      directory,
+      trackerFiles: tracker.getChangedFiles(),
+    });
+    expect(inspection.ok).toBe(false);
+    expect(inspection.reviewRequired).toBe(true);
+    expect(inspection.reviewMissing).toBe(true);
+    expect(inspection.summary).toContain("peer-review loop has not run");
+    expect(tracker.getChangedFiles()).toEqual(["src/a.ts"]);
+    expect(blockCounts.size).toBe(0);
+  });
+
+  it("reports failure when a command fails even though the review artifact exists", async () => {
+    await writeArtifact(REVIEW_ARTIFACT_REL);
+    // The stub runner passes everything: fail the `false` binary explicitly.
+    const failFalse = (cmd: string[]) => {
+      if (cmd[0] === "git") return { stderr: "not a git repository", exitCode: 128 };
+      if (cmd[0] === "false") return { exitCode: 1 };
+      return {};
+    };
+    const { run, config, directory } = makeInspection(
+      { profile: "standard", commands: { typecheck: "false", test: "true" } },
+      { resultFor: failFalse, trackerFiles: ["src/a.ts"] },
+    );
+    const inspection = await inspectCompletion({
+      run,
+      config,
+      directory,
+      trackerFiles: ["src/a.ts"],
+    });
+    expect(inspection.ok).toBe(false);
+    expect(inspection.report.ok).toBe(false);
+    expect(inspection.summary).toContain("completion gate FAILED");
+  });
+
+  it("reports ok with a skip note when nothing changed", async () => {
+    const { run, config, directory } = makeInspection({ profile: "standard" });
+    const inspection = await inspectCompletion({ run, config, directory, trackerFiles: [] });
+    expect(inspection.ok).toBe(true);
+    expect(inspection.summary).toContain("no changed files");
+  });
+
+  it("reports ok when the profile is off", async () => {
+    const { run, config, directory } = makeInspection(
+      { profile: "off", commands: { typecheck: "false" } },
+      { trackerFiles: ["src/a.ts"] },
+    );
+    const inspection = await inspectCompletion({
+      run,
+      config,
+      directory,
+      trackerFiles: ["src/a.ts"],
+    });
+    expect(inspection.ok).toBe(true);
+    expect(inspection.summary).toContain("disabled");
+  });
+
+  it("includes git-discovered files when the tracker is empty", async () => {
+    const withGit = (cmd: string[]) =>
+      cmd[0] === "git" ? { stdout: " M src/git.ts\n", exitCode: 0 } : {};
+    const { run, config, directory } = makeInspection(
+      { profile: "standard", commands: { typecheck: "true", test: "true" } },
+      { resultFor: withGit },
+    );
+    const inspection = await inspectCompletion({ run, config, directory, trackerFiles: [] });
+    expect(inspection.changedFiles).toEqual(["src/git.ts"]);
+    // Standard profile requires review, so the inspection fails on review —
+    // the point is the git file got the gate running at all.
+    expect(inspection.reviewMissing).toBe(true);
+    expect(inspection.ok).toBe(false);
   });
 });
