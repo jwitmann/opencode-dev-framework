@@ -1337,6 +1337,28 @@ round, so cross-round state is honest.)
   change-attribution (skip logic, review scoping), not command execution
   when the gate is configured to always run. Still Phase 4 territory.
 
+### Interactive rounds 2–3 — pause lands with a slow gate (2026-10-30)
+
+Round 2: same objective, `/goal pause` ~3 s after kickoff — again no
+observable effect; agent ran straight through to PASS (`state.txt`
+found `fixed` afterwards). A 40-second goal gives pause nowhere to
+land: either reflexes lose or pause only takes effect at a boundary the
+fast run never reaches. Finding, not failure — pause is boundary-paced,
+not a preemption.
+Round 3: fixture temporarily rigged with `sleep 45` at the top of
+`verify.sh` (every gate run burns ~45 s; reverted afterwards, fixture
+left re-broken). Pause landed mid-verification: TUI status → `goal
+paused`. Then `/goal resume` by the user; agent treated post-resume as
+"trust nothing" — re-checked `state.txt`, found the fix intact, made no
+edits, but re-ran `dev_framework_verify` for fresh evidence (citing the
+addendum's invalidation clause) → `DEV_FRAMEWORK_VERDICT: PASS` → `Goal
+complete`, 3 m 49 s total. Row 8 RECEIPTED: native user control won
+(paused goal stayed paused until the user resumed it); the framework
+never rewrote goal state, never issued resume, never interfered — it
+just kept its contract (verify-on-current-tree) available across the
+pause boundary. The agent's post-resume re-verification is the addendum
+working as designed under interruption.
+
 ## References
 
 - OpenCode plugin docs: <https://opencode.ai/docs/plugins>
