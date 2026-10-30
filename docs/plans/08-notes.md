@@ -1461,20 +1461,26 @@ mainline matrix, `dist/` rebuilt. No production code touched.
 
 ## Perf pass (2026-10-30, post-v1.0.0; 275 → 295 tests)
 
-- `protect.ts` / `lint.ts`: picomatch matchers compiled once per resolved
-  config (`WeakMap`), not per tool call. New config object → recompile.
+- `protect.ts` / `lint.ts`: picomatch matchers compiled once per config via
+  the shared `compileGlobMatchers` helper (`command-utils.ts`), keyed by
+  pattern-array identity — never recompiled on the per-tool-call hot path.
 - `gate.ts`: typecheck + test run concurrently (report order unchanged);
   `lint_changed` bounded to 4 concurrent via `mapBounded`, plus optional
   shared `LintLimiter` (session state; `verifyGate` uses a fresh one).
 - `harness.ts`: `PassCache` (per session) replays a clean pass when the
-  tree fingerprint matches (sorted files + mtime/size, gate config JSON,
-  review artifact). Only genuinely clean, actually-ran passes store;
-  failures, advisory problems, and unreadable files never store and
-  always re-run. If the gate ever "didn't run" unexpectedly, check the
-  fingerprint inputs first.
-- `index.ts`: config-mtime checks throttled to 1s (`CONFIG_RELOAD_MIN_INTERVAL_MS`);
-  constitution presence via 128-char prefix precheck (same semantics);
-  per-edit lints share the session limiter.
+  pre-run tree fingerprint matches (sorted files + mtime/size, commands +
+  gate + `exclude`, review artifact). Pre-run (not post-run) key: an edit
+  landing mid-gate-run misses next idle and gets gated. Only genuinely
+  clean, actually-ran passes store; failures, advisory problems, and
+  unreadable files never store and always re-run.
+- `index.ts`: config-mtime checks throttled to a 1s window;
+  constitution presence via 128-char prefix precheck (same semantics,
+  shared with `injectConstitution`); per-edit lints share the session limiter.
+- Peer review (post-commit, honest miss) found one real defect
+  (`exclude` omitted from the key — fixed + regression-tested
+  fail-before/pass-after) plus drift/style notes (shared helper,
+  for-of loop, interface docs, import order) — all addressed, suite
+  re-run green before this note was written.
 - No config-schema or behavior changes when caches are cold; cold-path
   suite is the 275 pre-existing tests, all unmodified and green.
 

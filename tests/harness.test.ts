@@ -619,6 +619,52 @@ describe("passCache", () => {
     expect(nonGitCalls(calls)).toHaveLength(2);
   });
 
+  it("re-runs when exclude changes lint coverage", async () => {
+    await writeFile(join(dir, "skipme.ts"), "const x = 1;\n");
+    const baseGate = { run_typecheck: false, require_review: false, lint_changed: true };
+    const excluding = resolve({
+      profile: "standard",
+      commands: { test: "npm test", lint: "eslint {file}" },
+      gate: baseGate,
+      exclude: ["skipme.ts"],
+    });
+    const { calls, run } = stubRun((cmd) => {
+      if (cmd[0] === "git") return NO_GIT();
+      if (cmd[0] === "eslint") return cmd.includes("skipme.ts") ? { exitCode: 1 } : {};
+      return {};
+    });
+    const passCache = createPassCache();
+    const files = ["a.ts", "skipme.ts"];
+
+    const first = await inspectCompletion({
+      run,
+      config: excluding,
+      directory: dir,
+      trackerFiles: files,
+      passCache,
+    });
+    expect(first.ok).toBe(true);
+    // test + one real lint (skipme.ts skipped via exclude).
+    expect(nonGitCalls(calls)).toHaveLength(2);
+
+    const including = resolve({
+      profile: "standard",
+      commands: { test: "npm test", lint: "eslint {file}" },
+      gate: baseGate,
+    });
+    const second = await inspectCompletion({
+      run,
+      config: including,
+      directory: dir,
+      trackerFiles: files,
+      passCache,
+    });
+    // The exclude narrowing changed the fingerprint, so the gate re-ran and
+    // the newly-included file failed lint.
+    expect(second.ok).toBe(false);
+    expect(nonGitCalls(calls)).toHaveLength(5);
+  });
+
   it("re-runs when the review artifact disappears after a pass", async () => {
     const config = resolve({
       profile: "standard",

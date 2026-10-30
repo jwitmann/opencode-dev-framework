@@ -116,7 +116,9 @@ async function mapBounded<T, R>(
   return results;
 }
 
+/** Options for `runGate`. */
 export interface GateOptions {
+  /** Project directory to run commands in. */
   cwd?: string;
   /** Shared limiter bounding concurrent linter subprocesses; lints run direct when absent. */
   lintLimiter?: LintLimiter;
@@ -153,7 +155,8 @@ export async function runGate(
   const steps: GateStep[] = [];
 
   // Typecheck and test are independent — run them concurrently and report in
-  // stable order. Skipped steps resolve immediately.
+  // stable order. Skipped steps assign synchronously and never enter the
+  // promise flow.
   let typecheckStep: GateStep | null = null;
   let testStep: GateStep | null = null;
   const independent: Array<Promise<void>> = [];
@@ -212,8 +215,7 @@ export async function runGate(
         ? limiter.run(() => lintFile(run, config, file, runOptions))
         : lintFile(run, config, file, runOptions);
     const outcomes = await mapBounded(changedFiles, MAX_CONCURRENT_LINTS, runOne);
-    for (let index = 0; index < changedFiles.length; index += 1) {
-      const outcome = outcomes[index];
+    for (const [index, outcome] of outcomes.entries()) {
       steps.push({
         name: `lint:${changedFiles[index]}`,
         command: outcome.command,

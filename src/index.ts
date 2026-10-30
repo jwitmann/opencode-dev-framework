@@ -88,8 +88,7 @@ export interface HookState {
   passCache: PassCache;
   /**
    * `Date.now()` of the last config-mtime check. Hook fires are far more
-   * frequent than config edits, so mtime stats are throttled to
-   * `CONFIG_RELOAD_MIN_INTERVAL_MS`.
+   * frequent than config edits, so mtime stats are throttled to a 1s window.
    */
   lastConfigCheck: number;
   /**
@@ -115,11 +114,11 @@ let activeState: HookState | null = null;
 let fallbackLog: LogFn = async () => {};
 
 /**
- * Minimum interval between config-mtime checks. Exported for tests.
- * Every hook fire calls `reloadConfigIfChanged`, but the config file
- * almost never changes mid-session.
+ * Minimum interval between config-mtime checks. Every hook fire calls
+ * `reloadConfigIfChanged`, but the config file almost never changes
+ * mid-session, so a 1s staleness window is invisible.
  */
-export const CONFIG_RELOAD_MIN_INTERVAL_MS = 1000;
+const CONFIG_RELOAD_MIN_INTERVAL_MS = 1000;
 
 function safeLog(
   state: HookState | null,

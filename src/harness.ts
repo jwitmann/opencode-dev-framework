@@ -183,10 +183,11 @@ export interface InspectionDeps {
   lintLimiter?: LintLimiter;
   /**
    * Pass cache owned by the session state. When set and the working tree
-   * provably matches the last clean pass (same files, same mtimes/sizes,
-   * same gate config, review artifact untouched), inspection returns the
-   * cached pass without spawning any gate command. Any content change,
-   * config change, or review removal misses the cache and re-runs. Only
+   * still matches the last clean pass (same files, same mtimes/sizes,
+   * same gate-relevant config, review artifact untouched — modulo the
+   * mtime/size same-tick rewrite window), inspection returns the cached
+   * pass without spawning any gate command. Any content change, config
+   * change, or review removal misses the cache and re-runs. Only
    * genuinely clean passes are stored — advisory problems and failures
    * never are, so loud reporting is preserved.
    */
@@ -210,7 +211,9 @@ export function createPassCache(): PassCache {
 /**
  * Fingerprint the current tree state for cache comparison. Returns null
  * when any input is unreadable — an unreadable file can never prove the
- * tree unchanged, so null forces a re-run (the safe direction).
+ * tree unchanged, so null forces a re-run (the safe direction). Covers
+ * every live input to `runGate` (commands, gate options, `exclude`) plus
+ * the review artifact, so any behavior-changing config edit misses.
  */
 async function passCacheKey(
   config: ResolvedConfig,
@@ -218,7 +221,11 @@ async function passCacheKey(
   changedFiles: string[],
   reviewRequired: boolean,
 ): Promise<string | null> {
-  const gateConfig = JSON.stringify({ commands: config.commands, gate: config.gate });
+  const gateConfig = JSON.stringify({
+    commands: config.commands,
+    gate: config.gate,
+    exclude: config.exclude,
+  });
   const parts: string[] = [];
   for (const file of [...changedFiles].sort()) {
     try {
@@ -306,13 +313,29 @@ export async function inspectCompletion(deps: InspectionDeps): Promise<Completio
 
   const reviewRequired = config.gate.require_review && changedFiles.length > 0;
 
-  // Fast path: the tree provably matches the last clean pass — replay it
+  // Fingerprint the tree the gate is about to validate, once. A hit replays
+  // the cached pass; a clean run stores this same pre-run key. Storing the
+  // pre-run (not post-run) state matters: an edit landing mid-gate-run
+  // changes the stats, so the next idle misses and gates the edit instead
+  // of replaying a pass over content the gate never saw.
+  const fingerprint =
+    deps.passCache !== undefined
+      ? await passCacheKey(config, directory, changedFiles, reviewRequired)
+      : null;
+
+  // Fast path: the tree still matches the last clean pass — replay it
   // without spawning gate commands. The key covers file identity, content
-  // freshness (mtime+size), gate config, and the review artifact, so any
-  // real change misses and re-runs.
-  if (deps.passCache?.key !== undefined && deps.passCache?.key !== null) {
-    const key = await passCacheKey(config, directory, changedFiles, reviewRequired);
-    if (key !== null && key === deps.passCache.key && deps.passCache.summary !== null) {
+  // freshness (mtime+size), gate-relevant config, and the review artifact,
+  // so any real change misses and re-runs.
+  const cachedKey = deps.passCache?.key;
+  const cachedSummary = deps.passCache?.summary;
+  if (
+    cachedKey !== undefined &&
+    cachedKey !== null &&
+    cachedSummary !== undefined &&
+    cachedSummary !== null
+  ) {
+    if (fingerprint !== null && fingerprint === cachedKey) {
       return {
         changedFiles,
         report: { ran: true, steps: [], ok: true, failedSteps: [] },
@@ -321,7 +344,7 @@ export async function inspectCompletion(deps: InspectionDeps): Promise<Completio
         reviewMissing: false,
         skipped: false,
         ok: true,
-        summary: deps.passCache.summary,
+        summary: cachedSummary,
       };
     }
   }
@@ -346,13 +369,13 @@ export async function inspectCompletion(deps: InspectionDeps): Promise<Completio
         ? `completion gate passed\n${summarizeGate(report)}`
         : `completion gate passed (${report.reason ?? "nothing to run"})`;
   if (deps.passCache !== undefined) {
-    if (!gateFailed && !reviewMissing && report.ran) {
-      // Genuinely clean pass that actually ran — store the fingerprint for
-      // the next idle. Advisory problems (gateFailed) and missing reviews
-      // never store; vacuous passes (nothing ran) neither store nor clear.
-      const key = await passCacheKey(config, directory, changedFiles, reviewRequired);
-      deps.passCache.key = key;
-      deps.passCache.summary = key === null ? null : summary;
+    if (!gateFailed && !reviewMissing && report.ran && fingerprint !== null) {
+      // Genuinely clean pass that actually ran — store the pre-run
+      // fingerprint for the next idle. Advisory problems (gateFailed) and
+      // missing reviews never store; vacuous passes (nothing ran) neither
+      // store nor clear.
+      deps.passCache.key = fingerprint;
+      deps.passCache.summary = summary;
     } else if (gateFailed || reviewMissing) {
       deps.passCache.key = null;
       deps.passCache.summary = null;

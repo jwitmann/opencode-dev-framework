@@ -5,7 +5,7 @@
  */
 
 import { basename, isAbsolute, relative } from "node:path";
-import picomatch from "picomatch";
+import { compileGlobMatchers } from "./command-utils.js";
 import type { OpenCodePermission } from "./registry.js";
 import type { ResolvedConfig } from "./types.js";
 
@@ -79,32 +79,9 @@ export function extractCommand(args: unknown): string | undefined {
 /**
  * Check a file path against the protected globs. Returns the matching
  * pattern, or undefined. Patterns without a slash also match basenames at
- * any depth (so `.env*` protects `config/.env.local` too).
- *
- * Compiled picomatch matchers are cached per resolved-config object, so the
- * per-tool-call hot path pays matching only — never recompilation. A new
- * config object (reload) naturally misses the WeakMap and recompiles once.
+ * any depth (so `.env*` protects `config/.env.local` too). Matchers are
+ * compiled once per config via the shared `compileGlobMatchers` cache.
  */
-const protectMatcherCache = new WeakMap<
-  ResolvedConfig,
-  Array<{ pattern: string; match: (candidate: string) => boolean }>
->();
-
-function getProtectMatchers(
-  config: ResolvedConfig,
-): Array<{ pattern: string; match: (candidate: string) => boolean }> {
-  const cached = protectMatcherCache.get(config);
-  if (cached !== undefined) {
-    return cached;
-  }
-  const compiled = config.protect.map((pattern) => ({
-    pattern,
-    match: picomatch(pattern, { dot: true }),
-  }));
-  protectMatcherCache.set(config, compiled);
-  return compiled;
-}
-
 export function matchProtectedPath(
   config: ResolvedConfig,
   filePath: string,
@@ -117,7 +94,7 @@ export function matchProtectedPath(
   candidate = candidate.replace(/^\.\//, "");
   const name = basename(candidate);
 
-  for (const { pattern, match } of getProtectMatchers(config)) {
+  for (const { pattern, match } of compileGlobMatchers(config.protect)) {
     if (match(candidate)) {
       return pattern;
     }

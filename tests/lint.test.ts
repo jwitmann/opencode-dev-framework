@@ -306,4 +306,20 @@ describe("createLintLimiter", () => {
     await Promise.all([limiter.run(task(0)), limiter.run(task(1)), limiter.run(task(2))]);
     expect(started).toEqual([0, 1, 2]);
   });
+
+  it("clamps non-positive limits to serial execution instead of deadlocking", async () => {
+    const limiter = createLintLimiter(0);
+    const order: number[] = [];
+    await Promise.all([
+      limiter.run(async () => {
+        order.push(0);
+        return 0;
+      }),
+      limiter.run(async () => {
+        order.push(1);
+        return 1;
+      }),
+    ]);
+    expect(order).toEqual([0, 1]);
+  });
 });

@@ -5,8 +5,7 @@
  */
 
 import { basename, dirname, extname, isAbsolute, relative } from "node:path";
-import picomatch from "picomatch";
-import { normalizeCommandMap, splitCommand } from "./command-utils.js";
+import { compileGlobMatchers, normalizeCommandMap, splitCommand } from "./command-utils.js";
 import type { CommandResult, RunCommand } from "./host.js";
 import type { ResolvedConfig } from "./types.js";
 
@@ -16,6 +15,7 @@ export const DEFAULT_LINT_TIMEOUT_SECONDS = 60;
 /** Cap on concurrent linter subprocesses; per-edit and gate lints share one limiter per session. */
 export const MAX_CONCURRENT_LINTS = 4;
 
+/** FIFO semaphore bounding concurrent linter subprocesses, shared per session. */
 export interface LintLimiter {
   run<T>(fn: () => Promise<T>): Promise<T>;
 }
@@ -24,14 +24,15 @@ export interface LintLimiter {
  * Create a FIFO semaphore bounding concurrent linter subprocesses. Queued
  * callers wait their turn — lint output is delayed under burst load, never
  * dropped. Release is in `finally`, so a throwing linter cannot wedge the
- * limiter.
+ * limiter. Non-positive limits clamp to 1 (serial) instead of deadlocking.
  */
 export function createLintLimiter(limit: number = MAX_CONCURRENT_LINTS): LintLimiter {
+  const capacity = Math.max(1, Math.floor(limit));
   let active = 0;
   const queue: Array<() => void> = [];
   return {
     async run<T>(fn: () => Promise<T>): Promise<T> {
-      if (active >= limit) {
+      if (active >= capacity) {
         await new Promise<void>((resolve) => {
           queue.push(resolve);
         });
@@ -64,32 +65,9 @@ export interface LintOutcome {
 /**
  * Match a file path against the config `exclude` globs. Returns the matching
  * pattern, or undefined. Patterns without a slash also match basenames at
- * any depth, mirroring protected-path semantics.
- *
- * Compiled picomatch matchers are cached per resolved-config object (same
- * scheme as `matchProtectedPath`): the per-edit hot path pays matching
- * only, never recompilation.
+ * any depth, mirroring protected-path semantics. Matchers are compiled once
+ * per config via the shared `compileGlobMatchers` cache.
  */
-const excludeMatcherCache = new WeakMap<
-  ResolvedConfig,
-  Array<{ pattern: string; match: (candidate: string) => boolean }>
->();
-
-function getExcludeMatchers(
-  config: ResolvedConfig,
-): Array<{ pattern: string; match: (candidate: string) => boolean }> {
-  const cached = excludeMatcherCache.get(config);
-  if (cached !== undefined) {
-    return cached;
-  }
-  const compiled = config.exclude.map((pattern) => ({
-    pattern,
-    match: picomatch(pattern, { dot: true }),
-  }));
-  excludeMatcherCache.set(config, compiled);
-  return compiled;
-}
-
 export function matchExclude(
   config: ResolvedConfig,
   filePath: string,
@@ -102,7 +80,7 @@ export function matchExclude(
   candidate = candidate.replace(/^\.\//, "");
   const name = basename(candidate);
 
-  for (const { pattern, match } of getExcludeMatchers(config)) {
+  for (const { pattern, match } of compileGlobMatchers(config.exclude)) {
     if (match(candidate)) {
       return pattern;
     }

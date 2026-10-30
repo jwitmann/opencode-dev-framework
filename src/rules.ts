@@ -209,9 +209,15 @@ export const CONSTITUTION_PREFIX_LENGTH = 128;
  * part.includes(constitution))`); the prefix precheck only skips the
  * expensive full scan when the constitution is absent.
  */
-export function constitutionPresent(parts: Array<{ text: string }>, constitution: string): boolean {
+export function constitutionPresent(
+  parts: ReadonlyArray<{ text: string } | string>,
+  constitution: string,
+): boolean {
   const prefix = constitution.slice(0, CONSTITUTION_PREFIX_LENGTH);
-  return parts.some((part) => part.text.includes(prefix) && part.text.includes(constitution));
+  return parts.some((part) => {
+    const text = typeof part === "string" ? part : part.text;
+    return text.includes(prefix) && text.includes(constitution);
+  });
 }
 
 /**
@@ -223,7 +229,7 @@ export function injectConstitution(system: string[], constitution: string | null
   if (constitution === null) {
     return system;
   }
-  if (system.some((entry) => entry.includes(constitution))) {
+  if (constitutionPresent(system, constitution)) {
     return system;
   }
   if (system.length === 0) {
