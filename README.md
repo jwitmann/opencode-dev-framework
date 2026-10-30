@@ -59,6 +59,28 @@ reimplemented as an OpenCode-native plugin.
   instead: it starts a verified native goal (see *Slash commands* below). The `dev_framework_*` custom *tools* above remain
   available for in-agent use.
 
+### How it fits together
+
+```mermaid
+flowchart TD
+    G["/df-goal plan"] --> N["native /goal\nowns state + review"]
+    N --> A["agent implements"]
+    A --> B{"tool.execute.before"}
+    B -- "deny: protected /\ndangerous / pre-flight" --> X["blocked before landing"]
+    B -- allow --> C["edit lands"]
+    C --> D["per-edit lint\n+ change tracker"]
+    D --> V["agent runs\ndev_framework_verify"]
+    V --> R{"verdict"}
+    R -- PASS --> N
+    R -- FAIL --> A
+    D --> S{"session idle"}
+    S --> GT["completion gate\nsame full contract"]
+    GT -- PASS --> DONE["done"]
+    GT -- "FAIL, within max_blocks" --> SYN["synthetic continuation"]
+    SYN --> A
+    GT -- "FAIL, past max_blocks" --> SD["stand down:\nhonest unmet report"]
+```
+
 ## Profiles
 
 | Profile    | Guardrails | Gate failures | Lint on edit | Pre-flight | Review required | Notes |
