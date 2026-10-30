@@ -241,3 +241,134 @@ describe("runGate", () => {
     expect(summarizeGate(await runGate(stubRun().run, config, [], {}))).toContain("skipped");
   });
 });
+
+describe("runGate acceptance commands", () => {
+  const BASE = {
+    profile: "standard",
+    commands: { typecheck: "true", test: "true" },
+  } as const;
+
+  it("runs no acceptance steps by default (old behavior preserved)", async () => {
+    const config = resolve({ profile: "standard", commands: GATE_COMMANDS });
+    const { calls, run } = stubRun();
+
+    const report = await runGate(run, config, ["src/a.ts"], { cwd: "/project" });
+
+    expect(report.steps.some((s) => s.name.startsWith("acceptance:"))).toBe(false);
+    expect(calls).toHaveLength(2);
+  });
+
+  it("runs acceptance checks last, in declared order, labeled acceptance:<name>", async () => {
+    const config = resolve({
+      ...BASE,
+      gate: {
+        acceptance: [
+          { name: "api-contract", command: "verify-api" },
+          { name: "migration-safety", command: "check-migrations" },
+        ],
+      },
+    });
+    const { calls, run } = stubRun();
+
+    const report = await runGate(run, config, ["src/a.ts"], { cwd: "/project" });
+
+    expect(report.ok).toBe(true);
+    expect(report.steps.map((s) => s.name)).toEqual([
+      "typecheck",
+      "test",
+      "acceptance:api-contract",
+      "acceptance:migration-safety",
+    ]);
+    expect(calls.map((c) => c.command[0])).toEqual([
+      "true",
+      "true",
+      "verify-api",
+      "check-migrations",
+    ]);
+  });
+
+  it("aggregates: one failed acceptance still runs the rest and fails the report", async () => {
+    const config = resolve({
+      ...BASE,
+      gate: {
+        acceptance: [
+          { name: "api-contract", command: "verify-api" },
+          { name: "migration-safety", command: "check-migrations" },
+        ],
+      },
+    });
+    const { calls, run } = stubRun((command) =>
+      command[0] === "verify-api" ? { exitCode: 1, stderr: "contract drift" } : {},
+    );
+
+    const report = await runGate(run, config, ["src/a.ts"], { cwd: "/project" });
+
+    expect(report.ok).toBe(false);
+    expect(report.failedSteps.map((s) => s.name)).toEqual(["acceptance:api-contract"]);
+    expect(report.failedSteps[0].result?.stderr).toBe("contract drift");
+    // Both acceptance checks ran despite the first failing.
+    expect(calls.map((c) => c.command[0])).toContain("check-migrations");
+    expect(summarizeGate(report)).toContain("acceptance:api-contract: failed (exit 1)");
+  });
+
+  it("per-check timeout overrides the gate timeout, which falls back to the default", async () => {
+    const config = resolve({
+      ...BASE,
+      gate: {
+        timeout: 60,
+        acceptance: [
+          { name: "slow", command: "verify-slow", timeout: 120 },
+          { name: "plain", command: "verify-plain" },
+        ],
+      },
+    });
+    const { calls, run } = stubRun();
+
+    await runGate(run, config, ["src/a.ts"], { cwd: "/project" });
+
+    const timeoutFor = (argv0: string) =>
+      calls.find((c) => c.command[0] === argv0)?.options?.timeout;
+    expect(timeoutFor("true")).toBe(60);
+    expect(timeoutFor("verify-slow")).toBe(120);
+    expect(timeoutFor("verify-plain")).toBe(60);
+
+    const noGateTimeout = resolve({
+      ...BASE,
+      gate: {
+        acceptance: [{ name: "plain", command: "verify-plain" }],
+      },
+    });
+    const second = stubRun();
+    await runGate(second.run, noGateTimeout, ["src/a.ts"], { cwd: "/project" });
+    expect(second.calls.find((c) => c.command[0] === "verify-plain")?.options?.timeout).toBe(
+      DEFAULT_GATE_TIMEOUT_SECONDS,
+    );
+  });
+
+  it("substitutes {files} and uses the project cwd", async () => {
+    const config = resolve({
+      ...BASE,
+      gate: { acceptance: [{ name: "contract", command: "verify-contract {files}" }] },
+    });
+    const { calls, run } = stubRun();
+
+    await runGate(run, config, ["src/a.ts", "src/b.ts"], { cwd: "/project" });
+
+    const call = calls.find((c) => c.command[0] === "verify-contract");
+    expect(call?.command).toEqual(["verify-contract", "src/a.ts", "src/b.ts"]);
+    expect(call?.options?.cwd).toBe("/project");
+  });
+
+  it("skips acceptance checks when the gate skips", async () => {
+    const config = resolve({
+      ...BASE,
+      gate: { acceptance: [{ name: "contract", command: "verify-contract" }] },
+    });
+    const { calls, run } = stubRun();
+
+    const report = await runGate(run, config, [], { cwd: "/project" });
+
+    expect(report.ran).toBe(false);
+    expect(calls).toHaveLength(0);
+  });
+});

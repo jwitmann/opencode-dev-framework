@@ -58,7 +58,7 @@ export function createChangedFileTracker(): ChangedFileTracker {
 }
 
 export interface GateStep {
-  /** `typecheck`, `test`, or `lint:<file>`. */
+  /** `typecheck`, `test`, `lint:<file>`, or `acceptance:<name>`. */
   name: string;
   command?: string[];
   skipped: boolean;
@@ -159,6 +159,20 @@ export async function runGate(
         result: outcome.result,
       });
     }
+  }
+
+  // Named acceptance checks run last, sequentially, in declaration order.
+  // Like every other step, a failure is aggregated — it does not abort the
+  // remaining steps. `{files}` substitution and the project `cwd` match the
+  // test-command semantics; per-check timeout overrides the gate default.
+  for (const check of config.gate.acceptance) {
+    const command = substituteFiles(check.command, changedFiles);
+    steps.push({
+      name: `acceptance:${check.name}`,
+      command,
+      skipped: false,
+      result: await run(command, { cwd: options?.cwd, timeout: check.timeout ?? timeout }),
+    });
   }
 
   const ran = steps.some((step) => !step.skipped);

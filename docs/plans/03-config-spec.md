@@ -100,6 +100,12 @@ gate:
   require_review: true  # standard/strict default; see below
   timeout: 300        # seconds per command
   max_blocks: 3       # max times a failing gate may re-block before standing down
+  acceptance:         # named project-specific checks; default []
+    - name: api-contract
+      command: ./scripts/verify-api-contract.sh
+    - name: migration-safety
+      command: ./scripts/check-migrations.sh
+      timeout: 120
 ```
 
 | Key | Type | Default | Description |
@@ -113,6 +119,7 @@ gate:
 | `require_review` | `boolean` | `true` (every profile except `off`) | Sessions that changed files must produce a peer-review artifact at `.opencode/opencode-dev-framework/review.md` before the gate passes. In advisory this is warned, not blocked. |
 | `timeout` | `number` | — | Per-command timeout in seconds. |
 | `max_blocks` | `number` | `3` | Max times a failing gate may block before standing down loudly. |
+| `acceptance` | `AcceptanceCheck[]` | `[]` | Named project-specific checks. Each needs a unique non-blank `name`, a non-empty `command`, and an optional positive `timeout` (overrides `gate.timeout` for that check). Steps run after the built-in gate steps, sequentially in declaration order, labeled `acceptance:<name>`; a failure is aggregated, it does not abort the remaining steps. `{files}` substitution and the project `cwd` match the test command. Acceptance checks run when the gate runs and are skipped when the gate skips (`skip_unchanged` with no changed files). No `dependsOn` or prerequisite DAG — actual pre-work prerequisites remain the pre-flight gate's job. Native YAML/JSON config only; no flat `.dev-framework.yml` mapping. |
 
 ### `preflight`
 

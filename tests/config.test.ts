@@ -235,3 +235,75 @@ describe("resolveConfig", () => {
     expect(config.gate.max_blocks).toBe(3);
   });
 });
+
+describe("gate.acceptance", () => {
+  it("defaults to an empty list", () => {
+    expect(resolveConfig({ profile: "standard" }).gate.acceptance).toEqual([]);
+  });
+
+  it("passes valid checks through resolution", () => {
+    const config = resolveConfig({
+      profile: "standard",
+      gate: {
+        acceptance: [
+          { name: "api-contract", command: "./scripts/verify-api-contract.sh" },
+          { name: "migration-safety", command: "./scripts/check-migrations.sh", timeout: 120 },
+        ],
+      },
+    });
+    expect(config.gate.acceptance).toEqual([
+      { name: "api-contract", command: "./scripts/verify-api-contract.sh" },
+      { name: "migration-safety", command: "./scripts/check-migrations.sh", timeout: 120 },
+    ]);
+  });
+
+  it("rejects an empty name with a readable path", () => {
+    write(
+      ".opencode-dev-framework.yml",
+      "profile: standard\ngate:\n  acceptance:\n    - name: ''\n      command: ./verify.sh\n",
+    );
+    expect(() => loadConfig(dir)).toThrowError(
+      /Invalid configuration in .*gate\.acceptance\.0\.name/s,
+    );
+  });
+
+  it("rejects a blank name with a readable path", () => {
+    write(
+      ".opencode-dev-framework.yml",
+      "profile: standard\ngate:\n  acceptance:\n    - name: '   '\n      command: ./verify.sh\n",
+    );
+    expect(() => loadConfig(dir)).toThrowError(
+      /Invalid configuration in .*gate\.acceptance\.0\.name.*must not be blank/s,
+    );
+  });
+
+  it("rejects an empty command with a readable path", () => {
+    write(
+      ".opencode-dev-framework.yml",
+      "profile: standard\ngate:\n  acceptance:\n    - name: api\n      command: ''\n",
+    );
+    expect(() => loadConfig(dir)).toThrowError(
+      /Invalid configuration in .*gate\.acceptance\.0\.command/s,
+    );
+  });
+
+  it("rejects duplicate names naming both positions", () => {
+    write(
+      ".opencode-dev-framework.yml",
+      "profile: standard\ngate:\n  acceptance:\n    - name: api\n      command: ./a.sh\n    - name: api\n      command: ./b.sh\n",
+    );
+    expect(() => loadConfig(dir)).toThrowError(
+      /Invalid configuration in .*duplicate acceptance check name "api".*index 0/s,
+    );
+  });
+
+  it("rejects a non-positive timeout", () => {
+    write(
+      ".opencode-dev-framework.yml",
+      "profile: standard\ngate:\n  acceptance:\n    - name: api\n      command: ./a.sh\n      timeout: 0\n",
+    );
+    expect(() => loadConfig(dir)).toThrowError(
+      /Invalid configuration in .*gate\.acceptance\.0\.timeout/s,
+    );
+  });
+});

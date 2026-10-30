@@ -24,6 +24,20 @@ export interface CommandsConfig {
   test_changed?: string;
 }
 
+/**
+ * A named project-specific acceptance check, run by the gate after the
+ * built-in steps. Sequential in declaration order; every step runs even
+ * when an earlier one fails (same aggregation as the rest of `runGate`).
+ */
+export interface AcceptanceCheck {
+  /** Unique, non-empty step name. Reported as `acceptance:<name>`. */
+  name: string;
+  /** Command template. Supports the same `{files}` substitution as tests. */
+  command: string;
+  /** Per-check timeout in seconds. Falls back to `gate.timeout`, then default. */
+  timeout?: number;
+}
+
 export interface GateConfig {
   run_typecheck: boolean;
   run_tests: boolean;
@@ -40,6 +54,11 @@ export interface GateConfig {
    * also produce a peer-review artifact before the completion gate passes.
    */
   require_review: boolean;
+  /**
+   * Named project-specific acceptance checks (`acceptance:<name>` steps).
+   * Empty by default; run after the built-in gate steps, sequentially.
+   */
+  acceptance: AcceptanceCheck[];
   /** Per-command timeout in seconds. */
   timeout?: number;
   /** Maximum number of times a failing gate may re-block before standing down. */

@@ -34,6 +34,35 @@ export const DEFAULT_PROTECT: string[] = [
 
 const commandMapSchema = z.union([z.string(), z.record(z.string(), z.string())]);
 
+const acceptanceCheckSchema = z.object({
+  name: z
+    .string()
+    .min(1, "acceptance check name must not be empty")
+    .refine((s) => s.trim().length > 0, "acceptance check name must not be blank"),
+  command: z.string().min(1, "acceptance check command must not be empty"),
+  timeout: z.number().positive("acceptance check timeout must be positive").optional(),
+});
+
+const acceptanceListSchema = z
+  .array(acceptanceCheckSchema)
+  .optional()
+  .superRefine((checks, ctx) => {
+    if (!checks) return;
+    const seen = new Map<string, number>();
+    checks.forEach((check, index) => {
+      const first = seen.get(check.name);
+      if (first !== undefined) {
+        ctx.addIssue({
+          code: "custom",
+          message: `duplicate acceptance check name "${check.name}" (first at index ${first})`,
+          path: [index, "name"],
+        });
+      } else {
+        seen.set(check.name, index);
+      }
+    });
+  });
+
 const configSchema = z.object({
   profile: z.enum(["off", "advisory", "standard", "strict"]).optional(),
   commands: z
@@ -59,6 +88,7 @@ const configSchema = z.object({
       require_review: z.boolean().optional(),
       timeout: z.number().positive().optional(),
       max_blocks: z.number().int().positive().optional(),
+      acceptance: acceptanceListSchema,
     })
     .optional(),
   preflight: z.union([z.array(z.string()), z.string()]).optional(),
@@ -318,6 +348,7 @@ export function resolveConfig(raw: Config, configPath?: string): ResolvedConfig 
       require_review: raw.gate?.require_review ?? profile !== "off",
       timeout: raw.gate?.timeout,
       max_blocks: raw.gate?.max_blocks ?? 3,
+      acceptance: raw.gate?.acceptance ?? [],
     },
     on_edit: {
       format: raw.on_edit?.format ?? defaults.on_edit_format,
