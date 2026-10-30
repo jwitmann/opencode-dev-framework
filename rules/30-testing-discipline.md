@@ -15,7 +15,12 @@ plausible-sounding assertions. Running code is the source of truth.
    concrete command), then fix it, then show the same check now passes.
 4. **Run the narrowest useful check often, the full suite before done.** Iterate with
    targeted tests for speed; the completion gate will run the broader suite.
-5. **Read the actual output.** Don't pattern-match on exit codes — read failures and
+   Do not treat the gate as your test run — run the full verification yourself
+   before finishing, and read the output.
+5. **A stale PASS is not evidence.** Any further product edit after a passing run
+   invalidates it. Re-run the checks on the final tree; never present an earlier
+   PASS as covering later changes.
+6. **Read the actual output.** Don't pattern-match on exit codes — read failures and
    address the real cause. Treat a flaky or skipped test as a finding, not a pass.
 
 ## Use existing tooling only

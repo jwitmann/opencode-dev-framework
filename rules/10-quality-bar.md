@@ -29,6 +29,12 @@ A task is done only when:
 - The change matches existing patterns in the surrounding code (see
   `20-match-existing-patterns`).
 - A peer-review pass found no blocking issues (see `40-delegation`).
+- If the task came from a written plan, you re-read the plan and verified every
+  requirement was implemented — fix gaps rather than declaring success.
+- Any required review artifact describes THIS session's changes. Never reuse a
+  review file left over from a previous task; rewrite it fresh every time.
+- You ran the project's full verification yourself (not just the completion
+  gate) and read the output — the gate is a backstop, not your test run.
 
 If you cannot meet the bar, stop and tell the user what is blocking you rather than
 declaring success.

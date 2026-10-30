@@ -37,7 +37,14 @@ before completion.
 3. **After a batch of edits** → `style-enforcer` on the changed files.
 4. **Before declaring done** → `test-grounder` (evidence) and a final
    `pattern-guardian` / review pass; resolve every blocking item.
+5. **Write the review artifact fresh, every task.** When the completion gate
+   requires a review file, rewrite it for THIS session's changes — scope,
+   findings, and resolutions. A file left over from a previous task never
+   counts, even if it exists and is non-empty.
 
+This cadence is the default working loop, not an opt-in. For a non-trivial
+change you plan first, implement from the plan without expanding scope, then
+harden (full verification + review + fresh artifact) before declaring done.
 Keep delegation proportional: a one-line fix doesn't need the full loop; a new module
 does. Use judgment, but never skip the test-grounding and review steps for behavioral
 changes. If the specialist agents are not installed in this project, perform the same
