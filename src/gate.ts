@@ -12,7 +12,7 @@
 import { isAbsolute, relative } from "node:path";
 import { splitCommand } from "./command-utils.js";
 import type { CommandResult, RunCommand } from "./host.js";
-import { lintFile } from "./lint.js";
+import { lintFile, MAX_CONCURRENT_LINTS, type LintLimiter } from "./lint.js";
 import type { ResolvedConfig } from "./types.js";
 
 /** Fallback per-command timeout (seconds) when `gate.timeout` is unset. */
@@ -92,14 +92,47 @@ export function substituteFiles(template: string, files: string[]): string[] {
 }
 
 /**
- * Run the completion gate. Steps run sequentially and all results are
+ * Map items through an async function with at most `limit` in flight.
+ * Output order matches input order regardless of completion order.
+ */
+async function mapBounded<T, R>(
+  items: T[],
+  limit: number,
+  fn: (item: T, index: number) => Promise<R>,
+): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let next = 0;
+  const workers = Array.from({ length: Math.min(Math.max(limit, 1), items.length) }, async () => {
+    while (true) {
+      const index = next;
+      next += 1;
+      if (index >= items.length) {
+        return;
+      }
+      results[index] = await fn(items[index], index);
+    }
+  });
+  await Promise.all(workers);
+  return results;
+}
+
+export interface GateOptions {
+  cwd?: string;
+  /** Shared limiter bounding concurrent linter subprocesses; lints run direct when absent. */
+  lintLimiter?: LintLimiter;
+}
+
+/**
+ * Run the completion gate. Independent steps (typecheck, test) run
+ * concurrently while the reported step order stays stable (typecheck, test,
+ * lint per file, acceptance in declaration order). All results are
  * aggregated — a failing step does not abort the remaining steps.
  */
 export async function runGate(
   run: RunCommand,
   config: ResolvedConfig,
   changedFiles: string[],
-  options?: { cwd?: string },
+  options?: GateOptions,
 ): Promise<GateReport> {
   if (!config.gate) {
     return {
@@ -119,17 +152,26 @@ export async function runGate(
 
   const steps: GateStep[] = [];
 
+  // Typecheck and test are independent — run them concurrently and report in
+  // stable order. Skipped steps resolve immediately.
+  let typecheckStep: GateStep | null = null;
+  let testStep: GateStep | null = null;
+  const independent: Array<Promise<void>> = [];
+
   if (config.gate.run_typecheck) {
     if (config.commands.typecheck !== undefined) {
       const command = splitCommand(config.commands.typecheck);
-      steps.push({
-        name: "typecheck",
-        command,
-        skipped: false,
-        result: await run(command, runOptions),
-      });
+      independent.push(
+        run(command, runOptions).then((result) => {
+          typecheckStep = { name: "typecheck", command, skipped: false, result };
+        }),
+      );
     } else {
-      steps.push({ name: "typecheck", skipped: true, reason: "no typecheck command configured" });
+      typecheckStep = {
+        name: "typecheck",
+        skipped: true,
+        reason: "no typecheck command configured",
+      };
     }
   }
 
@@ -138,21 +180,42 @@ export async function runGate(
       config.gate.scope === "changed" ? config.commands.test_changed : config.commands.test;
     if (template !== undefined) {
       const command = substituteFiles(template, changedFiles);
-      steps.push({ name: "test", command, skipped: false, result: await run(command, runOptions) });
+      independent.push(
+        run(command, runOptions).then((result) => {
+          testStep = { name: "test", command, skipped: false, result };
+        }),
+      );
     } else {
       const reason =
         config.gate.scope === "changed"
           ? "no test_changed command configured"
           : "no test command configured";
-      steps.push({ name: "test", skipped: true, reason });
+      testStep = { name: "test", skipped: true, reason };
     }
   }
 
+  await Promise.all(independent);
+  if (typecheckStep !== null) {
+    steps.push(typecheckStep);
+  }
+  if (testStep !== null) {
+    steps.push(testStep);
+  }
+
   if (config.gate.lint_changed) {
-    for (const file of changedFiles) {
-      const outcome = await lintFile(run, config, file, runOptions);
+    // Per-file lints are independent — bound concurrency instead of running
+    // them one at a time. When the session limiter is provided it also
+    // applies, so gate bursts share headroom with per-edit lints.
+    const limiter = options?.lintLimiter;
+    const runOne = (file: string) =>
+      limiter !== undefined
+        ? limiter.run(() => lintFile(run, config, file, runOptions))
+        : lintFile(run, config, file, runOptions);
+    const outcomes = await mapBounded(changedFiles, MAX_CONCURRENT_LINTS, runOne);
+    for (let index = 0; index < changedFiles.length; index += 1) {
+      const outcome = outcomes[index];
       steps.push({
-        name: `lint:${file}`,
+        name: `lint:${changedFiles[index]}`,
         command: outcome.command,
         skipped: outcome.skipped,
         reason: outcome.reason,

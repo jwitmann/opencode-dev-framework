@@ -197,6 +197,24 @@ export async function loadConstitution(
 }
 
 /**
+ * Length of the constitution prefix used as a fast precheck. Most model
+ * requests do not contain the constitution yet; scanning for a short prefix
+ * fails fast instead of running the full-text search over a 10–20KB needle.
+ */
+export const CONSTITUTION_PREFIX_LENGTH = 128;
+
+/**
+ * True when the constitution is already present in the system prompt parts.
+ * Semantics match the old inline check exactly (`some(part =>
+ * part.includes(constitution))`); the prefix precheck only skips the
+ * expensive full scan when the constitution is absent.
+ */
+export function constitutionPresent(parts: Array<{ text: string }>, constitution: string): boolean {
+  const prefix = constitution.slice(0, CONSTITUTION_PREFIX_LENGTH);
+  return parts.some((part) => part.text.includes(prefix) && part.text.includes(constitution));
+}
+
+/**
  * Appends the constitution to the last system-prompt entry, unless it is already
  * present. This keeps the system prompt compact instead of adding a separate
  * array element each time the transform runs.

@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, rm, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -7,6 +7,7 @@ import { resolveConfig } from "../src/config";
 import { createChangedFileTracker } from "../src/gate";
 import {
   artifactState,
+  createPassCache,
   evaluateCompletion,
   gitChangedFiles,
   inspectCompletion,
@@ -492,5 +493,152 @@ describe("inspectCompletion (side-effect-free inspection)", () => {
     // the point is the git file got the gate running at all.
     expect(inspection.reviewMissing).toBe(true);
     expect(inspection.ok).toBe(false);
+  });
+});
+
+describe("passCache", () => {
+  let dir: string;
+
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), "df-passcache-"));
+    await writeFile(join(dir, "a.ts"), "const x = 1;\n");
+  });
+
+  afterEach(async () => {
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  const cacheableConfig = () =>
+    resolve({
+      profile: "standard",
+      commands: { test: "npm test" },
+      gate: { run_typecheck: false, require_review: false },
+    });
+
+  const nonGitCalls = (calls: RunCall[]) => calls.filter((c) => c.command[0] !== "git");
+
+  it("replays a clean pass without re-running gate commands", async () => {
+    const config = cacheableConfig();
+    const { calls, run } = stubRun((cmd) => (cmd[0] === "git" ? NO_GIT() : {}));
+    const passCache = createPassCache();
+    const deps = { run, config, directory: dir, trackerFiles: ["a.ts"], passCache };
+
+    const first = await inspectCompletion(deps);
+    expect(first.ok).toBe(true);
+    expect(nonGitCalls(calls)).toHaveLength(1);
+
+    const second = await inspectCompletion(deps);
+    expect(second.ok).toBe(true);
+    expect(second.summary).toBe(first.summary);
+    // The second inspection spawned nothing but the (cheap) git discovery.
+    expect(nonGitCalls(calls)).toHaveLength(1);
+  });
+
+  it("re-runs after a tracked file changes", async () => {
+    const config = cacheableConfig();
+    const { calls, run } = stubRun((cmd) => (cmd[0] === "git" ? NO_GIT() : {}));
+    const passCache = createPassCache();
+    const deps = { run, config, directory: dir, trackerFiles: ["a.ts"], passCache };
+
+    await inspectCompletion(deps);
+    expect(nonGitCalls(calls)).toHaveLength(1);
+
+    const future = new Date(Date.now() + 5000);
+    await utimes(join(dir, "a.ts"), future, future);
+
+    const afterEdit = await inspectCompletion(deps);
+    expect(afterEdit.ok).toBe(true);
+    expect(nonGitCalls(calls)).toHaveLength(2);
+  });
+
+  it("re-runs when gate config changes", async () => {
+    const { calls, run } = stubRun((cmd) => (cmd[0] === "git" ? NO_GIT() : {}));
+    const passCache = createPassCache();
+
+    await inspectCompletion({
+      run,
+      config: cacheableConfig(),
+      directory: dir,
+      trackerFiles: ["a.ts"],
+      passCache,
+    });
+    expect(nonGitCalls(calls)).toHaveLength(1);
+
+    const changed = resolve({
+      profile: "standard",
+      commands: { test: "npm run test:other" },
+      gate: { run_typecheck: false, require_review: false },
+    });
+    const afterConfigChange = await inspectCompletion({
+      run,
+      config: changed,
+      directory: dir,
+      trackerFiles: ["a.ts"],
+      passCache,
+    });
+    expect(afterConfigChange.ok).toBe(true);
+    expect(nonGitCalls(calls)).toHaveLength(2);
+  });
+
+  it("never caches a failing gate (failures always re-run)", async () => {
+    let fail = true;
+    const { calls, run } = stubRun((cmd) => {
+      if (cmd[0] === "git") return NO_GIT();
+      return fail ? { exitCode: 1 } : {};
+    });
+    const passCache = createPassCache();
+    const deps = {
+      run,
+      config: cacheableConfig(),
+      directory: dir,
+      trackerFiles: ["a.ts"],
+      passCache,
+    };
+
+    expect((await inspectCompletion(deps)).ok).toBe(false);
+    expect((await inspectCompletion(deps)).ok).toBe(false);
+    expect(nonGitCalls(calls)).toHaveLength(2);
+
+    fail = false;
+    expect((await inspectCompletion(deps)).ok).toBe(true);
+    expect(nonGitCalls(calls)).toHaveLength(3);
+    // The clean pass is now cached: a fourth inspection replays it.
+    expect((await inspectCompletion(deps)).ok).toBe(true);
+    expect(nonGitCalls(calls)).toHaveLength(3);
+  });
+
+  it("re-runs when a changed file is unreadable", async () => {
+    const config = cacheableConfig();
+    const { calls, run } = stubRun((cmd) => (cmd[0] === "git" ? NO_GIT() : {}));
+    const passCache = createPassCache();
+    const deps = { run, config, directory: dir, trackerFiles: ["ghost.ts"], passCache };
+
+    expect((await inspectCompletion(deps)).ok).toBe(true);
+    expect((await inspectCompletion(deps)).ok).toBe(true);
+    // No fingerprint can be proven for a missing file, so both ran.
+    expect(nonGitCalls(calls)).toHaveLength(2);
+  });
+
+  it("re-runs when the review artifact disappears after a pass", async () => {
+    const config = resolve({
+      profile: "standard",
+      commands: { test: "npm test" },
+      gate: { run_typecheck: false, require_review: true },
+    });
+    const { calls, run } = stubRun((cmd) => (cmd[0] === "git" ? NO_GIT() : {}));
+    const passCache = createPassCache();
+    const deps = { run, config, directory: dir, trackerFiles: ["a.ts"], passCache };
+
+    await mkdir(join(dir, ".opencode/opencode-dev-framework"), { recursive: true });
+    await writeFile(join(dir, REVIEW_ARTIFACT_REL), "reviewed\n");
+
+    expect((await inspectCompletion(deps)).ok).toBe(true);
+    expect(nonGitCalls(calls)).toHaveLength(1);
+
+    await rm(join(dir, REVIEW_ARTIFACT_REL));
+    const afterDelete = await inspectCompletion(deps);
+    expect(afterDelete.ok).toBe(false);
+    expect(afterDelete.reviewMissing).toBe(true);
+    expect(nonGitCalls(calls)).toHaveLength(2);
   });
 });

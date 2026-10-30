@@ -30,16 +30,25 @@ import { clearConfigCache, loadConfig } from "./config.js";
 import { type ChangedFileTracker, createChangedFileTracker } from "./gate.js";
 import {
   artifactState,
+  createPassCache,
   evaluateCompletion,
   PREFLIGHT_ARTIFACT_REL,
   preflightBlockReason,
   type CompletionVerdict,
+  type PassCache,
 } from "./harness.js";
 import { runCommand, type RunCommand } from "./host.js";
-import { lintFile, detectPreCommitAvailability, isLintFailure, summarizeLint } from "./lint.js";
+import {
+  createLintLimiter,
+  detectPreCommitAvailability,
+  isLintFailure,
+  lintFile,
+  summarizeLint,
+  type LintLimiter,
+} from "./lint.js";
 import { createLogger, type LogFn, type LogLevel } from "./logger.js";
 import { checkToolCall, extractFilePath, FILE_TOOLS, toPermissionGuard } from "./protect.js";
-import { loadConstitution } from "./rules.js";
+import { constitutionPresent, loadConstitution } from "./rules.js";
 import { writeRuntimeStatus, type IdleHookVia } from "./runtime-status.js";
 import type { ResolvedConfig } from "./types.js";
 
@@ -71,6 +80,19 @@ export interface HookState {
   precommitAvailable?: boolean;
   configMtime?: number;
   /**
+   * Shared FIFO limiter bounding concurrent linter subprocesses across
+   * per-edit lints and gate lint steps.
+   */
+  lintLimiter: LintLimiter;
+  /** Fingerprint of the last clean gate pass; skips redundant suites. */
+  passCache: PassCache;
+  /**
+   * `Date.now()` of the last config-mtime check. Hook fires are far more
+   * frequent than config edits, so mtime stats are throttled to
+   * `CONFIG_RELOAD_MIN_INTERVAL_MS`.
+   */
+  lastConfigCheck: number;
+  /**
    * Which lever completed a gate evaluation most recently in this process:
    * `"idle"` once the `experimental.idle` hook has (same-execution
    * continuation active), `"fallback"` when only the `event.subscribe`
@@ -92,6 +114,13 @@ export interface HookState {
 let activeState: HookState | null = null;
 let fallbackLog: LogFn = async () => {};
 
+/**
+ * Minimum interval between config-mtime checks. Exported for tests.
+ * Every hook fire calls `reloadConfigIfChanged`, but the config file
+ * almost never changes mid-session.
+ */
+export const CONFIG_RELOAD_MIN_INTERVAL_MS = 1000;
+
 function safeLog(
   state: HookState | null,
   level: LogLevel,
@@ -103,6 +132,13 @@ function safeLog(
 }
 
 async function reloadConfigIfChanged(state: HookState): Promise<void> {
+  // Throttle mtime checks: every hook fire calls this, but the config file
+  // almost never changes mid-session. A 1s staleness window is invisible.
+  const now = Date.now();
+  if (now - state.lastConfigCheck < CONFIG_RELOAD_MIN_INTERVAL_MS) {
+    return;
+  }
+  state.lastConfigCheck = now;
   const primary = join(state.directory, ".opencode-dev-framework.yml");
   const fallback = join(state.directory, ".dev-framework.yml");
   // check both names; stat whichever exists
@@ -183,11 +219,13 @@ async function runPerEditLint(state: HookState, filePath: string): Promise<void>
   if (state.config.precommit === "auto" && state.precommitAvailable === undefined) {
     state.precommitAvailable = await detectPreCommitAvailability(state.run, state.directory);
   }
-  const outcome = await lintFile(state.run, state.config, filePath, {
-    cwd: state.directory,
-    timeout: state.config.gate?.timeout,
-    precommitAvailable: state.precommitAvailable,
-  });
+  const outcome = await state.lintLimiter.run(() =>
+    lintFile(state.run, state.config, filePath, {
+      cwd: state.directory,
+      timeout: state.config.gate?.timeout,
+      precommitAvailable: state.precommitAvailable,
+    }),
+  );
   if (outcome.skipped) {
     await safeLog(state, "debug", summarizeLint(outcome), {
       filePath,
@@ -216,6 +254,8 @@ function runCompletion(state: HookState, sessionID: string): Promise<CompletionV
     sessionID,
     tracker: state.tracker,
     blockCounts: state.blocks,
+    lintLimiter: state.lintLimiter,
+    passCache: state.passCache,
     log: (level, message, extra) => safeLog(state, level, message, extra),
   });
 }
@@ -341,6 +381,9 @@ const plugin = Plugin.define({
       blockCounts,
       blocks,
       configMtime,
+      lintLimiter: createLintLimiter(),
+      passCache: createPassCache(),
+      lastConfigCheck: 0,
       lastIdleHandled: new Map<string, number>(),
     };
     activeState = state;
@@ -394,7 +437,7 @@ const plugin = Plugin.define({
         const constitution = state.constitution;
         if (!constitution) return;
         // V2 system is Array<SystemPart> {type:"text", text:string}
-        const already = event.system.some((part) => part.text.includes(constitution));
+        const already = constitutionPresent(event.system, constitution);
         if (already) return;
         event.system.push({
           type: "text",
@@ -414,7 +457,7 @@ const plugin = Plugin.define({
           if (state.config.profile === "off" || !constitution) return;
           // generate/compaction/title also have system — inject similarly if present
           if (!event.system) return;
-          const already = event.system.some((p) => p.text.includes(constitution));
+          const already = constitutionPresent(event.system, constitution);
           if (!already) event.system.push({ type: "text" as const, text: constitution });
         }),
       );

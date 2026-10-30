@@ -2,6 +2,7 @@ import { join } from "node:path";
 import { loadConfig } from "./config.js";
 import type { GateReport } from "./gate.js";
 import { inspectCompletion, type CompletionInspection } from "./harness.js";
+import { createLintLimiter } from "./lint.js";
 import { setProfileInFile } from "./installer.js";
 import type { RunCommand } from "./host.js";
 import type { Profile, ResolvedConfig } from "./types.js";
@@ -56,6 +57,9 @@ export async function verifyGate(
     config: cfg,
     directory,
     trackerFiles: changedFiles,
+    // Fresh limiter per manual verify (bounds its own lint burst); no pass
+    // cache — an explicit verify always inspects the live tree.
+    lintLimiter: createLintLimiter(),
   });
   const verdict: VerifyResult["verdict"] = inspection.ok ? "PASS" : "FAIL";
   const summary = `DEV_FRAMEWORK_VERDICT: ${verdict}\n${inspection.summary}`;

@@ -252,3 +252,23 @@ describe("checkToolCall: hostPermissions tolerance", () => {
     expect(result.decision).toBe("deny");
   });
 });
+
+describe("matchProtectedPath matcher cache", () => {
+  it("returns consistent results across repeated calls on one config", () => {
+    const config = resolve({ profile: "strict", protect: PROTECT });
+    for (let i = 0; i < 10; i += 1) {
+      expect(matchProtectedPath(config, ".env", "/project")).toBe(".env*");
+      expect(matchProtectedPath(config, "src/main.go", "/project")).toBeUndefined();
+    }
+  });
+
+  it("does not leak compiled matchers across config objects", () => {
+    const strict = resolve({ profile: "strict", protect: PROTECT });
+    const other = resolve({ profile: "strict", protect: ["only-here.txt"] });
+    expect(matchProtectedPath(strict, ".env", "/project")).toBe(".env*");
+    expect(matchProtectedPath(other, ".env", "/project")).toBeUndefined();
+    expect(matchProtectedPath(other, "only-here.txt", "/project")).toBe("only-here.txt");
+    // The first config still answers from its own patterns.
+    expect(matchProtectedPath(strict, ".env", "/project")).toBe(".env*");
+  });
+});

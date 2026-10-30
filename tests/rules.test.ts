@@ -4,6 +4,8 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   BUNDLED_CONSTITUTION_DIR,
+  constitutionPresent,
+  CONSTITUTION_PREFIX_LENGTH,
   injectConstitution,
   loadConstitution,
   LOCAL_RULES_DIR,
@@ -190,5 +192,33 @@ describe("injectConstitution", () => {
       "part 1",
       "part 2\n\nRULES",
     ]);
+  });
+});
+
+describe("constitutionPresent", () => {
+  const constitution = `${"x".repeat(CONSTITUTION_PREFIX_LENGTH)}-tail-marker`;
+
+  it("detects the constitution in any system part", () => {
+    expect(
+      constitutionPresent([{ text: "hello" }, { text: `pre ${constitution} post` }], constitution),
+    ).toBe(true);
+  });
+
+  it("returns false when the constitution is absent", () => {
+    expect(constitutionPresent([{ text: "hello" }, { text: "world" }], constitution)).toBe(false);
+  });
+
+  it("returns false for an empty system array", () => {
+    expect(constitutionPresent([], constitution)).toBe(false);
+  });
+
+  it("rejects a part containing only the prefix (fast-precheck decoy)", () => {
+    const prefixOnly = constitution.slice(0, CONSTITUTION_PREFIX_LENGTH);
+    expect(constitutionPresent([{ text: `pre ${prefixOnly} post` }], constitution)).toBe(false);
+  });
+
+  it("handles constitutions shorter than the prefix length", () => {
+    expect(constitutionPresent([{ text: "ab" }], "abc")).toBe(false);
+    expect(constitutionPresent([{ text: "xabcx" }], "abc")).toBe(true);
   });
 });

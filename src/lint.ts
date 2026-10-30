@@ -13,6 +13,43 @@ import type { ResolvedConfig } from "./types.js";
 /** Fallback per-lint timeout (seconds) when the config sets none. */
 export const DEFAULT_LINT_TIMEOUT_SECONDS = 60;
 
+/** Cap on concurrent linter subprocesses; per-edit and gate lints share one limiter per session. */
+export const MAX_CONCURRENT_LINTS = 4;
+
+export interface LintLimiter {
+  run<T>(fn: () => Promise<T>): Promise<T>;
+}
+
+/**
+ * Create a FIFO semaphore bounding concurrent linter subprocesses. Queued
+ * callers wait their turn — lint output is delayed under burst load, never
+ * dropped. Release is in `finally`, so a throwing linter cannot wedge the
+ * limiter.
+ */
+export function createLintLimiter(limit: number = MAX_CONCURRENT_LINTS): LintLimiter {
+  let active = 0;
+  const queue: Array<() => void> = [];
+  return {
+    async run<T>(fn: () => Promise<T>): Promise<T> {
+      if (active >= limit) {
+        await new Promise<void>((resolve) => {
+          queue.push(resolve);
+        });
+      }
+      active += 1;
+      try {
+        return await fn();
+      } finally {
+        active -= 1;
+        const next = queue.shift();
+        if (next !== undefined) {
+          next();
+        }
+      }
+    },
+  };
+}
+
 export interface LintOutcome {
   /** True when no linter ran (file excluded or no command configured). */
   skipped: boolean;
@@ -28,7 +65,31 @@ export interface LintOutcome {
  * Match a file path against the config `exclude` globs. Returns the matching
  * pattern, or undefined. Patterns without a slash also match basenames at
  * any depth, mirroring protected-path semantics.
+ *
+ * Compiled picomatch matchers are cached per resolved-config object (same
+ * scheme as `matchProtectedPath`): the per-edit hot path pays matching
+ * only, never recompilation.
  */
+const excludeMatcherCache = new WeakMap<
+  ResolvedConfig,
+  Array<{ pattern: string; match: (candidate: string) => boolean }>
+>();
+
+function getExcludeMatchers(
+  config: ResolvedConfig,
+): Array<{ pattern: string; match: (candidate: string) => boolean }> {
+  const cached = excludeMatcherCache.get(config);
+  if (cached !== undefined) {
+    return cached;
+  }
+  const compiled = config.exclude.map((pattern) => ({
+    pattern,
+    match: picomatch(pattern, { dot: true }),
+  }));
+  excludeMatcherCache.set(config, compiled);
+  return compiled;
+}
+
 export function matchExclude(
   config: ResolvedConfig,
   filePath: string,
@@ -41,12 +102,11 @@ export function matchExclude(
   candidate = candidate.replace(/^\.\//, "");
   const name = basename(candidate);
 
-  for (const pattern of config.exclude) {
-    const isMatch = picomatch(pattern, { dot: true });
-    if (isMatch(candidate)) {
+  for (const { pattern, match } of getExcludeMatchers(config)) {
+    if (match(candidate)) {
       return pattern;
     }
-    if (!pattern.includes("/") && isMatch(name)) {
+    if (!pattern.includes("/") && match(name)) {
       return pattern;
     }
   }

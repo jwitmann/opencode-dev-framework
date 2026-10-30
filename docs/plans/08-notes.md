@@ -1459,6 +1459,25 @@ mainline matrix, `dist/` rebuilt. No production code touched.
   The voter must emit its own log lines from day one (headless core
   logs are blind to the ordering).
 
+## Perf pass (2026-10-30, post-v1.0.0; 275 → 295 tests)
+
+- `protect.ts` / `lint.ts`: picomatch matchers compiled once per resolved
+  config (`WeakMap`), not per tool call. New config object → recompile.
+- `gate.ts`: typecheck + test run concurrently (report order unchanged);
+  `lint_changed` bounded to 4 concurrent via `mapBounded`, plus optional
+  shared `LintLimiter` (session state; `verifyGate` uses a fresh one).
+- `harness.ts`: `PassCache` (per session) replays a clean pass when the
+  tree fingerprint matches (sorted files + mtime/size, gate config JSON,
+  review artifact). Only genuinely clean, actually-ran passes store;
+  failures, advisory problems, and unreadable files never store and
+  always re-run. If the gate ever "didn't run" unexpectedly, check the
+  fingerprint inputs first.
+- `index.ts`: config-mtime checks throttled to 1s (`CONFIG_RELOAD_MIN_INTERVAL_MS`);
+  constitution presence via 128-char prefix precheck (same semantics);
+  per-edit lints share the session limiter.
+- No config-schema or behavior changes when caches are cold; cold-path
+  suite is the 275 pre-existing tests, all unmodified and green.
+
 ## References
 
 - OpenCode plugin docs: <https://opencode.ai/docs/plugins>

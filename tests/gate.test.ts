@@ -8,6 +8,7 @@ import {
   summarizeGate,
 } from "../src/gate";
 import type { CommandResult, RunCommand, RunCommandOptions } from "../src/host";
+import { createLintLimiter } from "../src/lint";
 import type { Config } from "../src/types";
 
 function resolve(raw: Config) {
@@ -370,5 +371,98 @@ describe("runGate acceptance commands", () => {
 
     expect(report.ran).toBe(false);
     expect(calls).toHaveLength(0);
+  });
+});
+
+describe("runGate concurrency", () => {
+  it("runs typecheck and test concurrently while reporting in stable order", async () => {
+    const config = resolve({ profile: "standard", commands: GATE_COMMANDS });
+    const started: string[] = [];
+    let testStarted!: () => void;
+    const testStartedGate = new Promise<void>((resolve) => {
+      testStarted = resolve;
+    });
+    const timeout = new Promise<"timed-out">((resolve) => {
+      setTimeout(() => resolve("timed-out"), 1000);
+    });
+    let overlapped = false;
+    const run: RunCommand = async (command) => {
+      started.push(command[0]);
+      if (command[0] === "npm") {
+        testStarted();
+      }
+      if (command[0] === "tsc") {
+        // Under sequential execution the test never starts while typecheck
+        // is pending, so this races to "timed-out"; concurrently it wins.
+        overlapped =
+          (await Promise.race([testStartedGate.then(() => "started" as const), timeout])) ===
+          "started";
+      }
+      return { stdout: "", stderr: "", exitCode: 0, timedOut: false };
+    };
+
+    const report = await runGate(run, config, ["src/a.ts"], { cwd: "/project" });
+
+    expect(report.ok).toBe(true);
+    expect(overlapped).toBe(true);
+    expect(report.steps.map((s) => s.name)).toEqual(["typecheck", "test"]);
+  });
+
+  it("bounds concurrent per-file lints and keeps declared step order", async () => {
+    const config = resolve({
+      profile: "strict",
+      commands: { ...GATE_COMMANDS, lint: "eslint {file}" },
+    });
+    const files = Array.from({ length: 8 }, (_, i) => `src/f${i}.ts`);
+    let active = 0;
+    let maxActive = 0;
+    const run: RunCommand = async (command) => {
+      if (command[0] === "eslint") {
+        active += 1;
+        maxActive = Math.max(maxActive, active);
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        active -= 1;
+      }
+      return { stdout: "", stderr: "", exitCode: 0, timedOut: false };
+    };
+
+    const report = await runGate(run, config, files, { cwd: "/project" });
+
+    expect(report.ok).toBe(true);
+    expect(maxActive).toBe(4);
+    expect(report.steps.map((s) => s.name)).toEqual([
+      "typecheck",
+      "test",
+      ...files.map((f) => `lint:${f}`),
+    ]);
+  });
+
+  it("honors a shared limiter stricter than the internal cap", async () => {
+    const lintOnly = resolve({
+      profile: "strict",
+      gate: { run_typecheck: false, run_tests: false, lint_changed: true },
+      commands: { lint: "eslint {file}" },
+    });
+    const files = ["a.ts", "b.ts", "c.ts"];
+    let active = 0;
+    let maxActive = 0;
+    const serialRun: RunCommand = async (command) => {
+      if (command[0] === "eslint") {
+        active += 1;
+        maxActive = Math.max(maxActive, active);
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        active -= 1;
+      }
+      return { stdout: "", stderr: "", exitCode: 0, timedOut: false };
+    };
+
+    const report = await runGate(serialRun, lintOnly, files, {
+      cwd: "/project",
+      lintLimiter: createLintLimiter(1),
+    });
+
+    expect(report.ok).toBe(true);
+    expect(maxActive).toBe(1);
+    expect(report.steps.map((s) => s.name)).toEqual(files.map((f) => `lint:${f}`));
   });
 });

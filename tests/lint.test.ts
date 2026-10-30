@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { resolveConfig } from "../src/config";
 import type { CommandResult, RunCommand, RunCommandOptions } from "../src/host";
 import {
+  createLintLimiter,
   DEFAULT_LINT_TIMEOUT_SECONDS,
   detectPreCommitAvailability,
   isLintFailure,
@@ -253,5 +254,56 @@ describe("detectPreCommitAvailability", () => {
     const { run } = stubRun({ exitCode: 127 });
     const available = await detectPreCommitAvailability(run, "/project");
     expect(available).toBe(false);
+  });
+});
+
+describe("matchExclude matcher cache", () => {
+  it("does not leak compiled matchers across config objects", () => {
+    const withExclude = resolve({ profile: "standard", exclude: ["*.log"] });
+    const withoutExclude = resolve({ profile: "standard", exclude: [] });
+    expect(matchExclude(withExclude, "debug.log", "/project")).toBe("*.log");
+    expect(matchExclude(withoutExclude, "debug.log", "/project")).toBeUndefined();
+    expect(matchExclude(withExclude, "debug.log", "/project")).toBe("*.log");
+  });
+});
+
+describe("createLintLimiter", () => {
+  it("bounds concurrent executions and drains the queue", async () => {
+    const limiter = createLintLimiter(2);
+    let active = 0;
+    let maxActive = 0;
+    const task = async (id: number) => {
+      active += 1;
+      maxActive = Math.max(maxActive, active);
+      await new Promise((resolve) => setTimeout(resolve, 15));
+      active -= 1;
+      return id;
+    };
+    const results = await Promise.all([0, 1, 2, 3, 4].map((id) => limiter.run(() => task(id))));
+    expect(results).toEqual([0, 1, 2, 3, 4]);
+    expect(maxActive).toBe(2);
+    expect(active).toBe(0);
+  });
+
+  it("releases the slot when a task rejects", async () => {
+    const limiter = createLintLimiter(1);
+    await expect(limiter.run(() => Promise.reject(new Error("lint boom")))).rejects.toThrow(
+      "lint boom",
+    );
+    // The limiter is not wedged: the next task still runs.
+    await expect(limiter.run(() => Promise.resolve("ok"))).resolves.toBe("ok");
+  });
+
+  it("starts queued tasks in call order", async () => {
+    const limiter = createLintLimiter(1);
+    const started: number[] = [];
+    const gate = new Promise<void>((resolve) => setTimeout(resolve, 10));
+    const task = (id: number) => async () => {
+      started.push(id);
+      await gate;
+      return id;
+    };
+    await Promise.all([limiter.run(task(0)), limiter.run(task(1)), limiter.run(task(2))]);
+    expect(started).toEqual([0, 1, 2]);
   });
 });

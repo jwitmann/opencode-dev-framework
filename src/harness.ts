@@ -17,11 +17,12 @@
  *   synthetic continuation) and the `session.idle` event net (re-prompt).
  */
 
-import { readFile } from "node:fs/promises";
+import { readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 import type { BlockStore } from "./block-store.js";
 import { runGate, summarizeGate, type ChangedFileTracker, type GateReport } from "./gate.js";
 import type { RunCommand } from "./host.js";
+import type { LintLimiter } from "./lint.js";
 import type { LogFn } from "./logger.js";
 import type { ResolvedConfig } from "./types.js";
 
@@ -146,6 +147,10 @@ export interface CompletionDeps {
   tracker: ChangedFileTracker;
   blockCounts: BlockStore;
   log: LogFn;
+  /** Shared limiter bounding concurrent linter subprocesses. */
+  lintLimiter?: LintLimiter;
+  /** Session pass cache; skips redundant gate suites across idle boundaries. */
+  passCache?: PassCache;
 }
 
 function reviewMissingMessage(changedFiles: string[]): string {
@@ -174,6 +179,67 @@ export interface InspectionDeps {
   directory: string;
   /** Read-only snapshot of tracker files; never mutated. */
   trackerFiles: string[];
+  /** Shared limiter bounding concurrent linter subprocesses. */
+  lintLimiter?: LintLimiter;
+  /**
+   * Pass cache owned by the session state. When set and the working tree
+   * provably matches the last clean pass (same files, same mtimes/sizes,
+   * same gate config, review artifact untouched), inspection returns the
+   * cached pass without spawning any gate command. Any content change,
+   * config change, or review removal misses the cache and re-runs. Only
+   * genuinely clean passes are stored — advisory problems and failures
+   * never are, so loud reporting is preserved.
+   */
+  passCache?: PassCache;
+}
+
+/**
+ * Fingerprint of the last clean pass. `key` is null when nothing is cached;
+ * a non-null key with its summary replays the pass verbatim.
+ */
+export interface PassCache {
+  key: string | null;
+  summary: string | null;
+}
+
+/** Create an empty pass cache (one per session state). */
+export function createPassCache(): PassCache {
+  return { key: null, summary: null };
+}
+
+/**
+ * Fingerprint the current tree state for cache comparison. Returns null
+ * when any input is unreadable — an unreadable file can never prove the
+ * tree unchanged, so null forces a re-run (the safe direction).
+ */
+async function passCacheKey(
+  config: ResolvedConfig,
+  directory: string,
+  changedFiles: string[],
+  reviewRequired: boolean,
+): Promise<string | null> {
+  const gateConfig = JSON.stringify({ commands: config.commands, gate: config.gate });
+  const parts: string[] = [];
+  for (const file of [...changedFiles].sort()) {
+    try {
+      const s = await stat(join(directory, file));
+      parts.push(`${file}:${s.mtimeMs}:${s.size}`);
+    } catch {
+      return null;
+    }
+  }
+  let review = "not-required";
+  if (reviewRequired) {
+    try {
+      const s = await stat(join(directory, REVIEW_ARTIFACT_REL));
+      review = `${s.mtimeMs}:${s.size}`;
+    } catch {
+      // Review was required at pass time but is now unreadable: the
+      // requirement may have become unmet, so force a re-run.
+      return null;
+    }
+  }
+  return `${gateConfig}\n${parts.join("\n")}\nreview:${review}`;
 }
 
 /**
@@ -238,10 +304,34 @@ export async function inspectCompletion(deps: InspectionDeps): Promise<Completio
     };
   }
 
-  const report: GateReport = await runGate(run, config, changedFiles, { cwd: directory });
+  const reviewRequired = config.gate.require_review && changedFiles.length > 0;
+
+  // Fast path: the tree provably matches the last clean pass — replay it
+  // without spawning gate commands. The key covers file identity, content
+  // freshness (mtime+size), gate config, and the review artifact, so any
+  // real change misses and re-runs.
+  if (deps.passCache?.key !== undefined && deps.passCache?.key !== null) {
+    const key = await passCacheKey(config, directory, changedFiles, reviewRequired);
+    if (key !== null && key === deps.passCache.key && deps.passCache.summary !== null) {
+      return {
+        changedFiles,
+        report: { ran: true, steps: [], ok: true, failedSteps: [] },
+        reviewRequired,
+        reviewState: "present",
+        reviewMissing: false,
+        skipped: false,
+        ok: true,
+        summary: deps.passCache.summary,
+      };
+    }
+  }
+
+  const report: GateReport = await runGate(run, config, changedFiles, {
+    cwd: directory,
+    lintLimiter: deps.lintLimiter,
+  });
   const gateFailed = report.ran && !report.ok;
 
-  const reviewRequired = config.gate.require_review && changedFiles.length > 0;
   const reviewState = reviewRequired
     ? await artifactState(directory, REVIEW_ARTIFACT_REL)
     : "present";
@@ -255,6 +345,19 @@ export async function inspectCompletion(deps: InspectionDeps): Promise<Completio
       : report.ran
         ? `completion gate passed\n${summarizeGate(report)}`
         : `completion gate passed (${report.reason ?? "nothing to run"})`;
+  if (deps.passCache !== undefined) {
+    if (!gateFailed && !reviewMissing && report.ran) {
+      // Genuinely clean pass that actually ran — store the fingerprint for
+      // the next idle. Advisory problems (gateFailed) and missing reviews
+      // never store; vacuous passes (nothing ran) neither store nor clear.
+      const key = await passCacheKey(config, directory, changedFiles, reviewRequired);
+      deps.passCache.key = key;
+      deps.passCache.summary = key === null ? null : summary;
+    } else if (gateFailed || reviewMissing) {
+      deps.passCache.key = null;
+      deps.passCache.summary = null;
+    }
+  }
   return {
     changedFiles,
     report,
@@ -285,6 +388,8 @@ export async function evaluateCompletion(deps: CompletionDeps): Promise<Completi
     config,
     directory,
     trackerFiles: tracker.getChangedFiles(),
+    lintLimiter: deps.lintLimiter,
+    passCache: deps.passCache,
   });
   const { changedFiles, report } = inspection;
   const gateFailed = report.ran && !report.ok;
