@@ -1019,6 +1019,115 @@ only impure seam. This also answers the earlier 3-state proposal: the
 registration outcome is recorded, just surfaced in the new command rather
 than the config dialog.
 
+## Phase 0 spike receipts — `/df-goal` verified goals (2026-10-30)
+
+Live spike per `docs/plans/13-verified-goals.md` Phase 0, run from this box
+against core v2.2.2 (`opencode run --standalone --print-logs`,
+`--model kimi-code-plan-global/kimi-for-coding`). Disposable fixtures in
+`/tmp/opencode/df-goal-spike/` (passing gate) and
+`/tmp/opencode/df-goal-spike-fail/` (`test: "false"`, `require_review: false`,
+`max_blocks: 2`); framework loaded once from repo root; probe plugin drives
+`ctx.session.command` from the `context` hook and appends one JSON line per
+run. No production code touched.
+
+### Delegation shape (plan §3.2 confirmed; SDK types are stale)
+
+- Plan §3.2 specifies `ctx.session.command({ sessionID, name: "goal", ... })`
+  with a flat string `name`. The spike confirms this is correct — no plan
+  change needed on the shape (the `...` is `text`, plus optional
+  `files`/`agents`/`skills`/`delivery`).
+- Ground truth is core source, `packages/protocol/src/groups/session.ts:359-365`:
+  `session.command` payload is `{ name: Schema.String (flat), ...
+  PromptInput.Prompt.fields, delivery? }`.
+- Two wrong shapes were feature-tested along the way (kept as regression
+  evidence): `{ sessionID, name: { name, text } }` (nested object) fails with
+  `SchemaError: Expected string at ["name"]`; `{ sessionID, command, text }`
+  (no `name`) fails with `SchemaError: Missing key at ["name"]`.
+- SDK 2.0.26 generated types still show the old nested
+  `name: { name, text }` — stale SDK, core source is truth. Same class of
+  drift the plan warned about ("version strings lie"); applies to endpoint
+  shapes, not just versions. Implementation must type the delegation call
+  from the core protocol shape, not the installed SDK types.
+- With the flat shape, absent command returns a clean typed error:
+  `Command.NotFoundError: Command not found: df-goal-spike-nonexistent-xyz`
+  (plugin → server → Command service round-trips).
+- `sessionID` is available on the `context` hook event (top-level `event.
+  sessionID`); `ctx.session.command` is a function; native `goal` is
+  registered (visible in `ctx.command.list()`).
+
+### Accounting rows (both predictions confirmed)
+
+- B1: 4,001 ASCII units → `Command.ExecutionError: A goal objective is
+  limited to 4000 characters (got 4001).` No goal loop starts. REJECT as
+  predicted.
+- B2: ~3,990 UTF-16 units / ~7,930 UTF-8 bytes (emoji-padded) → `accepted`.
+  The limit counts JS `text.length` (UTF-16 units, `goal.ts:388`), not bytes
+  or code points. Matches the static read (`MAX_OBJECTIVE = 4_000`).
+- Source-pinned, no model spend: `MAX_ROUNDS = 50` (`goal.ts:16`); native goal
+  implementation at commit `8de0323975` (#59437, on local
+  `feat/experimental-session-stopping` — the PR-core leg is testable later).
+
+### Mode C — dual-tenant ordering (real native goal + failing framework gate)
+
+- Programmatic kickoff `ctx.session.command({ sessionID, name: "goal",
+  text })` from a probe plugin's `context` hook starts a REAL native goal
+  inside `opencode run --standalone` (non-interactive): `"goal-started"`.
+  The plan's interactive-only worry is resolved for kickoff — delegation
+  works headless.
+- C1 (goal objective "workspace needs no changes", prompt "make no edits"):
+  agent examined the fixture, correctly identified the failing gate as
+  intentional fixture design, made no edits → framework gate skipped
+  (`completion gate skipped: no changed files`), session exited 0. No native
+  reviewer verdict surfaced in the transcript; the reviewer loop had nothing
+  to push against.
+- Caveat found: `opencode run` defaults to the plan agent, so a "make no
+  edits" prompt can never engage the gate. Boundary runs must pass
+  `--agent build`.
+- C2 VERDICT (attempt 2, clean): full dual-tenant collision RECORDED.
+  Attempt 1 was void (probe brace bug → plugin never loaded; agent used
+  shell redirection → gate correctly saw no `file.edited` events and
+  skipped). Attempt 2: probe loaded, real native goal started headlessly
+  (`goal-started`), agent used the Edit tool, gate ran `test: "false"` →
+  FAIL → synthetic continuation (block 1/2) → agent investigated, proved
+  the failure pre-existing (ran `false` verbatim, exit 1; fixture header
+  declares deterministic FAIL) and refused to weaken the yml → FAIL again
+  → synthetic (block 2/2) → agent proved failure on a clean tree
+  (`mktemp -d` + yml only, `false` still exits 1) → gate stood down after
+  `max_blocks` with the honest STILL-unmet message → session exited 0.
+  Constitution-following behavior under blocks was exemplary throughout.
+- Native reviewer side: NO visible activity in either headless run — no
+  verdicts, no judge messages, no rounds in `--print-logs`, although the
+  goal was active for the whole C2 session. So the ordering table has the
+  framework tenant fully characterized (block → synthetic → block →
+  synthetic → stand-down) and the native tenant silent: no double-admission
+  observed (only the framework admitted continuations), no interference
+  either (active goal did not break the gate path; gate blocks did not
+  crash the goal). The simultaneous-`continue` interleaving the plan hoped
+  to see did not occur — reviewer silence in headless `opencode run` is
+  itself a finding; chasing reviewer text belongs to Phase 1+ (real wrapper
+  sessions) or the PR-core leg, not more spike runs.
+- Secondary: agent's clean-tree proof attempted `rm -rf`; the framework's
+  dangerous-command guardrail blocked it (`recursive force delete`) and the
+  agent adapted via `mktemp -d`. Guardrail working as designed, unprompted.
+- Phase 0 exit criteria met: delegation shape pinned, accounting confirmed,
+  kickoff proven headless, failure/limit behavior typed, dual-tenant run
+  recorded with one tenant silent. Proceed to Phase 1A/1B.
+- C2 first attempt VOID (two fixture bugs, both instructive):
+  1. The C2 probe edit shipped a missing closing brace (C block nested
+     inside C2's `if`). `node --check` passed it (script-goal parse), but
+     Bun's loader rejected it three times:
+     `failed to load plugin ... Cause([Die(BuildMessage: Unexpected catch)])`
+     — no probe, no goal kickoff. Lesson: validate throwaway probes with
+     `bun build` (the actual loader), never `node --check`. Fixed and
+     verified under both runtimes before re-run.
+  2. With no probe running, the agent fulfilled the edit via
+     `printf >> NOTES.txt` through the shell — and the framework gate
+     reported `completion gate skipped: no changed files` despite a real
+     filesystem change. Live confirmation of the known design limit
+     (changed files tracked from `file.edited` events only): shell-mediated
+     edits bypass gate tracking entirely. Re-run mandates the Edit tool.
+     Possible Phase 3+ follow-up, not Phase 0 scope.
+
 ## References
 
 - OpenCode plugin docs: <https://opencode.ai/docs/plugins>
