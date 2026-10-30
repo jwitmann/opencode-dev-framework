@@ -1,7 +1,8 @@
 # opencode-dev-framework
 
 An [OpenCode](https://opencode.ai) plugin that enforces project-specific
-quality gates during AI coding sessions. Inspired by
+quality gates during AI coding sessions — and verifies whole tasks, not just
+edits, through `/df-goal`. Inspired by
 [anticomputer/dev-framework](https://github.com/anticomputer/dev-framework),
 reimplemented as an OpenCode-native plugin.
 
@@ -32,6 +33,12 @@ reimplemented as an OpenCode-native plugin.
   runs the gate twice, synthetic-first with `prompt` only as fallback.
   `/df-status` shows `Continuation (idle): active` once the hook has completed
   an evaluation, else the event-subscribe fallback.
+- **Verified goals (`/df-goal`).** Runs a whole task — typically a written
+  plan — inside a native `/goal` with a verification contract appended:
+  the agent must produce a `dev_framework_verify` PASS on the final tree,
+  and the native reviewer weighs that tool result as completion evidence.
+  Refuses vacuous configs, non-blocking profiles, and goal-less cores
+  instead of starting an unverified substitute. See *Slash commands* below.
 - **Pre-flight gate (optional).** When a `preflight:` task list is configured, edit
   tools are **denied** (standard/strict) until the agent writes its pre-flight findings
   to `.opencode/opencode-dev-framework/preflight.md`. Use it for work that requires
