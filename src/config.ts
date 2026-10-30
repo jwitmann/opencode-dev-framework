@@ -9,6 +9,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import { parse as parseYaml } from "yaml";
 import { z } from "zod";
+import { normalizeCommandMap } from "./command-utils.js";
 import type { Config, Profile, ProtectMode, ResolvedConfig } from "./types.js";
 
 /** Config file precedence, highest first. The first file found wins. */
@@ -368,9 +369,11 @@ export function resolveConfig(raw: Config, configPath?: string): ResolvedConfig 
  * A verified goal must imply deterministic evidence where none would exist
  * otherwise, so `/df-goal` refuses to delegate when the resolved
  * configuration provides no real completion check at all. A check counts
- * only when its step would actually run in `runGate` — a `run_*` flag with
- * no command behind it produces a skipped step, which is vacuous. Users
- * wanting a purely semantic objective use native `/goal` directly.
+ * only when its step would actually run — a `run_*` flag with no command
+ * behind it produces a skipped step, which is vacuous. The review check
+ * runs in the harness (`reviewMissing`), not in `runGate`, but counts all
+ * the same. Users wanting a purely semantic objective use native `/goal`
+ * directly.
  */
 export function hasMeaningfulChecks(config: ResolvedConfig): boolean {
   const gate = config.gate;
@@ -383,8 +386,13 @@ export function hasMeaningfulChecks(config: ResolvedConfig): boolean {
     if (template !== undefined) return true;
   }
   if (gate.lint_changed) {
-    const lint = config.commands.lint;
-    if (typeof lint === "string" || (lint !== undefined && Object.keys(lint).length > 0)) {
+    // Same resolution as the gate's per-file lint (lint.ts): a plain string
+    // is the default command, a record holds default and/or per-extension
+    // overrides. Any configured command counts as meaningful here — the
+    // per-file skip (excluded path, unmatched extension) is decided at
+    // gate time with the file list this static check does not have.
+    const { default: defaultLint, byExtension } = normalizeCommandMap(config.commands.lint);
+    if (defaultLint !== undefined || Object.keys(byExtension).length > 0) {
       return true;
     }
   }

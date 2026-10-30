@@ -1484,6 +1484,40 @@ mainline matrix, `dist/` rebuilt. No production code touched.
 - No config-schema or behavior changes when caches are cold; cold-path
   suite is the 275 pre-existing tests, all unmodified and green.
 
+## Retrospective peer review of Phase 2 (2026-10-30 — the pass that has no record)
+
+- The `86024d2` message claims "Peer review clean (one Should-fix + two
+  Notes fixed)", but no dispositions were ever recorded — same shape as the
+  Phase 25–26 burns. Treat Phase 2 as unreviewed until this entry: on
+  user challenge, a real 3-specialist retrospective pass ran over
+  `86024d2` + `72a4496` (code-reviewer / pattern-guardian /
+  style-enforcer, parallel, investigation-only).
+- Verdict: no Blocking, no Should-fix. The delegation core (exactly-once,
+  fail-closed probe, length-exact overflow errors, verbatim addendum) is
+  sound; the old "already reviewed" claim is at least plausible (fail-closed
+  probe, idempotency, actionable errors all present), though the review
+  demonstrably missed the real probe shape — live dogfood + `72a4496`
+  fixed what review didn't catch.
+- Six Notes, all fixed in the working tree with tests, suite re-run green
+  before this note was written:
+  - Stale-state guard silently dropped a user-invoked `/df-goal` (bare
+    `return`); now throws an actionable retry error. Existing
+    goal.test.ts stale-handler test updated to the new contract.
+  - Missing `session.command` surfaced as a raw TypeError the probe cannot
+    catch; now guarded with a "Cannot start a verified goal" error.
+    Regression-tested via the goal.test.ts mock ctx.
+  - Stale comment claimed installed SDK types show a nested command shape;
+    corrected (installed types are flat; cast stays flat).
+  - `hasMeaningfulChecks` doc overclaimed "runs in `runGate`" (review runs
+    in the harness); lint branch now reuses `normalizeCommandMap`.
+  - Local `FlatSessionCommand` duplicated the exported `GoalDelegate`;
+    wiring now imports it.
+  - goal.ts header + `describe("checkGoalAvailability (§3.3)")` naming
+    cleaned up.
+- Lesson restated: the verdict line is written only after the pass runs
+  and the suite is green — never from memory, never in the same breath
+  as the implementation.
+
 ## References
 
 - OpenCode plugin docs: <https://opencode.ai/docs/plugins>

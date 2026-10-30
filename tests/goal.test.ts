@@ -109,7 +109,7 @@ describe("buildVerifiedObjective", () => {
   });
 });
 
-describe("checkGoalAvailability (§3.3)", () => {
+describe("checkGoalAvailability", () => {
   it("allows a blocking profile with meaningful checks and native goal present", () => {
     expect(checkGoalAvailability(meaningful(), true)).toEqual({ ok: true });
   });
@@ -310,7 +310,10 @@ describe("/df-goal command wiring (server registration)", () => {
     writeFileSync(join(directory, ".opencode-dev-framework.yml"), body);
   }
 
-  function createMockCtx(options: { goalListed: boolean } = { goalListed: true }) {
+  function createMockCtx(
+    options: { goalListed?: boolean; omitSessionCommand?: boolean } = {},
+  ) {
+    const { goalListed = true, omitSessionCommand = false } = options;
     const addedCommands = new Map<string, { execute: (input: unknown) => Promise<void> }>();
     const sessionCommand = vi.fn(async () => ({ ok: true }));
     const ctx = {
@@ -319,7 +322,7 @@ describe("/df-goal command wiring (server registration)", () => {
         hook: vi.fn(async () => ({ dispose: async () => {} })),
         prompt: vi.fn(),
         synthetic: vi.fn(),
-        command: sessionCommand,
+        ...(omitSessionCommand ? {} : { command: sessionCommand }),
       },
       command: {
         transform: vi.fn(async (callback: (editor: { add: (c: unknown) => void }) => void) => {
@@ -330,7 +333,7 @@ describe("/df-goal command wiring (server registration)", () => {
           return { dispose: async () => {} };
         }),
         list: vi.fn(async () =>
-          options.goalListed
+          goalListed
             ? { location: {}, data: [{ name: "goal" }, { name: "other" }] }
             : { location: {}, data: [{ name: "other" }] },
         ),
@@ -422,7 +425,7 @@ describe("/df-goal command wiring (server registration)", () => {
     expect(sessionCommand).not.toHaveBeenCalled();
   });
 
-  it("a stale handler cannot delegate after teardown", async () => {
+  it("a stale handler throws instead of silently dropping after teardown", async () => {
     writeConfig(blockingConfig());
     const { ctx, addedCommands, sessionCommand } = createMockCtx();
     const mod = plugin as unknown as { setup: (c: unknown) => Promise<unknown> };
@@ -436,12 +439,27 @@ describe("/df-goal command wiring (server registration)", () => {
     expect(sessionCommand).toHaveBeenCalledTimes(1);
     await cleanup?.();
     cleanup = undefined;
-    await command?.execute({
-      sessionID: "ses_123",
-      prompt: { text: "After teardown" },
-      delivery: "steer",
-    });
-    // No second delegation: the stale closure no-ops like every other guard.
+    // No second delegation: the stale closure throws an actionable error
+    // instead of silently discarding the user-invoked command.
+    await expect(
+      command?.execute({
+        sessionID: "ses_123",
+        prompt: { text: "After teardown" },
+        delivery: "steer",
+      }),
+    ).rejects.toThrow("session state changed");
     expect(sessionCommand).toHaveBeenCalledTimes(1);
+  });
+
+  it("throws an actionable error instead of a TypeError without session.command", async () => {
+    writeConfig(blockingConfig());
+    const { ctx, addedCommands, sessionCommand } = createMockCtx({ omitSessionCommand: true });
+    const mod = plugin as unknown as { setup: (c: unknown) => Promise<unknown> };
+    cleanup = (await mod.setup(ctx)) as () => Promise<void> | void;
+    const command = addedCommands.get("df-goal");
+    await expect(
+      command?.execute({ sessionID: "ses_123", prompt: { text: "Do it" }, delivery: "steer" }),
+    ).rejects.toThrow("session.command is not available");
+    expect(sessionCommand).not.toHaveBeenCalled();
   });
 });

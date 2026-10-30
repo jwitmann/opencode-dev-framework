@@ -28,6 +28,7 @@ import { join } from "node:path";
 import { type BlockStore, createBlockStore } from "./block-store.js";
 import { clearConfigCache, loadConfig } from "./config.js";
 import { type ChangedFileTracker, createChangedFileTracker } from "./gate.js";
+import type { GoalDelegate } from "./goal.js";
 import {
   artifactState,
   createPassCache,
@@ -940,7 +941,12 @@ const plugin = Plugin.define({
             description:
               "Start a verified native goal: appends a dev_framework_verify contract to the objective and delegates to native /goal exactly once. Requires native /goal, a blocking profile, and at least one configured completion check.",
             execute: async (invocation) => {
-              if (activeState !== state) return;
+              if (activeState !== state) {
+                throw new Error(
+                  "Cannot start a verified goal: the plugin session state changed " +
+                    "(teardown or reload raced the command); retry /df-goal.",
+                );
+              }
               await reloadConfigIfChanged(state);
               const { extractObjectiveText, isNativeGoalListed, runGoalCommand } = await import(
                 "./goal.js"
@@ -953,15 +959,18 @@ const plugin = Plugin.define({
               }
               // Flat core protocol shape
               // (packages/protocol/src/groups/session.ts `session.command`:
-              // `{ sessionID, name: string, text, ... }`). The installed SDK
-              // types still show the old nested `name: { name, text }` —
-              // core source is truth (Phase 0 spike receipt).
-              type FlatSessionCommand = (args: {
-                sessionID: string;
-                name: string;
-                text: string;
-              }) => Promise<unknown>;
-              const sessionCommand = ctx.session.command as unknown as FlatSessionCommand;
+              // `{ sessionID, name: string, text, ... }`). The installed
+              // client types agree (indexed-access rendering resolves to
+              // flat `name: string`) and core source is truth (Phase 0
+              // spike receipt) — keep this cast flat.
+              const sessionCommand = ctx.session.command as unknown as GoalDelegate;
+              if (typeof sessionCommand !== "function") {
+                throw new Error(
+                  "Cannot start a verified goal: session.command is not available on this " +
+                    "core. Upgrade OpenCode to a build containing native /goal, or run the " +
+                    "objective without verification where native /goal exists.",
+                );
+              }
               const result = await runGoalCommand({
                 config: state.config,
                 objective: extractObjectiveText(invocation.prompt),
