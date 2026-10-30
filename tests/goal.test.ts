@@ -310,9 +310,7 @@ describe("/df-goal command wiring (server registration)", () => {
     writeFileSync(join(directory, ".opencode-dev-framework.yml"), body);
   }
 
-  function createMockCtx(
-    options: { goalListed?: boolean; omitSessionCommand?: boolean } = {},
-  ) {
+  function createMockCtx(options: { goalListed?: boolean; omitSessionCommand?: boolean } = {}) {
     const { goalListed = true, omitSessionCommand = false } = options;
     const addedCommands = new Map<string, { execute: (input: unknown) => Promise<void> }>();
     const sessionCommand = vi.fn(async () => ({ ok: true }));
