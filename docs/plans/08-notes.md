@@ -1443,6 +1443,16 @@ mainline matrix, `dist/` rebuilt. No production code touched.
   reviewer-visible session. So the three PR rows keep their status:
   delegation + framework-parity evidence is in; arbitration evidence
   still needs the voter.
+- `clear` mid-verification (row 8, second half — interactive,
+  2026-10-30): `/goal clear` issued while `dev_framework_verify` was
+  still spinning. Native goal status UI vanished and stayed dark — no
+  `Goal complete` banner, no resurrected `◎Goal` header, nothing
+  further in status. The in-flight tool call harmlessly returned its
+  result and the agent posted its evidence summary as plain text
+  against a goal that no longer existed; the framework re-issued
+  nothing, resumed nothing. Row 8 fully closed: both native user
+  controls (pause, clear) win over an executing verification, and the
+  framework never touches goal state.
 - Revisit trigger (2026-10-30 decision: wait, don't build Phase 3 now):
   start Phase 3 when `#54487` merges or its contract stabilizes, or
   when release notes need to claim stopping support — not before.
