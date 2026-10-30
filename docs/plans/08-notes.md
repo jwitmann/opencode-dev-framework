@@ -1128,17 +1128,6 @@ run. No production code touched.
      edits bypass gate tracking entirely. Re-run mandates the Edit tool.
      Possible Phase 3+ follow-up, not Phase 0 scope.
 
-     — no probe, no goal kickoff. Lesson: validate throwaway probes with
-     `bun build` (the actual loader), never `node --check`. Fixed and
-     verified under both runtimes before re-run.
-  2. With no probe running, the agent fulfilled the edit via
-     `printf >> NOTES.txt` through the shell — and the framework gate
-     reported `completion gate skipped: no changed files` despite a real
-     filesystem change. Live confirmation of the known design limit
-     (changed files tracked from `file.edited` events only): shell-mediated
-     edits bypass gate tracking entirely. Re-run mandates the Edit tool.
-     Possible Phase 3+ follow-up, not Phase 0 scope.
-
 ## Phase 2 dogfood receipts — `/df-goal` live matrix (2026-10-30)
 
 Live §6.5 matrix for the real wrapper (commit `86024d2` plus shape fix
