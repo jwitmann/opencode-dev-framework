@@ -126,6 +126,13 @@ describe("issue #1: teardown must not brick tool calls", () => {
           return makeRegistration();
         }),
       },
+      command: {
+        transform: vi.fn(async (callback: (editor: { add: (t: unknown) => void }) => void) => {
+          callback({ add: () => {} });
+          return makeRegistration();
+        }),
+        list: vi.fn(async () => []),
+      },
       event: {
         subscribe: () => ({
           // Abort-ignorant on purpose when a custom source is given (see

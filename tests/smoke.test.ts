@@ -30,6 +30,7 @@ describe("plugin entry point (V2)", () => {
     const sessionNames: string[] = [];
     const toolNames: string[] = [];
     const permissionNames: string[] = [];
+    const commandNames: string[] = [];
     const ctx: Record<string, unknown> = {
       location: { directory: "/tmp" },
       session: {
@@ -51,6 +52,13 @@ describe("plugin entry point (V2)", () => {
         },
         transform: async () => ({ dispose: async () => {} }),
       },
+      command: {
+        transform: async (callback: (editor: { add: (c: { name: string }) => void }) => void) => {
+          callback({ add: (c: { name: string }) => commandNames.push(c.name) });
+          return { dispose: async () => {} };
+        },
+        list: async () => [],
+      },
       event: { subscribe: () => ({ [Symbol.asyncIterator]: async function* () {} }) },
       app: { version: "2.0.0" },
     };
@@ -69,6 +77,7 @@ describe("plugin entry point (V2)", () => {
     expect(permissionNames).toContain("evaluate");
     expect(toolNames).toContain("execute.before");
     expect(toolNames).toContain("execute.after");
+    expect(commandNames).toContain("df-goal");
     if (typeof result === "function") {
       await result();
     }

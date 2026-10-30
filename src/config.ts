@@ -362,6 +362,35 @@ export function resolveConfig(raw: Config, configPath?: string): ResolvedConfig 
   };
 }
 
+/**
+ * Static "meaningful check" predicate for `/df-goal` (plan §3.3).
+ *
+ * A verified goal must imply deterministic evidence where none would exist
+ * otherwise, so `/df-goal` refuses to delegate when the resolved
+ * configuration provides no real completion check at all. A check counts
+ * only when its step would actually run in `runGate` — a `run_*` flag with
+ * no command behind it produces a skipped step, which is vacuous. Users
+ * wanting a purely semantic objective use native `/goal` directly.
+ */
+export function hasMeaningfulChecks(config: ResolvedConfig): boolean {
+  const gate = config.gate;
+  if (!gate) return false;
+  if (gate.require_review) return true;
+  if (gate.acceptance.length > 0) return true;
+  if (gate.run_typecheck && config.commands.typecheck !== undefined) return true;
+  if (gate.run_tests) {
+    const template = gate.scope === "changed" ? config.commands.test_changed : config.commands.test;
+    if (template !== undefined) return true;
+  }
+  if (gate.lint_changed) {
+    const lint = config.commands.lint;
+    if (typeof lint === "string" || (lint !== undefined && Object.keys(lint).length > 0)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function validateConfig(data: unknown, configPath: string): Config {
   const result = configSchema.safeParse(data);
   if (!result.success) {

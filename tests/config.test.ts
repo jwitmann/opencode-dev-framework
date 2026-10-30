@@ -6,6 +6,7 @@ import {
   clearConfigCache,
   DEFAULT_PROTECT,
   findConfigFile,
+  hasMeaningfulChecks,
   loadConfig,
   mapFlatConfig,
   resolveConfig,
@@ -224,6 +225,84 @@ describe("mapFlatConfig helpers", () => {
   it("ignores unknown keys but maps precommit", () => {
     const config = mapFlatConfig({ precommit: "auto", whatever: 1 });
     expect(config).toEqual({ precommit: "auto" });
+  });
+});
+
+describe("hasMeaningfulChecks", () => {
+  it("a default standard config with commands is meaningful", () => {
+    expect(
+      hasMeaningfulChecks(resolveConfig({ profile: "standard", commands: { typecheck: "true" } })),
+    ).toBe(true);
+  });
+
+  it("an empty config is vacuous", () => {
+    expect(hasMeaningfulChecks(resolveConfig({}))).toBe(false);
+  });
+
+  it("a bare blocking profile with no commands is vacuous without review", () => {
+    const config = resolveConfig({
+      profile: "standard",
+      gate: {
+        run_typecheck: false,
+        run_tests: false,
+        lint_changed: false,
+        require_review: false,
+        block_on_failure: true,
+      },
+    });
+    expect(hasMeaningfulChecks(config)).toBe(false);
+  });
+
+  it("counts review, acceptance, tests, and lint independently", () => {
+    const base = {
+      profile: "standard",
+      gate: {
+        run_typecheck: false,
+        run_tests: false,
+        lint_changed: false,
+        require_review: false,
+        block_on_failure: true,
+      },
+    } as const;
+    expect(
+      hasMeaningfulChecks(resolveConfig({ ...base, gate: { ...base.gate, require_review: true } })),
+    ).toBe(true);
+    expect(
+      hasMeaningfulChecks(
+        resolveConfig({
+          ...base,
+          gate: { ...base.gate, acceptance: [{ name: "c", command: "./v.sh" }] },
+        }),
+      ),
+    ).toBe(true);
+    expect(
+      hasMeaningfulChecks(
+        resolveConfig({
+          ...base,
+          commands: { test: "go test ./..." },
+          gate: { ...base.gate, run_tests: true },
+        }),
+      ),
+    ).toBe(true);
+    expect(
+      hasMeaningfulChecks(
+        resolveConfig({
+          profile: "standard",
+          commands: { test_changed: "vitest related {files}" },
+          gate: { scope: "changed", run_typecheck: false, require_review: false },
+        }),
+      ),
+    ).toBe(true);
+    // changed scope without a test_changed command is vacuous even with test set.
+    expect(
+      hasMeaningfulChecks(
+        resolveConfig({
+          profile: "standard",
+          commands: { test: "go test ./..." },
+          gate: { scope: "changed", run_typecheck: false, require_review: false },
+        }),
+      ),
+    ).toBe(false);
   });
 });
 

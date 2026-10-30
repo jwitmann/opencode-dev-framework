@@ -10,6 +10,8 @@
  *   (`filesystem.changed` stays as a fallback this release; see Phase 24)
  * - ctx.event.subscribe() -> file tracking + gate enforcement via re-prompt
  * - ctx.tool.transform(...) -> custom tools
+ * - ctx.command.transform(...) -> server-side `/df-goal` verified-goal
+ *   wrapper (thin adapter delegating to native `/goal`; see src/goal.ts)
  *
  * Gate enforcement: no synchronous pre-stop veto. On `experimental.idle`
  * (same execution) we run the gate and if it fails inside budget we admit
@@ -879,6 +881,69 @@ const plugin = Plugin.define({
         });
       }),
     );
+
+    // 3b) Verified-goal wrapper — server-side `/df-goal` through
+    // `ctx.command.transform` (see src/goal.ts for the pure policy). Thin
+    // adapter around native `/goal`: probes native capability, checks
+    // availability/profile/meaningful-checks, appends the verification
+    // addendum verbatim, and delegates exactly once via the flat core
+    // `session.command` shape. Defensive like the permission hook: on a
+    // core without the command API the wrapper is skipped with a warning
+    // and every other layer keeps working.
+    try {
+      trackRegistration(
+        await ctx.command.transform((editor) => {
+          editor.add({
+            name: "df-goal",
+            description:
+              "Start a verified native goal: appends a dev_framework_verify contract to the objective and delegates to native /goal exactly once. Requires native /goal, a blocking profile, and at least one configured completion check.",
+            execute: async (invocation) => {
+              if (activeState !== state) return;
+              await reloadConfigIfChanged(state);
+              const { extractObjectiveText, isNativeGoalListed, runGoalCommand } = await import(
+                "./goal.js"
+              );
+              let nativeGoalAvailable = false;
+              try {
+                nativeGoalAvailable = isNativeGoalListed(await ctx.command.list());
+              } catch {
+                nativeGoalAvailable = false;
+              }
+              // Flat core protocol shape
+              // (packages/protocol/src/groups/session.ts `session.command`:
+              // `{ sessionID, name: string, text, ... }`). The installed SDK
+              // types still show the old nested `name: { name, text }` —
+              // core source is truth (Phase 0 spike receipt).
+              type FlatSessionCommand = (args: {
+                sessionID: string;
+                name: string;
+                text: string;
+              }) => Promise<unknown>;
+              const sessionCommand = ctx.session.command as unknown as FlatSessionCommand;
+              const result = await runGoalCommand({
+                config: state.config,
+                objective: extractObjectiveText(invocation.prompt),
+                sessionID: invocation.sessionID,
+                nativeGoalAvailable,
+                delegate: (args) => sessionCommand(args),
+              });
+              if (!result.delegated) {
+                throw new Error(result.error);
+              }
+            },
+          });
+        }),
+      );
+    } catch (err) {
+      await safeLog(
+        state,
+        "warn",
+        "could not register df-goal command; verified goals unavailable",
+        {
+          error: String(err),
+        },
+      );
+    }
 
     // 4) Event subscription — file tracking + gate enforcement net.
     // Runs the gate on `session.idle` for the boundaries the §1b hook
