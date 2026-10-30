@@ -1306,6 +1306,37 @@ probe copied from the 2.2.2 matrix, `dist/` rebuilt first. All runs
   working. A dedicated leave-it-failing run would be needed to
   characterize the old-core backstop.
 
+### Interactive receipt — D-live-1, TUI session on v2.2.2 (2026-10-30)
+
+Fixture `/tmp/opencode/df-goal-live/` (framework only, `test:
+"./verify.sh"`, `require_review: false`, `skip_unchanged: false`,
+`max_blocks: 3`; no probe — user typed `/df-goal` by hand). Objective:
+fix `state.txt`, run `dev_framework_verify` after the final change,
+report the verdict.
+(`state.txt` re-broken by shell afterwards for round 2; shell edits are
+gate-invisible, but the agent redoes the fix with its own tools each
+round, so cross-round state is honest.)
+
+- Kickoff works interactively: TUI showed the `◎Goal:` header with the
+  objective; agent (kimi-for-coding, ~40 s) inspected, fixed, verified,
+  reported.
+- Agreement path, not divergence: agent reported `DEV_FRAMEWORK_VERDICT:
+  PASS` / `completion gate passed` / `test: passed`, then `Goal
+  complete` with transcript evidence. No reviewer verdict text surfaced
+  in what was pasted — native completion and framework PASS coincided,
+  nothing disagreed. Row 5's divergence case (reviewer-done-while-fails)
+  remains unobserved; the coinciding path is now receipted live.
+- Pause (row 8) missed: the run completed in ~40 s before the user's
+  `/goal pause` landed, so pause was a no-op against an already-complete
+  goal. Rematch planned with pause-inside-seconds (round 2).
+- Third live confirmation of the shell-edit blind spot: the agent fixed
+  via `printf ... > state.txt` (shell redirect, not the tracked Edit
+  tool). Harmless HERE — and instructively so: with
+  `skip_unchanged: false` the gate runs regardless of attribution, so
+  `./verify.sh` genuinely executed and passed. The blind spot bites
+  change-attribution (skip logic, review scoping), not command execution
+  when the gate is configured to always run. Still Phase 4 territory.
+
 ## References
 
 - OpenCode plugin docs: <https://opencode.ai/docs/plugins>
