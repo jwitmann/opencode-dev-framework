@@ -69,7 +69,7 @@ How each mechanism is enforced on OpenCode `v2` (idle hook landed via
 | Mechanism | Primary layer | Backstop / fallback | Strength |
 | --------- | ------------- | ------------------- | -------- |
 | Pre-flight gate | `tool.execute.before` deny | — | **Hard block** on every build: the edit never lands. |
-| Protected paths + dangerous commands | `tool.execute.before` deny/throw | `permission.evaluate` native layer (deny) | **Hard block** via the backstop; the native layer is defense-in-depth (the pipeline runs before-hooks first, so it only sees calls the backstop passed). |
+| Protected paths + dangerous commands | `tool.execute.before` deny/throw (load-bearing: the pipeline runs before-hooks first) | `permission.evaluate` native layer (deny) as defense-in-depth — it only ever sees calls the primary already passed; matters if core ever reorders the pipeline | **Hard block** via the primary deny; the native layer is belt-and-braces, never a weakening (it only denies or abstains). |
 | Per-edit lint | `tool.execute.after` track + lint | `filesystem.changed` event (this release) | Report-only: the edit already landed, so failures log loudly but never throw. |
 | Completion gate | `session.hook("experimental.idle")` (+ `idle` alias) → `session.synthetic` (same execution) | `event.subscribe` idle net for the boundaries the hook skips (deduped; synthetic-first, `prompt` fallback) | **Async, bounded** by `gate.max_blocks`. `/df-status` shows `Continuation (idle): active` vs the event-subscribe fallback. `execute.before` stays the only true hard wall. |
 
