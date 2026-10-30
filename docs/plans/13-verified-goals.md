@@ -1,7 +1,9 @@
 # Verified goals: native `/goal` + deterministic completion contracts
 
-> **Status:** PROPOSED — research and design only; no implementation has been
-> made from this document.
+> **Status:** SHIPPED — Phases 0–2 implemented, dogfooded, and
+> committed (2026-10-30). Phase 3 (stopping consumer) is parked on the
+> `#54487` trigger; Phases 4–5 are follow-ups by design. Receipts in
+> §6.5 and `docs/plans/08-notes.md`; release checklist in §9.
 >
 > **Date:** 2026-10-30.
 >
