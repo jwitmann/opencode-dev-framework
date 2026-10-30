@@ -212,6 +212,16 @@ gate:
   # before the completion gate passes.
   require_review: true
 
+  # Optional: named project-specific acceptance checks. Run sequentially
+  # after the typecheck/test steps; a failure fails the gate but other
+  # steps still run. Timeouts are per-check seconds (default: gate timeout).
+  # acceptance:
+  #   - name: api-contract
+  #     command: "./scripts/verify-api-contract.sh"
+  #   - name: migration-safety
+  #     command: "./scripts/check-migrations.sh"
+  #     timeout: 120
+
 # Optional: pre-flight task list. When set, edit tools are denied
 # (standard/strict) until the agent writes its findings to
 # .opencode/opencode-dev-framework/preflight.md.
@@ -228,6 +238,11 @@ on_edit:
 # Optional: explicit rule files (replace bundled; use mode: append to extend)
 # rules:
 #   - docs/team-rules.md
+# Append form (keeps the bundled rules, adds project files after them):
+# rules:
+#   mode: append
+#   files:
+#     - .opencode/opencode-dev-framework/hardening.md
 
 # Optional: project style guide appended to the constitution.
 # Auto-discovers STYLE.md / CONTRIBUTING.md / docs/STYLE.md when not set.
