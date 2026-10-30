@@ -20,7 +20,7 @@ reimplemented as an OpenCode-native plugin.
   `pre-commit run --files` when `precommit: auto` is set.
 - **Completion gate.** At the would-go-idle boundary (`session.hook("experimental.idle")`,
   with an `idle` alias registered for a future rename), runs typecheck, tests,
-  and (optionally) lint on changed files — changed files are
+  named acceptance commands (`gate.acceptance`), and (optionally) lint on changed files — changed files are
   tracked from edit events and cross-checked against `git status`, so the gate cannot
   silently skip due to an event-shape mismatch. In `standard`/`strict`, sessions that
   changed files must also produce a **peer-review artifact**
