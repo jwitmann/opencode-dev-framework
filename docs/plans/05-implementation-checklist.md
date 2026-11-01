@@ -540,6 +540,20 @@ Dogfood the fork's V2 pre-terminal hook (upstream PR
   Should-fix fixed + tested, rest fixed-or-justified in `08-notes.md`);
   committed on a framework-repo branch (`feat/experimental-stopping-dogfood`).
 
+## Phase 30 — No-progress early stand-down (plan 14, UNSCHEDULED)
+
+- [ ] 30.1 Snapshot record/compare/clear in `evaluateCompletion` per
+  `docs/plans/14-stuck-detection.md` §3 (signature = sorted failed-step
+  names / `"review"`; set-equal `changedFiles`; 2-repeat threshold
+  hardcoded, no config key; storage-backed, cleared on pass/stand-down).
+- [ ] 30.2 Unit tests per plan §5 (triple-identical → stand-down,
+  tree-moved/signature-changed → admitted, pass clears, advisory
+  untouched, single repeat still admitted).
+- [ ] 30.3 Dogfood per plan §6 (unfixable `test: "false"` fixture, early
+  stand-down on third identical evaluation, receipts in `08-notes.md`).
+- [ ] 30.4 Peer-review skill gate, no Blocking; `enforcement.md` +
+  troubleshooting red-tree entry updated; commit locally, never push.
+
 ## Phase 28 — Effect-API rewrite (post-process, UNSCHEDULED)
 
 - [ ] Deferred. See `08-notes.md` "Future work — Effect-API rewrite".
