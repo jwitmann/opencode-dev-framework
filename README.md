@@ -110,10 +110,17 @@ How each layer is enforced, and what it honestly cannot do:
 
 ## Commands
 
-`/df-status`, `/df-runtime`, `/df-help`, `/df-profile`, `/df-verify` open
-instant modal dialogs and never feed the LLM. `/df-goal <objective>` is a
-server-side command that starts a verified native goal (requires native
-`/goal`, a blocking profile, and at least one real check). Full reference:
+| Command | What it does |
+| ------- | -------------- |
+| `/df-status` | Instant modal: profile, guardrails, gate, configured commands. |
+| `/df-runtime` | Instant modal: plugin version + live hook/gate runtime state. |
+| `/df-help` | Instant modal: lists the dev-framework commands. |
+| `/df-profile` | Instant modal picker (or `/df-profile <name>`): switches profile now, written to config. |
+| `/df-verify` | Runs the verification suite manually; pass/fail summary in a modal. |
+| `/df-goal <objective>` | Server-side command: starts a **verified** native goal (requires native `/goal`, a blocking profile, and at least one real check). |
+
+The first five are TUI commands — they open instantly and never feed the
+LLM. Full reference:
 [`docs/user/commands.md`](docs/user/commands.md).
 
 ## Limitations (short version)
