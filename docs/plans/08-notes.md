@@ -1550,6 +1550,34 @@ mainline matrix, `dist/` rebuilt. No production code touched.
     the guard preserves accumulation so a mid-session profile flip still
     gates prior edits. Kept deliberately.
 
+## Docs Phase 2 live receipts — worked-session transcripts (2026-11-01)
+
+Three real headless runs for `docs/user/sessions/`, all
+`opencode run --standalone --print-logs --agent build
+--model kimi-code-plan-global/kimi-for-coding`, fixtures in
+`/tmp/opencode/docs-walkthrough/` (disposable; `dist/` rebuilt first,
+plugin loaded from repo root).
+
+- **T1 first gated session** (`t1`, Node `math.js` + `node --test`,
+  standard profile): prompt added `subtract` + test. Per-edit lint PASS
+  ×2, agent ran `dev_framework_verify` unprompted (PASS, 2 pass/0 fail),
+  idle gate `completion gate passed`, exit 0.
+- **T3 blocked gate** (`t3`, same shape, `subtract` returns `a + b`,
+  `max_blocks: 2`, prompt "report only, don't change files"): agent
+  reported the failure honestly, idle gate FAILED (blockCount 1) and
+  continued the session via synthetic; agent proved pre-existence via
+  clean `git status`, fixed to `a - b`, suite 2/0, gate passed, exit 0.
+  Designed precedence confirmed: the verification contract outranks a
+  report-only instruction when the gate blocks.
+- **T2 plan under `/df-goal`** (`t2`, `PLAN.md` multiply support, dogfood
+  probe delegating `Implement the plan in PLAN.md` via
+  `ctx.session.command`): probe receipt
+  `{"dfGoalPresent":true,"goalPresent":true,"dfGoalResult":"delegated"}`;
+  agent implemented both steps, cited `DEV_FRAMEWORK_VERDICT: PASS` as
+  completion evidence, idle gate passed, exit 0. Native goal lifecycle
+  events don't print verbosely under `--print-logs` — delegation proof
+  is the probe receipt plus contract-driven behavior.
+
 ## References
 
 - OpenCode plugin docs: <https://opencode.ai/docs/plugins>
