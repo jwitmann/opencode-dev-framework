@@ -120,8 +120,10 @@ server-side command that starts a verified native goal (requires native
 
 The completion gate **steers, it does not veto**: it continues the turn via a
 synthetic message at the idle boundary (bounded by `gate.max_blocks`), and you
-can always close the session. The **pre-flight** gate is the one genuine hard
-block. Guardrails add to OpenCode permissions, never replace them. Formatters
+can always close the session. A genuine pre-stop veto is proposed upstream
+([`anomalyco/opencode#54487`](https://github.com/anomalyco/opencode/pull/54487),
+open) — if it lands, the gate vetoes there instead of continuing. The
+**pre-flight** gate is the one genuine hard block today. Guardrails add to OpenCode permissions, never replace them. Formatters
 and linters are yours — the plugin runs them, it does not reimplement them.
 Full story: [`docs/user/enforcement.md`](docs/user/enforcement.md).
 
