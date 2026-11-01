@@ -53,3 +53,9 @@ framework stands down after `gate.max_blocks`.
 
 Rejections are actionable errors naming the exact cause — fix the cause,
 don't route around the wrapper.
+
+## Worked run
+
+[Plan under `/df-goal`](sessions/verified-goal-run.md): a two-step
+`PLAN.md` executed as a verified goal — contract appended, agent cites the
+verify PASS as its completion evidence, idle gate agrees.

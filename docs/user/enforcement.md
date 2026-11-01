@@ -21,6 +21,15 @@ How the plugin enforces on OpenCode `v2` (idle hook landed via
 | Per-edit lint | `tool.execute.after` track + lint | `filesystem.changed` event (this release) | Report-only: the edit already landed, so failures log loudly but never throw. |
 | Completion gate | `session.hook("experimental.idle")` (+ `idle` alias) → `session.synthetic` (same execution) | `event.subscribe` idle net for the boundaries the hook skips (deduped; synthetic-first, `prompt` fallback) | **Async, bounded** by `gate.max_blocks`. `/df-status` shows `Continuation (idle): active` once the hook has completed an evaluation, else the event-subscribe fallback. `execute.before` stays the only true hard wall. |
 
+## Worked sessions
+
+Three real runs against disposable fixtures show the loop end to end:
+
+- [First gated session](sessions/first-gated-session.md) — the full loop
+  on a green tree: constitution, per-edit lint, verify, idle gate.
+- [Blocked gate, fix, pass](sessions/blocked-gate-fix.md) — a red tree
+  blocks the session; the agent proves the failure, fixes, re-verifies.
+
 ## Limitations (read these)
 
 - **The completion gate steers; it does not veto.** At the would-go-idle
