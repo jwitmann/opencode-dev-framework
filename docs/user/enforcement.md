@@ -21,6 +21,34 @@ How the plugin enforces on OpenCode `v2` (idle hook landed via
 | Per-edit lint | `tool.execute.after` track + lint | `filesystem.changed` event (this release) | Report-only: the edit already landed, so failures log loudly but never throw. |
 | Completion gate | `session.hook("experimental.idle")` (+ `idle` alias) → `session.synthetic` (same execution) | `event.subscribe` idle net for the boundaries the hook skips (deduped; synthetic-first, `prompt` fallback) | **Async, bounded** by `gate.max_blocks`. `/df-status` shows `Continuation (idle): active` once the hook has completed an evaluation, else the event-subscribe fallback. `execute.before` stays the only true hard wall. |
 
+## Flow
+
+```mermaid
+flowchart TD
+    U["user prompt\nplain or /df-goal plan"] --> A["agent implements"]
+    A --> B{"tool.execute.before"}
+    B -- "deny: protected /\ndangerous / pre-flight" --> X["blocked before landing"]
+    B -- allow --> C["edit lands"]
+    C --> D["per-edit lint\n+ change tracker"]
+    D --> V["agent runs\ndev_framework_verify"]
+    V --> R{"verdict"}
+    R -- PASS --> OK["gate green"]
+    R -- FAIL --> A
+    D --> S{"session idle"}
+    S --> GT["completion gate\nsame full contract"]
+    GT -- PASS --> DONE["done"]
+    GT -- "FAIL, within max_blocks" --> SYN["synthetic continuation"]
+    SYN --> A
+    GT -- "FAIL, past max_blocks" --> SD["stand down:\nhonest unmet report"]
+    GT -- "FAIL, identical x3\nwith no new edits" --> SD
+    G["/df-goal plan\n(optional wrapper)"] -. "delegates once,\nappends contract" .-> N["native /goal\nowns objective + review"]
+    N -. "wraps the loop:\ndrives turns" .-> A
+    OK -. "in a goal: PASS reported\nas evidence into /goal" .-> N
+```
+
+npmjs.com does not render mermaid, so the README carries this same flow
+as a plain-text diagram — update both together.
+
 ## Worked sessions
 
 Three real runs against disposable fixtures show the loop end to end:

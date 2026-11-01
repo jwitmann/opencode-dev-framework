@@ -77,28 +77,47 @@ Every session runs the same loop — constitution, guardrails, lint, gate —
 whether or not it starts under `/df-goal`. A goal just wraps that loop in
 native verification:
 
-```mermaid
-flowchart TD
-    U["user prompt\nplain or /df-goal plan"] --> A["agent implements"]
-    A --> B{"tool.execute.before"}
-    B -- "deny: protected /\ndangerous / pre-flight" --> X["blocked before landing"]
-    B -- allow --> C["edit lands"]
-    C --> D["per-edit lint\n+ change tracker"]
-    D --> V["agent runs\ndev_framework_verify"]
-    V --> R{"verdict"}
-    R -- PASS --> OK["gate green"]
-    R -- FAIL --> A
-    D --> S{"session idle"}
-    S --> GT["completion gate\nsame full contract"]
-    GT -- PASS --> DONE["done"]
-    GT -- "FAIL, within max_blocks" --> SYN["synthetic continuation"]
-    SYN --> A
-    GT -- "FAIL, past max_blocks" --> SD["stand down:\nhonest unmet report"]
-    GT -- "FAIL, identical x3\nwith no new edits" --> SD
-    G["/df-goal plan\n(optional wrapper)"] -. "delegates once,\nappends contract" .-> N["native /goal\nowns objective + review"]
-    N -. "wraps the loop:\ndrives turns" .-> A
-    OK -. "in a goal: PASS reported\nas evidence into /goal" .-> N
+```text
+                        user prompt
+                  (plain or /df-goal plan)
+                                |
+                                v
+                       agent implements
+                                |
+                                v
+                       tool.execute.before
+                        /                \
+                     allow                deny: protected / dangerous / pre-flight
+                       |                                |
+                       v                                v
+                   edit lands                 BLOCKED before landing
+                       |
+                       v
+           per-edit lint + change tracker
+                /                         \
+               v                           v
+agent runs dev_framework_verify        session idle
+               |                               |
+               v                               v
+            verdict               completion gate (same full contract)
+             /    \                     |             |               |                    |
+          PASS    FAIL                 PASS    within max_blocks   past max_blocks   identical x3, no new edits
+            |       |                   |             |               |                    |
+            v       v                   v             v               v                    v
+      gate green   loops back         done     synthetic          STAND DOWN (honest unmet report)
+      (in a goal:  to agent                        continuation
+       evidence     implements                            |
+       into /goal)                                        v
+                                                 loops back to agent implements
+
+wrappers (dotted lines in the diagram version):
+  /df-goal plan (optional) ── delegates once, appends contract ──> native /goal (owns objective + review)
+  native /goal ── wraps the loop, drives turns ──> agent implements
 ```
+
+The diagram version of this flow (rendered on GitHub) lives in
+[`docs/user/enforcement.md`](docs/user/enforcement.md#flow) — update both
+together.
 
 ## Profiles
 
