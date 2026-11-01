@@ -49,6 +49,19 @@ and `v2.2.0`. On `v1.18.18–1.18.31` use the `v1` branch of this plugin
 is auto-discovered from the npm entry on `v2` — no separate `tui.json`
 needed.
 
+## Diagnosing a red tree without triggering fixes
+
+Under `standard`/`strict`, a red tree at the idle boundary continues the
+session until the cause is fixed — even if you asked for a report-only
+diagnosis (see [Blocked gate, fix,
+pass](sessions/blocked-gate-fix.md)). That is the documented price of a
+blocking profile, not a bug. To look without touching:
+
+- Call `dev_framework_verify` directly mid-turn: it runs the same full
+  contract and reports PASS/FAIL with no continuation attached.
+- Or drop to `advisory` for the session (`/df-profile advisory`) and flip
+  back after — the gate reports instead of blocking.
+
 ## Still stuck
 
 Run a private server with the plugin trace on and read the log:
