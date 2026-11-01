@@ -1,0 +1,30 @@
+# Example hardening config: append-mode rules on a standard profile.
+# Copy this file plus .opencode/opencode-dev-framework/hardening.md into
+# your project root, preserving relative paths, then adapt the commands.
+
+profile: standard
+
+commands:
+  typecheck: "npx tsc --noEmit"
+  test: "npm test"
+  lint:
+    ".ts": "npx eslint {file}"
+
+protect:
+  - ".env*"
+  - "dist/**"
+
+gate:
+  run_typecheck: true
+  run_tests: true
+  block_on_failure: true
+  require_review: true
+
+on_edit:
+  lint: true
+
+# Hardening: keep the bundled constitution, append the project contract.
+rules:
+  mode: append
+  files:
+    - .opencode/opencode-dev-framework/hardening.md

@@ -1,0 +1,47 @@
+# Example opencode-dev-framework configuration for a Python service.
+# Copy this file to your project root and adjust commands to your tooling.
+
+profile: standard
+
+commands:
+  typecheck: "mypy ."
+  test: "pytest"
+  test_changed: "pytest {files}"
+  lint:
+    ".py": "ruff check {file}"
+  format:
+    ".py": "ruff format {file}"
+
+protect:
+  - ".env*"
+  - "**/.env*"
+  - "__pycache__/**"
+  - ".venv/**"
+  - "dist/**"
+
+exclude:
+  - "**/__pycache__/**"
+  - "**/test_*.py"
+
+gate:
+  run_typecheck: true
+  run_tests: true
+  block_on_failure: true
+  skip_unchanged: true
+  scope: all
+  lint_changed: false
+  timeout: 300
+  max_blocks: 3
+  # Named project-specific acceptance checks. Each runs after the built-in
+  # steps (typecheck, tests, changed-file lint), sequentially in declaration
+  # order; a failure is aggregated, it does not abort the remaining steps.
+  # `{files}` expands to the changed-file list, like the test command.
+  # acceptance:
+  #   - name: api-contract
+  #     command: "./scripts/verify-api-contract.sh"
+
+precommit: off
+
+on_edit:
+  format: true
+  lint: true
