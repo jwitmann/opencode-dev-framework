@@ -41,7 +41,8 @@ reviewer weighs that tool result as evidence and the framework idle gate stays
 an independent backstop. This is layered verification, not a hard lock:
 native `/goal` can still mark complete while the gate fails (or keep going
 after it passes), both tenants can admit a continuation at one idle boundary,
-and the framework stands down after `gate.max_blocks`.
+and the framework stands down after `gate.max_blocks` at the latest (earlier
+on zero progress).
 
 **Run plans under `/df-goal`.** When a task starts from a written plan, make
 the objective the plan inline (short plans) or `Implement the plan in <path>`

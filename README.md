@@ -47,7 +47,9 @@ Requires OpenCode `v2.x` — tested on `v2.0.26` and `v2.2.0`. On
 - **Completion gate.** At the would-go-idle boundary, runs typecheck, tests,
   acceptance checks, and (optionally) lint on changed files — plus a required
   peer-review artifact in `standard`/`strict`. Failures steer the session
-  back with the failure summary, bounded by `gate.max_blocks`.
+  back with the failure summary, bounded by `gate.max_blocks` (fewer when
+  the failure repeats with no new edits — the gate stands down early on
+  zero progress).
 - **Verified goals (`/df-goal`).** Wraps a task in native `/goal` with a
   verification contract the reviewer weighs as evidence.
 - **Pre-flight gate (optional).** Denies edits until the agent records
@@ -92,6 +94,7 @@ flowchart TD
     GT -- "FAIL, within max_blocks" --> SYN["synthetic continuation"]
     SYN --> A
     GT -- "FAIL, past max_blocks" --> SD["stand down:\nhonest unmet report"]
+    GT -- "FAIL, identical x3\nwith no new edits" --> SD
     G["/df-goal plan\n(optional wrapper)"] -. "delegates once,\nappends contract" .-> N["native /goal\nowns objective + review"]
     N -. "wraps the loop:\ndrives turns" .-> A
     OK -. "in a goal: PASS reported\nas evidence into /goal" .-> N
@@ -127,7 +130,8 @@ LLM. Full reference:
 ## Limitations (short version)
 
 The completion gate **steers, it does not veto**: it continues the turn via a
-synthetic message at the idle boundary (bounded by `gate.max_blocks`), and you
+synthetic message at the idle boundary (bounded by `gate.max_blocks` — fewer
+when the failure repeats with no new edits), and you
 can always close the session. A genuine pre-stop veto is proposed upstream
 ([`anomalyco/opencode#54487`](https://github.com/anomalyco/opencode/pull/54487),
 open) — if it lands, the gate vetoes there instead of continuing. The

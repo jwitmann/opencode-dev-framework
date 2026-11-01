@@ -36,7 +36,8 @@ The contract requires, before the goal is declared complete:
 
 This is layered verification, not a hard lock: native `/goal` can still
 mark complete while the gate fails (or keep going after it passes), and the
-framework stands down after `gate.max_blocks`.
+framework stands down after `gate.max_blocks` at the latest (earlier on
+zero progress).
 
 ## Requirements (all three, or it refuses)
 
