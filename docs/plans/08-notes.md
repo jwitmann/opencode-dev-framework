@@ -1603,6 +1603,23 @@ record, same exposure pre-exists in `asCount`); hook/net double-run window
 and failed-`clear` resurrection (both pre-existing `BlockStore` patterns,
 unchanged by Phase 30).
 
+## Host capability matrix — why this harness lives on OpenCode (2026-11-01)
+
+The design assumes two host capabilities: a core-owned goal lifecycle
+(state, review, pause/resume/clear) and a pre-stop veto (a failing gate
+denies the stop itself, not via re-prompt). No single host has both yet:
+
+| Host | Veto | Goal lifecycle |
+| ---- | ---- | -------------- |
+| Claude Code | yes (Stop hook, exit 2) | no |
+| OpenCode today | no (synthetic continuations + budgets) | yes (native `/goal`) |
+| OpenCode + `#54487` | yes | yes |
+
+If the PR lands, this is the only host where all three pieces — lifecycle,
+veto, verification contract — exist in the same session, and the
+continuation machinery (dual levers, budgets, stuck snapshots) drops to
+fallback. Recorded so the shape of the harness stays explicable.
+
 ## References
 
 - OpenCode plugin docs: <https://opencode.ai/docs/plugins>

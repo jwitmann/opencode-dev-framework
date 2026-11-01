@@ -68,7 +68,11 @@ Three real runs against disposable fixtures show the loop end to end:
   vote hook is proposed upstream
   ([`anomalyco/opencode#54487`](https://github.com/anomalyco/opencode/pull/54487),
   open). The **pre-flight** gate, by contrast, is a genuine hard block on
-  every build: it denies edit tools before the edit lands.
+  every build: it denies edit tools before the edit lands. The design
+  assumes both halves: a core-owned goal lifecycle (have it — native
+  `/goal`) and a pre-stop veto (proposed) — the plugin's verification
+  contract is the layer tying them together, so a goal cannot complete
+  red once both exist.
 - **The gate stops spending budget on zero progress.** Three consecutive
   blocked evaluations with the identical failure and no new edits stand
   down early instead of burning the rest of `gate.max_blocks` — the
