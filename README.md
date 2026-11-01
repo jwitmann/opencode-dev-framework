@@ -77,7 +77,8 @@ native verification:
 
 ```mermaid
 flowchart TD
-    A["agent implements"] --> B{"tool.execute.before"}
+    U["user prompt"] --> A["agent implements"]
+    A --> B{"tool.execute.before"}
     B -- "deny: protected /\ndangerous / pre-flight" --> X["blocked before landing"]
     B -- allow --> C["edit lands"]
     C --> D["per-edit lint\n+ change tracker"]
@@ -91,9 +92,9 @@ flowchart TD
     GT -- "FAIL, within max_blocks" --> SYN["synthetic continuation"]
     SYN --> A
     GT -- "FAIL, past max_blocks" --> SD["stand down:\nhonest unmet report"]
-    G["/df-goal plan\n(optional)"] -. "delegates once" .-> N["native /goal\nowns state + review"]
-    N --> A
-    OK -. "in a goal: reported\nas evidence into /goal" .-> N
+    G["/df-goal plan\n(optional wrapper)"] -. "delegates once,\nappends contract" .-> N["native /goal\nowns objective + review"]
+    N -. "wraps the loop:\ndrives turns" .-> A
+    OK -. "in a goal: PASS reported\nas evidence into /goal" .-> N
 ```
 
 ## Profiles
