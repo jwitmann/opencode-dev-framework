@@ -77,7 +77,7 @@ native verification:
 
 ```mermaid
 flowchart TD
-    U["user prompt"] --> A["agent implements"]
+    U["user prompt\nplain or /df-goal plan"] --> A["agent implements"]
     A --> B{"tool.execute.before"}
     B -- "deny: protected /\ndangerous / pre-flight" --> X["blocked before landing"]
     B -- allow --> C["edit lands"]
