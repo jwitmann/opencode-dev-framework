@@ -19,7 +19,7 @@
 
 import { readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
-import type { BlockStore } from "./block-store.js";
+import type { BlockStore, StuckSnapshotStore } from "./block-store.js";
 import { runGate, summarizeGate, type ChangedFileTracker, type GateReport } from "./gate.js";
 import type { RunCommand } from "./host.js";
 import type { LintLimiter } from "./lint.js";
@@ -31,6 +31,15 @@ export const REVIEW_ARTIFACT_REL = ".opencode/opencode-dev-framework/review.md";
 
 /** Project-relative path of the pre-flight artifact the agent must produce. */
 export const PREFLIGHT_ARTIFACT_REL = ".opencode/opencode-dev-framework/preflight.md";
+
+/**
+ * Consecutive no-progress repeats before early stand-down (docs/plans/14-stuck-detection.md): the
+ * third identical blocked evaluation (two repeats) stands down. One
+ * investigate-then-fix cycle — a repeat with no edits while the agent
+ * reads logs or runs diagnostics — still blocks. Hardcoded, not a config
+ * key: the profile stays the single enforcement axis.
+ */
+export const NO_PROGRESS_REPEATS = 2;
 
 export type ArtifactState = "missing" | "empty" | "present";
 
@@ -146,6 +155,8 @@ export interface CompletionDeps {
   sessionID: string;
   tracker: ChangedFileTracker;
   blockCounts: BlockStore;
+  /** Last-blocked-evaluation snapshots for no-progress early stand-down. */
+  stuckSnapshots: StuckSnapshotStore;
   log: LogFn;
   /** Shared limiter bounding concurrent linter subprocesses. */
   lintLimiter?: LintLimiter;
@@ -404,7 +415,7 @@ export async function inspectCompletion(deps: InspectionDeps): Promise<Completio
  * block count applies to either lever.
  */
 export async function evaluateCompletion(deps: CompletionDeps): Promise<CompletionVerdict> {
-  const { run, config, directory, sessionID, tracker, blockCounts } = deps;
+  const { run, config, directory, sessionID, tracker, blockCounts, stuckSnapshots } = deps;
 
   if (config.profile === "off" || !config.gate) {
     return { decision: "pass", changedFiles: [] };
@@ -425,6 +436,7 @@ export async function evaluateCompletion(deps: CompletionDeps): Promise<Completi
   if (!gateFailed && !reviewMissing) {
     tracker.clearChangedFiles();
     await blockCounts.clear(sessionID);
+    await stuckSnapshots.clear(sessionID);
     return {
       decision: "pass",
       changedFiles,
@@ -448,11 +460,46 @@ export async function evaluateCompletion(deps: CompletionDeps): Promise<Completi
   const reason: "gate" | "review" = gateFailed ? "gate" : "review";
   const summary = inspection.summary;
   const maxBlocks = config.gate.max_blocks ?? 3;
+
+  // No-progress early stand-down (docs/plans/14-stuck-detection.md): consecutive blocked
+  // evaluations with the identical failure signature and no new edits buy
+  // zero information, so stop spending the budget on them. One
+  // investigate-then-fix cycle is tolerated (a single repeat still
+  // blocks); the third identical evaluation stands down.
+  const signature = gateFailed
+    ? `gate:${report.failedSteps
+        .map((s) => s.name)
+        .sort()
+        .join(",")}`
+    : "review";
+  const files = [...changedFiles].sort();
+  const previous = await stuckSnapshots.get(sessionID);
+  const noProgress =
+    previous !== undefined &&
+    previous.signature === signature &&
+    previous.files.length === files.length &&
+    previous.files.every((f, i) => f === files[i]);
+  const repeats = noProgress ? previous.repeats + 1 : 0;
+  if (repeats >= NO_PROGRESS_REPEATS) {
+    tracker.clearChangedFiles();
+    await blockCounts.clear(sessionID);
+    await stuckSnapshots.clear(sessionID);
+    const stuckSummary =
+      `opencode-dev-framework completion gate has seen the identical failure across ` +
+      `${repeats + 1} evaluations with no new changes and is standing down to avoid ` +
+      `trapping you. The requirement is STILL unmet:\n\n${summary}\n\n` +
+      `Do not claim the work is complete. Tell the user plainly what remains unmet and why.`;
+    await deps.log("error", stuckSummary, { reason, sessionID });
+    return { decision: "standdown", reason, summary: stuckSummary, changedFiles };
+  }
+  await stuckSnapshots.record(sessionID, { signature, files, repeats });
+
   const blockCount = await blockCounts.increment(sessionID);
 
   if (blockCount > maxBlocks) {
     tracker.clearChangedFiles();
     await blockCounts.clear(sessionID);
+    await stuckSnapshots.clear(sessionID);
     const standdownSummary =
       `opencode-dev-framework completion gate has blocked ${maxBlocks} times and is standing ` +
       `down to avoid trapping you. The requirement is STILL unmet:\n\n${summary}\n\n` +

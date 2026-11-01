@@ -41,6 +41,12 @@ Three real runs against disposable fixtures show the loop end to end:
   ([`anomalyco/opencode#54487`](https://github.com/anomalyco/opencode/pull/54487),
   open). The **pre-flight** gate, by contrast, is a genuine hard block on
   every build: it denies edit tools before the edit lands.
+- **The gate stops spending budget on zero progress.** Three consecutive
+  blocked evaluations with the identical failure and no new edits stand
+  down early instead of burning the rest of `gate.max_blocks` — the
+  continuation bought zero information twice, so the third stop reports
+  the still-unmet requirement and ends. Any new edit or changed failure
+  resets the streak; a PASS clears it entirely.
 - **Guardrails run inside OpenCode.** `tool.execute.before` runs after
   OpenCode's own permission system; it adds project rules on top, it does
   not replace OpenCode permissions.

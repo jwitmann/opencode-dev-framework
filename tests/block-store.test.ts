@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { BLOCK_COUNT_KEY_PREFIX, createBlockStore, type StorageLike } from "../src/block-store";
+import {
+  BLOCK_COUNT_KEY_PREFIX,
+  STUCK_SNAPSHOT_KEY_PREFIX,
+  createBlockStore,
+  createStuckSnapshotStore,
+  type StorageLike,
+} from "../src/block-store";
 
 /** In-memory ctx.storage stub that records every key it sees. */
 function stubStorage() {
@@ -107,5 +113,65 @@ describe("block store (Phase 23)", () => {
     expect(shared.get("s")).toBe(1);
     await store.clear("s");
     expect(shared.has("s")).toBe(false);
+  });
+});
+
+describe("stuck snapshot store (Phase 30)", () => {
+  const SNAP = { signature: "gate:test", files: ["b.ts", "a.ts"], repeats: 0 };
+
+  it("records and reads back a snapshot with sorted files (memory mode)", async () => {
+    const store = createStuckSnapshotStore(undefined);
+    expect(await store.get("s")).toBeUndefined();
+    await store.record("s", SNAP);
+    expect(await store.get("s")).toEqual({
+      signature: "gate:test",
+      files: ["a.ts", "b.ts"],
+      repeats: 0,
+    });
+    await store.clear("s");
+    expect(await store.get("s")).toBeUndefined();
+    expect(store.size).toBe(0);
+  });
+
+  it("persists across two store instances over shared storage (reload)", async () => {
+    const { storage } = stubStorage();
+    await createStuckSnapshotStore(storage).record("s", { ...SNAP, repeats: 1 });
+    const reloaded = createStuckSnapshotStore(storage);
+    expect(await reloaded.get("s")).toEqual({
+      signature: "gate:test",
+      files: ["a.ts", "b.ts"],
+      repeats: 1,
+    });
+  });
+
+  it("namespaces snapshot keys by session", async () => {
+    const { storage, seen } = stubStorage();
+    const store = createStuckSnapshotStore(storage);
+    await store.record("s", SNAP);
+    expect(seen).toContain(`set:${STUCK_SNAPSHOT_KEY_PREFIX}s`);
+  });
+
+  it("ignores corrupt stored values instead of propagating them", async () => {
+    const { storage, data } = stubStorage();
+    data.set(`${STUCK_SNAPSHOT_KEY_PREFIX}s`, { signature: 42, files: "nope" });
+    const store = createStuckSnapshotStore(storage);
+    expect(await store.get("s")).toBeUndefined();
+    await store.record("s", SNAP);
+    expect(await store.get("s")).toEqual({
+      signature: "gate:test",
+      files: ["a.ts", "b.ts"],
+      repeats: 0,
+    });
+  });
+
+  it("falls back to memory when storage throws (and reports degraded)", async () => {
+    const store = createStuckSnapshotStore(throwingStorage());
+    await store.record("s", SNAP);
+    expect(await store.get("s")).toEqual({
+      signature: "gate:test",
+      files: ["a.ts", "b.ts"],
+      repeats: 0,
+    });
+    expect(store.isDegraded()).toBe(true);
   });
 });

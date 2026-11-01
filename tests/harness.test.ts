@@ -2,7 +2,7 @@ import { mkdtemp, mkdir, rm, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { createBlockStore } from "../src/block-store";
+import { createBlockStore, createStuckSnapshotStore } from "../src/block-store";
 import { resolveConfig } from "../src/config";
 import { createChangedFileTracker } from "../src/gate";
 import {
@@ -191,6 +191,7 @@ describe("evaluateCompletion", () => {
     for (const f of opts.trackerFiles ?? []) tracker.add(f);
     // Memory-backed store (no ctx.storage in unit tests).
     const blockCounts = createBlockStore(undefined);
+    const stuckSnapshots = createStuckSnapshotStore(undefined);
     const config = resolve(raw);
     const deps = {
       run,
@@ -199,9 +200,10 @@ describe("evaluateCompletion", () => {
       sessionID: opts.sessionID ?? "s1",
       tracker,
       blockCounts,
+      stuckSnapshots,
       log,
     };
-    return { deps, entries, tracker, blockCounts };
+    return { deps, entries, tracker, blockCounts, stuckSnapshots };
   }
 
   it("passes with no changed files (skip_unchanged) even without a review artifact", async () => {
@@ -360,6 +362,130 @@ describe("evaluateCompletion", () => {
     );
     const verdict = await evaluateCompletion(deps);
     expect(verdict.decision).toBe("pass");
+  });
+
+  describe("no-progress early stand-down (Phase 30)", () => {
+    const RED = {
+      profile: "standard",
+      commands: { typecheck: "false", test: "true" },
+      gate: { require_review: false, max_blocks: 10 },
+    } as const;
+
+    async function redDeps(files: string[]) {
+      await writeArtifact(REVIEW_ARTIFACT_REL);
+      return makeDeps({ ...RED }, { trackerFiles: files, resultFor: FAIL_FALSE });
+    }
+
+    it("stands down on the third identical evaluation with no new edits", async () => {
+      const { deps, tracker, blockCounts, stuckSnapshots } = await redDeps(["src/a.ts"]);
+      expect((await evaluateCompletion(deps)).decision).toBe("blocked");
+      expect((await evaluateCompletion(deps)).decision).toBe("blocked");
+      const third = await evaluateCompletion(deps);
+      expect(third.decision).toBe("standdown");
+      if (third.decision === "standdown") {
+        expect(third.reason).toBe("gate");
+        expect(third.summary).toContain("identical failure");
+        expect(third.summary).toContain("STILL unmet");
+      }
+      // Early stand-down clears state like the budget path.
+      expect(tracker.getChangedFiles()).toEqual([]);
+      expect(await blockCounts.get("s1")).toBe(0);
+      expect(await stuckSnapshots.get("s1")).toBeUndefined();
+    });
+
+    it("a second identical evaluation still blocks (one investigate cycle tolerated)", async () => {
+      const { deps } = await redDeps(["src/a.ts"]);
+      expect((await evaluateCompletion(deps)).decision).toBe("blocked");
+      const second = await evaluateCompletion(deps);
+      expect(second.decision).toBe("blocked");
+      if (second.decision === "blocked") expect(second.blockCount).toBe(2);
+    });
+
+    it("a moved tree resets the repeat count", async () => {
+      const { deps, tracker } = await redDeps(["src/a.ts"]);
+      expect((await evaluateCompletion(deps)).decision).toBe("blocked");
+      expect((await evaluateCompletion(deps)).decision).toBe("blocked");
+      tracker.add("src/b.ts");
+      expect((await evaluateCompletion(deps)).decision).toBe("blocked");
+      // One more identical round is still only the first repeat of the new streak.
+      expect((await evaluateCompletion(deps)).decision).toBe("blocked");
+    });
+
+    it("a changed failure signature resets the repeat count", async () => {
+      // Mutable results: fail typecheck twice, then fail test instead.
+      const results = new Map([
+        ["check-a", 1],
+        ["check-b", 0],
+      ]);
+      const resultFor = (cmd: string[]) =>
+        cmd[0] === "git" ? NO_GIT() : { exitCode: results.get(cmd[0]) ?? 0 };
+      await writeArtifact(REVIEW_ARTIFACT_REL);
+      const { deps } = makeDeps(
+        {
+          profile: "standard",
+          commands: { typecheck: "check-a", test: "check-b" },
+          gate: { require_review: false, max_blocks: 10 },
+        },
+        { trackerFiles: ["src/a.ts"], resultFor },
+      );
+      expect((await evaluateCompletion(deps)).decision).toBe("blocked");
+      expect((await evaluateCompletion(deps)).decision).toBe("blocked");
+      // Same tree, but the failing step changes typecheck -> test.
+      results.set("check-a", 0);
+      results.set("check-b", 1);
+      const changed = await evaluateCompletion(deps);
+      expect(changed.decision).toBe("blocked");
+      // A further identical round is only the first repeat of the new streak.
+      expect((await evaluateCompletion(deps)).decision).toBe("blocked");
+    });
+
+    it("a pass clears the snapshot (no phantom stand-down later)", async () => {
+      const first = await redDeps(["src/a.ts"]);
+      expect((await evaluateCompletion(first.deps)).decision).toBe("blocked");
+      expect((await evaluateCompletion(first.deps)).decision).toBe("blocked");
+      // Fix the tree, reusing the same stores: the pass must clear them.
+      const green = makeDeps(
+        {
+          profile: "standard",
+          commands: { typecheck: "true", test: "true" },
+          gate: { require_review: false, max_blocks: 10 },
+        },
+        { trackerFiles: ["src/a.ts"] },
+      );
+      green.deps.blockCounts = first.blockCounts;
+      green.deps.stuckSnapshots = first.stuckSnapshots;
+      expect((await evaluateCompletion(green.deps)).decision).toBe("pass");
+      // Back to red with the same files and stores: fresh streak, blocks again.
+      const redAgain = makeDeps({ ...RED }, { trackerFiles: ["src/a.ts"], resultFor: FAIL_FALSE });
+      redAgain.deps.blockCounts = first.blockCounts;
+      redAgain.deps.stuckSnapshots = first.stuckSnapshots;
+      const verdict = await evaluateCompletion(redAgain.deps);
+      expect(verdict.decision).toBe("blocked");
+      if (verdict.decision === "blocked") expect(verdict.blockCount).toBe(1);
+    });
+
+    it("advisory never records snapshots", async () => {
+      const { deps, stuckSnapshots } = makeDeps(
+        { profile: "advisory", commands: { typecheck: "false" } },
+        { trackerFiles: ["src/a.ts"], resultFor: FAIL_FALSE },
+      );
+      expect((await evaluateCompletion(deps)).decision).toBe("pass");
+      expect((await evaluateCompletion(deps)).decision).toBe("pass");
+      expect((await evaluateCompletion(deps)).decision).toBe("pass");
+      expect(await stuckSnapshots.get("s1")).toBeUndefined();
+    });
+
+    it("applies to the review-missing reason too", async () => {
+      const { deps } = makeDeps(
+        { profile: "standard", commands: { typecheck: "true", test: "true" } },
+        { trackerFiles: ["src/a.ts"] },
+      );
+      expect((await evaluateCompletion(deps)).decision).toBe("blocked");
+      expect((await evaluateCompletion(deps)).decision).toBe("blocked");
+      const third = await evaluateCompletion(deps);
+      expect(third.decision).toBe("standdown");
+      if (third.decision === "standdown") expect(third.reason).toBe("review");
+    });
   });
 });
 

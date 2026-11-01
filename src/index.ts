@@ -25,7 +25,12 @@ import { Plugin } from "@opencode/plugin";
 import type { Context } from "@opencode/plugin/promise/plugin";
 import { stat } from "node:fs/promises";
 import { join } from "node:path";
-import { type BlockStore, createBlockStore } from "./block-store.js";
+import {
+  type BlockStore,
+  type StuckSnapshotStore,
+  createBlockStore,
+  createStuckSnapshotStore,
+} from "./block-store.js";
 import { clearConfigCache, loadConfig } from "./config.js";
 import { type ChangedFileTracker, createChangedFileTracker } from "./gate.js";
 import type { GoalDelegate } from "./goal.js";
@@ -78,6 +83,12 @@ export interface HookState {
    * store keeps live on every get/increment/clear.
    */
   blocks: BlockStore;
+  /**
+   * Last-blocked-evaluation snapshots for no-progress early stand-down
+   * (docs/plans/14-stuck-detection.md). Same storage-backed, best-effort pattern as `blocks`;
+   * memory-only here (no status projection needed).
+   */
+  stuckSnapshots: StuckSnapshotStore;
   precommitAvailable?: boolean;
   configMtime?: number;
   /**
@@ -254,6 +265,7 @@ function runCompletion(state: HookState, sessionID: string): Promise<CompletionV
     sessionID,
     tracker: state.tracker,
     blockCounts: state.blocks,
+    stuckSnapshots: state.stuckSnapshots,
     lintLimiter: state.lintLimiter,
     passCache: state.passCache,
     log: (level, message, extra) => safeLog(state, level, message, extra),
@@ -370,6 +382,7 @@ const plugin = Plugin.define({
     const tracker = createChangedFileTracker();
     const blockCounts = new Map<string, number>();
     const blocks = createBlockStore(ctx.storage, blockCounts);
+    const stuckSnapshots = createStuckSnapshotStore(ctx.storage);
 
     const state: HookState = {
       directory,
@@ -380,6 +393,7 @@ const plugin = Plugin.define({
       constitution,
       blockCounts,
       blocks,
+      stuckSnapshots,
       configMtime,
       lintLimiter: createLintLimiter(),
       passCache: createPassCache(),
@@ -392,7 +406,7 @@ const plugin = Plugin.define({
     // With the stop-level hydration gone there is no setup-time storage
     // read left, so this rarely fires here — the store still degrades
     // lazily on first use and reports via isDegraded().
-    if (blocks.isDegraded()) {
+    if (blocks.isDegraded() || stuckSnapshots.isDegraded()) {
       await log(
         "warn",
         "ctx.storage is unavailable; gate block counts are in-memory only and reset on reload",
@@ -1016,11 +1030,12 @@ const plugin = Plugin.define({
           const type = event.type;
 
           if (isSessionDeletedEvent(type)) {
-            // session.deleted: cleanup block counts (memory + storage) and
-            // the idle dedup stamp for the session.
+            // session.deleted: cleanup block counts + stuck snapshots
+            // (memory + storage) and the idle dedup stamp for the session.
             const sid = getEventSessionID(event);
             if (sid) {
               await state.blocks.clear(sid);
+              await state.stuckSnapshots.clear(sid);
               state.lastIdleHandled.delete(sid);
             }
             continue;

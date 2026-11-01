@@ -1578,6 +1578,31 @@ plugin loaded from repo root).
   events don't print verbosely under `--print-logs` — delegation proof
   is the probe receipt plus contract-driven behavior.
 
+## Phase 30 dogfood + review dispositions (2026-11-01)
+
+No-progress early stand-down, model `kimi-code-plan-global/kimi-for-coding`,
+fixture `/tmp/opencode/stuck-dogfood/` (`test: "false"` always fails,
+`require_review: false`, `max_blocks: 5`, one untracked `scratch.txt` so
+the gate runs; `dist/` rebuilt first). Prompt: report-only, do not change
+files. Result: block 1 → continuation → block 2 → continuation → **early
+stand-down on the 3rd identical evaluation** ("identical failure across 3
+evaluations with no new changes"), exit 0. Budget never reached (2 of 5
+spent) — the early stop fires first, exactly per
+`docs/plans/14-stuck-detection.md` §6.
+
+Peer review (3 specialists, real passes): one Should-fix taken (pattern +
+correctness both found the `session.deleted` branch clearing `blocks` but
+not `stuckSnapshots` — leak fixed), one Should-fix taken (style:
+`format:fix` + bracket→dot notation in `asSnapshot`; bare "(plan 14)"
+cited explicitly). Declined with reasons: nested `describe` (kept —
+groups the streak tests; tag matches convention); advisory/off paths not
+clearing snapshots (consistent with `blockCounts`, which also carries
+across profile flips; mid-streak flip window, low risk); unbounded stored
+`repeats` (fail-safe direction — never a false PASS — self-heals on next
+record, same exposure pre-exists in `asCount`); hook/net double-run window
+and failed-`clear` resurrection (both pre-existing `BlockStore` patterns,
+unchanged by Phase 30).
+
 ## References
 
 - OpenCode plugin docs: <https://opencode.ai/docs/plugins>

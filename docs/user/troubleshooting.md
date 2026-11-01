@@ -55,12 +55,18 @@ Under `standard`/`strict`, a red tree at the idle boundary continues the
 session until the cause is fixed — even if you asked for a report-only
 diagnosis (see [Blocked gate, fix,
 pass](sessions/blocked-gate-fix.md)). That is the documented price of a
-blocking profile, not a bug. To look without touching:
+blocking profile, not a bug. Your options:
 
-- Call `dev_framework_verify` directly mid-turn: it runs the same full
-  contract and reports PASS/FAIL with no continuation attached.
-- Or drop to `advisory` for the session (`/df-profile advisory`) and flip
-  back after — the gate reports instead of blocking.
+- Call `dev_framework_verify` directly mid-turn for the report, then
+  close the session yourself — the verdict is pure report, but the
+  continuation still fires if you let the turn go idle on the red tree.
+- Drop to `advisory` for the session (`/df-profile advisory`) and flip
+  back after — the gate reports instead of blocking. This is the only
+  true look-without-touching.
+- Do nothing: if the failure is identical with no new edits across three
+  evaluations, the gate stands down early on zero progress instead of
+  spending the rest of `gate.max_blocks`. Bounded either way, but the
+  early stop saves the wasted continuations.
 
 ## Still stuck
 
