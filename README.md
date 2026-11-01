@@ -61,17 +61,19 @@ reimplemented as an OpenCode-native plugin.
 
 ### How it fits together
 
+Every session runs the same loop — constitution, guardrails, lint, gate —
+whether or not it starts under `/df-goal`. A goal just wraps that loop in
+native verification:
+
 ```mermaid
 flowchart TD
-    G["/df-goal plan"] --> N["native /goal\nowns state + review"]
-    N --> A["agent implements"]
-    A --> B{"tool.execute.before"}
+    A["agent implements"] --> B{"tool.execute.before"}
     B -- "deny: protected /\ndangerous / pre-flight" --> X["blocked before landing"]
     B -- allow --> C["edit lands"]
     C --> D["per-edit lint\n+ change tracker"]
     D --> V["agent runs\ndev_framework_verify"]
     V --> R{"verdict"}
-    R -- PASS --> N
+    R -- PASS --> OK["gate green"]
     R -- FAIL --> A
     D --> S{"session idle"}
     S --> GT["completion gate\nsame full contract"]
@@ -79,6 +81,9 @@ flowchart TD
     GT -- "FAIL, within max_blocks" --> SYN["synthetic continuation"]
     SYN --> A
     GT -- "FAIL, past max_blocks" --> SD["stand down:\nhonest unmet report"]
+    G["/df-goal plan\n(optional)"] -. "delegates once" .-> N["native /goal\nowns state + review"]
+    N --> A
+    OK -. "in a goal: reported\nas evidence into /goal" .-> N
 ```
 
 ## Profiles
