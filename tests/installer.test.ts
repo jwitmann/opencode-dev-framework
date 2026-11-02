@@ -3,11 +3,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
+  formatTrialRun,
   installTemplates,
   listTemplateFiles,
   statusTemplates,
+  trialRunDetectedCommands,
   writeDetectedConfig,
 } from "../src/installer";
+import type { CommandResult, RunCommand, RunCommandOptions } from "../src/host";
 
 let dir: string;
 
@@ -133,5 +136,125 @@ describe("statusTemplates", () => {
     expect(status.missing).toEqual([]);
     expect(status.present.length).toBeGreaterThan(0);
     expect(status.different).toEqual([]);
+  });
+});
+
+describe("trialRunDetectedCommands (Phase 15)", () => {
+  const ok: CommandResult = { stdout: "", stderr: "", exitCode: 0, timedOut: false };
+  const fail: CommandResult = { stdout: "", stderr: "", exitCode: 1, timedOut: false };
+
+  function stubRun(results: Record<string, CommandResult>): {
+    run: RunCommand;
+    calls: string[][];
+  } {
+    const calls: string[][] = [];
+    const run: RunCommand = async (command) => {
+      calls.push(command);
+      return results[command[0]] ?? ok;
+    };
+    return { run, calls };
+  }
+
+  it("reports PASS per command with the command echoed", async () => {
+    const { run, calls } = stubRun({});
+    const results = await trialRunDetectedCommands(
+      dir,
+      { test: "npm test", typecheck: "true" },
+      run,
+    );
+    expect(results).toHaveLength(2);
+    expect(results[0]).toMatchObject({ name: "test", command: "npm test", ok: true, exitCode: 0 });
+    expect(results[1]).toMatchObject({ name: "typecheck", command: "true", ok: true });
+    expect(calls).toEqual([["npm", "test"], ["true"]]);
+    const lines = formatTrialRun(results);
+    expect(lines[1]).toContain("test (npm test): PASS");
+    expect(lines[2]).toContain("typecheck (true): PASS");
+  });
+
+  it("reports FAIL naming the command and exit code", async () => {
+    const { run } = stubRun({ npm: fail });
+    const results = await trialRunDetectedCommands(
+      dir,
+      { test: "npm test", typecheck: "true" },
+      run,
+    );
+    expect(results[0]).toMatchObject({ name: "test", ok: false, exitCode: 1 });
+    expect(results[1]).toMatchObject({ name: "typecheck", ok: true });
+    const lines = formatTrialRun(results);
+    expect(lines[1]).toContain("FAIL (exit 1)");
+    expect(lines[1]).toContain("verify this command");
+  });
+
+  it("skips absent commands without failing", async () => {
+    const { run, calls } = stubRun({});
+    const results = await trialRunDetectedCommands(dir, { test: "npm test" }, run);
+    expect(results).toHaveLength(1);
+    expect(calls).toEqual([["npm", "test"]]);
+  });
+
+  it("reports nothing runnable when no commands are detected", async () => {
+    const { run, calls } = stubRun({});
+    const results = await trialRunDetectedCommands(dir, {}, run);
+    expect(results).toEqual([]);
+    expect(calls).toEqual([]);
+    expect(formatTrialRun(results)[0]).toContain("no runnable commands");
+  });
+
+  it("records spawn failures as errors instead of throwing", async () => {
+    const run: RunCommand = async () => {
+      throw new Error("spawn ENOENT");
+    };
+    const results = await trialRunDetectedCommands(dir, { test: "npm test" }, run);
+    expect(results).toHaveLength(1);
+    expect(results[0]).toMatchObject({ name: "test", ok: false, exitCode: 127 });
+    expect(results[0].error).toContain("ENOENT");
+    expect(formatTrialRun(results)[1]).toContain("ERROR");
+  });
+
+  it("passes the timeout through to run and renders timed-out results", async () => {
+    const seen: (RunCommandOptions | undefined)[] = [];
+    const run: RunCommand = async (_command, options) => {
+      seen.push(options);
+      return { stdout: "", stderr: "", exitCode: 1, timedOut: true };
+    };
+    const results = await trialRunDetectedCommands(
+      dir,
+      { test: "npm test", typecheck: "true" },
+      run,
+      { timeout: 5 },
+    );
+    expect(seen).toHaveLength(2);
+    expect(seen[0]).toMatchObject({ timeout: 5 });
+    expect(results[0]).toMatchObject({ name: "test", ok: false, timedOut: true });
+    const lines = formatTrialRun(results);
+    expect(lines[1]).toContain("FAIL (exit 1, timed out)");
+    expect(lines[1]).toContain("verify this command");
+  });
+});
+
+describe("project-config skill pin (Phase 15)", () => {
+  it("ships the skill with the required section hooks", async () => {
+    const files = await listTemplateFiles();
+    expect(files).toContain(".opencode/skills/project-config/SKILL.md");
+  });
+
+  it("covers build truth, wrappers, acceptance, hardening draft, self-check, and review-only handoff", async () => {
+    const { readFile } = await import("node:fs/promises");
+    const { join } = await import("node:path");
+    const { TEMPLATES_DIR } = await import("../src/installer");
+    const content = await readFile(
+      join(TEMPLATES_DIR, ".opencode/skills/project-config/SKILL.md"),
+      "utf8",
+    );
+    for (const hook of [
+      "CI workflow", // build truth, authority order
+      "Prefer wrappers", // wrappers over bare tools
+      "gate.acceptance", // non-unit scope placement
+      "hardening.md", // hardening draft
+      "block_on_failure", // enforceability self-check
+      "Never write without review", // review-only handoff
+    ]) {
+      expect(content).toContain(hook);
+    }
   });
 });

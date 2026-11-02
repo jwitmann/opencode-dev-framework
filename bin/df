@@ -6,12 +6,16 @@ import { readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  formatTrialRun,
   installTemplates,
   resolveTargetDir,
   setProfileInFile,
   statusTemplates,
+  trialRunDetectedCommands,
   writeDetectedConfig,
 } from "../dist/installer.js";
+import { detectProject } from "../dist/detect.js";
+import { runCommand } from "../dist/host.js";
 
 async function getVersion() {
   const packagePath = join(dirname(fileURLToPath(import.meta.url)), "..", "package.json");
@@ -122,6 +126,19 @@ async function main() {
     console.log(line);
   }
   console.log(`\nConfig: ${configResult.action}`);
+  if (configResult.action === "created" || configResult.action === "overwritten") {
+    try {
+      const { commands } = detectProject(targetDir);
+      const trial = await trialRunDetectedCommands(targetDir, commands, runCommand);
+      for (const line of ["", ...formatTrialRun(trial)]) {
+        console.log(line);
+      }
+    } catch (error) {
+      console.log(
+        `\nTrial-run: skipped (${error instanceof Error ? error.message : String(error)}) — verify commands manually`,
+      );
+    }
+  }
 }
 
 main().catch((error) => {

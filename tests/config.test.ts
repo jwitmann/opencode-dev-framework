@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
+  checkConfigEnforceable,
   clearConfigCache,
   DEFAULT_PROTECT,
   findConfigFile,
@@ -394,5 +395,59 @@ describe("gate acceptance checks", () => {
     expect(() => loadConfig(dir)).toThrowError(
       /Invalid configuration in .*gate\.acceptance\.0\.timeout/s,
     );
+  });
+});
+
+describe("checkConfigEnforceable (Phase 15 shared validator)", () => {
+  it("accepts a blocking profile with a test command", () => {
+    const config = resolveConfig({ profile: "standard", commands: { test: "true" } });
+    expect(checkConfigEnforceable(config)).toEqual({ ok: true });
+  });
+
+  it("accepts a review-only configuration", () => {
+    const config = resolveConfig({
+      profile: "strict",
+      gate: {
+        run_typecheck: false,
+        run_tests: false,
+        lint_changed: false,
+        require_review: true,
+        block_on_failure: true,
+      },
+    });
+    expect(checkConfigEnforceable(config)).toEqual({ ok: true });
+  });
+
+  it("rejects profile off as vacuous", () => {
+    const config = resolveConfig({ profile: "off" });
+    const result = checkConfigEnforceable(config);
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error).toContain('profile is "off"');
+  });
+
+  it("rejects advisory naming the key", () => {
+    const config = resolveConfig({ profile: "advisory", commands: { typecheck: "true" } });
+    const result = checkConfigEnforceable(config);
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error).toContain("gate.block_on_failure is false");
+  });
+
+  it("rejects a vacuous blocking config naming what's missing", () => {
+    const config = resolveConfig({
+      profile: "standard",
+      gate: {
+        run_typecheck: false,
+        run_tests: false,
+        lint_changed: false,
+        require_review: false,
+        block_on_failure: true,
+      },
+    });
+    const result = checkConfigEnforceable(config);
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error).toContain("no meaningful completion check");
   });
 });

@@ -802,7 +802,12 @@ const plugin = Plugin.define({
             additionalProperties: false,
           },
           async execute(input: unknown) {
-            const { installTemplates, writeDetectedConfig } = await import("./installer.js");
+            const {
+              formatTrialRun,
+              installTemplates,
+              trialRunDetectedCommands,
+              writeDetectedConfig,
+            } = await import("./installer.js");
             const args = input as { directory?: string; overwrite?: boolean };
             const targetDir = args.directory ?? directory;
             const result = await installTemplates(targetDir, {
@@ -824,6 +829,19 @@ const plugin = Plugin.define({
               lines.push("", "Created files:", ...result.created.map((f) => `- ${f}`));
             if (result.overwritten.length > 0)
               lines.push("", "Overwritten files:", ...result.overwritten.map((f) => `- ${f}`));
+            if (configResult.action === "created" || configResult.action === "overwritten") {
+              try {
+                const { detectProject } = await import("./detect.js");
+                const { commands } = detectProject(targetDir);
+                const trial = await trialRunDetectedCommands(targetDir, commands, state.run);
+                lines.push("", ...formatTrialRun(trial));
+              } catch (error) {
+                lines.push(
+                  "",
+                  `Trial-run: skipped (${error instanceof Error ? error.message : String(error)}) — verify commands manually`,
+                );
+              }
+            }
             return { content: lines.join("\n") };
           },
         });

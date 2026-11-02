@@ -1665,6 +1665,52 @@ are listed. A model-writable, unlisted skill registry is a backdoor
 with no file to find. Review #11060's gating design first, adopt
 second.
 
+## Phase 31 dogfood — agentic init on wrapper-shaped fixture (2026-11-02)
+
+Fixture `/tmp/opencode/agentic-init/template-svc/`: node service with
+`Makefile` wrappers (`check` = lint + `test:unit`; `.travis.yml` runs
+`make check`), unit suite plus a docker-gated integration placeholder.
+Headless run (`--model kimi-code-plan-global/kimi-for-coding`), prompt:
+follow the skill, present yml + hardening, write no files. `dist/`
+rebuilt first. Run log: `run-skill.log` beside the fixture.
+
+- Agent read Makefile + CI + node/hardening examples, then **ran `make
+  check` itself** (EXIT 0) before drafting — verified-by-running, not
+  inferred.
+- Draft yml: `profile: standard`, `test: "make test"` (wrapper, not bare
+  `node --test`), `block_on_failure: true`, `require_review: true`,
+  integration in `gate.acceptance` (docker-gated, outside unit scope).
+- Draft hardening: names `make check` + the exact lint/test expansion,
+  stale-PASS rule, CI parity. All three plan §6 criteria met.
+- The plan hoped for one validator-caught deficiency in the first
+  draft; the draft passed the bar clean instead. Not a gap: the
+  refusal path (vacuous/advisory) is proven by `checkConfigEnforceable`
+  unit tests. A clean pass on a good draft is the correct outcome —
+  the validator is a bar, not a quota.
+
+## Phase 31 peer-review dispositions (2026-11-02, all three passes real)
+
+- Blocking fixed: `bin/df` imported `detectProject` from
+  `dist/installer.js`, which never re-exports it — now from
+  `dist/detect.js`, matching the tool-path call site.
+- Should-fix fixed: single `installer.js` import per tool closure;
+  try/catch report-only isolation on both trial callers (a bad
+  directory must degrade to a warning line, never fail the install);
+  Biome width via `format:fix`; skill gains `## When to use` + `##
+  Output` per the 4/4 sibling convention.
+- Notes accepted as changes: `timeoutSeconds` → `timeout` (matches
+  `RunCommandOptions`); `run` made required (matches `runGate` — no
+  other `src` function defaults a live runner); empty-string guard
+  (`!template`); sequential trials → `Promise.all` (caps the silent
+  stall at one timeout, not two); timeout-passthrough + `timed out`
+  suffix tests (plan §5's missing case); `(plan 15)` → `(Phase 15)`
+  casing per sibling convention.
+- Kept deliberately: the try/catch + `error` field around `run`
+  (pattern-guardian Note) — report-only must survive
+  contract-violating runners, and the `ERROR` line renders distinctly
+  from exit failures. Diverges from `runGate`'s trust deliberately;
+  JSDoc says so.
+
 ## References
 
 - OpenCode plugin docs: <https://opencode.ai/docs/plugins>

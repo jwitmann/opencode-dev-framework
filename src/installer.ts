@@ -2,8 +2,10 @@ import { promises as fs } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createInterface } from "node:readline";
+import { splitCommand } from "./command-utils.js";
 import { DEFAULT_PROTECT } from "./config.js";
 import { detectProject } from "./detect.js";
+import type { CommandResult, RunCommand } from "./host.js";
 import type { CommandsConfig, Profile } from "./types.js";
 
 /** Directory containing the project templates shipped with the package. */
@@ -320,6 +322,94 @@ export async function writeDetectedConfig(
     return { action: "overwritten" };
   }
   return { action: "skipped" };
+}
+
+/** Bounded trial-run timeout (seconds): init UX, not a gate suite. */
+export const TRIAL_RUN_TIMEOUT_SECONDS = 120;
+
+export interface TrialRunResult {
+  name: "test" | "typecheck";
+  command: string;
+  ok: boolean;
+  exitCode: number;
+  timedOut: boolean;
+  durationMs: number;
+  /** Spawn failure detail (run threw instead of resolving). */
+  error?: string;
+}
+
+/**
+ * Run each runnable detected command once to verify the guess (plan 15).
+ * Only `test`/`typecheck` run bare — lint/format templates carry
+ * `{file}`/`{dir}` placeholders and are reported as unverified by the
+ * caller skipping them (absent or empty commands are skipped, not failed).
+ * The two trials run concurrently; each is bounded by `timeout` seconds.
+ * Report-only by construction: results annotate, never throw — including
+ * for runners that reject despite the host never-rejects contract.
+ */
+export async function trialRunDetectedCommands(
+  directory: string,
+  commands: { test?: string; typecheck?: string },
+  run: RunCommand,
+  opts: { timeout?: number } = {},
+): Promise<TrialRunResult[]> {
+  const entries = [
+    ["test", commands.test],
+    ["typecheck", commands.typecheck],
+  ] as const;
+  const runnable: { name: "test" | "typecheck"; command: string }[] = [];
+  for (const [name, template] of entries) {
+    if (typeof template === "string" && template !== "") runnable.push({ name, command: template });
+  }
+  return Promise.all(
+    runnable.map(async ({ name, command }): Promise<TrialRunResult> => {
+      const started = Date.now();
+      let result: CommandResult;
+      try {
+        result = await run(splitCommand(command), {
+          cwd: directory,
+          timeout: opts.timeout ?? TRIAL_RUN_TIMEOUT_SECONDS,
+        });
+      } catch (error) {
+        return {
+          name,
+          command,
+          ok: false,
+          exitCode: 127,
+          timedOut: false,
+          durationMs: Date.now() - started,
+          error: error instanceof Error ? error.message : String(error),
+        };
+      }
+      return {
+        name,
+        command,
+        ok: result.exitCode === 0 && !result.timedOut,
+        exitCode: result.exitCode,
+        timedOut: result.timedOut,
+        durationMs: Date.now() - started,
+      };
+    }),
+  );
+}
+
+/** Render trial-run results as CLI/tool output lines. */
+export function formatTrialRun(results: TrialRunResult[]): string[] {
+  if (results.length === 0) {
+    return ["Trial-run: no runnable commands detected — verify manually."];
+  }
+  return [
+    "Trial-run:",
+    ...results.map((r) => {
+      const secs = (r.durationMs / 1000).toFixed(1);
+      if (r.error !== undefined) {
+        return `  ${r.name} (${r.command}): ERROR (${r.error}) — verify this command`;
+      }
+      const status = r.ok ? "PASS" : `FAIL (exit ${r.exitCode}${r.timedOut ? ", timed out" : ""})`;
+      const suffix = r.ok ? "" : " — verify this command";
+      return `  ${r.name} (${r.command}): ${status} (${secs}s)${suffix}`;
+    }),
+  ];
 }
 
 /** Resolve a user-supplied directory (default cwd) to an absolute path. */

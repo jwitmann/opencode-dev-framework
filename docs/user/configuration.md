@@ -1,9 +1,24 @@
 # Configuration
 
-Create `.opencode-dev-framework.yml` in your project root. The easiest way to
-get started is `df init` (see the [Quickstart](../README.md#quickstart)),
-which auto-detects your language and writes a matching config — then adjust
-it. What follows is the full commented reference. The authoritative schema
+Create `.opencode-dev-framework.yml` in your project root. Two paths:
+
+- **Fast:** `df init` (see the [Quickstart](../README.md#quickstart))
+  auto-detects your language and writes a matching config — then adjust
+  it. `init` also trial-runs the detected test/typecheck once and
+  reports PASS/FAIL per command, so guesses arrive verified or flagged.
+- **Thorough:** ask the agent to configure the project. The
+  `project-config` skill (shipped with `init`) reads your Makefile, CI
+  workflows, and CONTRIBUTING, maps the real verification commands
+  (wrappers like `make check`, never reconstructed bare tools), places
+  non-unit checks in `gate.acceptance`, and drafts `hardening.md` — then
+  presents the full diff for your review. Never merge unreviewed.
+
+Trust model for the agentic path: the agent proposes, the shared
+enforceability bar checks the draft (blocking profile plus at least one
+real check — the same bar `/df-goal` applies, so no vacuous config can
+pass), and you review the diff and commit. No party trusted alone.
+
+What follows is the full commented reference. The authoritative schema
 lives in [`../plans/03-config-spec.md`](../plans/03-config-spec.md); this
 page shows it in usable form.
 

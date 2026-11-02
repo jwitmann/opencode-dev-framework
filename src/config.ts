@@ -402,6 +402,50 @@ export function hasMeaningfulChecks(config: ResolvedConfig): boolean {
   return false;
 }
 
+export type ConfigEnforceability = { ok: true } | { ok: false; error: string };
+
+/**
+ * Enforceability bar shared by `/df-goal` and init validation (plan 15):
+ * a blocking profile plus at least one meaningful check. Every failure
+ * names the exact cause and points at the alternatives. The native-`/goal`
+ * availability check stays in `checkGoalAvailability` (`src/goal.ts`) —
+ * this is the config half only, so agent-drafted configs can be validated
+ * without a live core.
+ */
+export function checkConfigEnforceable(config: ResolvedConfig): ConfigEnforceability {
+  if (config.profile === "off") {
+    return {
+      ok: false,
+      error:
+        'Cannot start a verified goal: profile is "off", so verification would be vacuous. ' +
+        "Enable a blocking profile (standard or strict), or use native /goal directly " +
+        "for an unverified objective.",
+    };
+  }
+  if (!config.gate?.block_on_failure) {
+    const found = config.gate?.block_on_failure;
+    return {
+      ok: false,
+      error:
+        `Cannot start a verified goal: gate.block_on_failure is ${String(found)}, ` +
+        "but /df-goal requires it to be true. Advisory mode must not gain a blocking " +
+        "side channel through /df-goal. Enable a blocking profile (standard or strict), " +
+        "or use native /goal directly.",
+    };
+  }
+  if (!hasMeaningfulChecks(config)) {
+    return {
+      ok: false,
+      error:
+        "Cannot start a verified goal: the resolved configuration provides no meaningful " +
+        "completion check (no typecheck/test command, no changed-file lint, no acceptance " +
+        "commands, and no review requirement). Configure at least one check, or use native " +
+        "/goal directly for a purely semantic objective.",
+    };
+  }
+  return { ok: true };
+}
+
 function validateConfig(data: unknown, configPath: string): Config {
   const result = configSchema.safeParse(data);
   if (!result.success) {

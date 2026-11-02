@@ -15,7 +15,7 @@
  * with a stub delegate.
  */
 
-import { hasMeaningfulChecks } from "./config.js";
+import { checkConfigEnforceable } from "./config.js";
 import type { ResolvedConfig } from "./types.js";
 
 /**
@@ -110,37 +110,9 @@ export function checkGoalAvailability(
         "without verification where native /goal exists.",
     };
   }
-  if (config.profile === "off") {
-    return {
-      ok: false,
-      error:
-        'Cannot start a verified goal: profile is "off", so verification would be vacuous. ' +
-        "Enable a blocking profile (standard or strict), or use native /goal directly " +
-        "for an unverified objective.",
-    };
-  }
-  if (!config.gate?.block_on_failure) {
-    const found = config.gate?.block_on_failure;
-    return {
-      ok: false,
-      error:
-        `Cannot start a verified goal: gate.block_on_failure is ${String(found)}, ` +
-        "but /df-goal requires it to be true. Advisory mode must not gain a blocking " +
-        "side channel through /df-goal. Enable a blocking profile (standard or strict), " +
-        "or use native /goal directly.",
-    };
-  }
-  if (!hasMeaningfulChecks(config)) {
-    return {
-      ok: false,
-      error:
-        "Cannot start a verified goal: the resolved configuration provides no meaningful " +
-        "completion check (no typecheck/test command, no changed-file lint, no acceptance " +
-        "commands, and no review requirement). Configure at least one check, or use native " +
-        "/goal directly for a purely semantic objective.",
-    };
-  }
-  return { ok: true };
+  // Config half of the bar lives in `checkConfigEnforceable` (plan 15) so
+  // init validation reuses the identical messages.
+  return checkConfigEnforceable(config);
 }
 
 /** Single delegation call to native `/goal` (flat core protocol shape). */
