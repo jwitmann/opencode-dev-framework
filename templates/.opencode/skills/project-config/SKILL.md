@@ -27,7 +27,10 @@ explain.
    project's ecosystem — `Makefile`, `package.json` scripts, `go.mod`
    toolchains, `pyproject.toml` / `tox.ini` / `noxfile.py`, `Cargo.toml`
    + `.cargo/config.toml`, `pom.xml` / `build.gradle(.kts)`, `Rakefile`,
-   `composer.json` — then CONTRIBUTING and existing lint configs. You are
+   `composer.json`, `CMakeLists.txt` (+ CTest), Bazel (`BUILD`,
+   `WORKSPACE`, `MODULE.bazel`), `meson.build`, `SConstruct` — then
+   CONTRIBUTING and existing lint configs. (`build.ninja` is generated
+   output; find what generates it instead of reading it.) You are
    looking for: the full verification command(s), per-language
    lint/format invocations, integration tests with special needs (docker,
    network, credentials), generated assets and how they rebuild, and
