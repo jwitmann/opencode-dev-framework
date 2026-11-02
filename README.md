@@ -29,11 +29,26 @@ npm install opencode-dev-framework
 ```
 
 ```bash
-npx df init
+npx df init --wizard
 ```
 
-`df init` auto-detects your language and writes a matching
-`.opencode-dev-framework.yml`. Then start a session in your project and ask
+Three ways in, same gate out — pick by how much attention you want to spend:
+
+- **Wizard (recommended).** `--wizard` scaffolds, trial-runs the detected
+  commands, and hands your session agent a brief: what was detected, what
+  passed, Makefile targets worth mapping to wrappers, at most 3 open
+  questions. The agent resolves what it can, asks only genuinely
+  user-only questions, and ends with a config + hardening draft for your
+  review. Budget ~5 minutes, review-only at the end; imperfections
+  assumed, manual always possible.
+- **Fast.** `df init` alone: scaffold + trial-run with PASS/FAIL per
+  command. Good guesses arrive verified, bad ones arrive flagged — but
+  mapping wrappers (e.g. `make check`) is on you.
+- **Thorough.** Ask the agent to follow the `project-config` skill from
+  scratch: reads your Makefile, CI, and CONTRIBUTING, maps the real
+  verification commands, drafts `hardening.md`, presents the diff.
+
+Then start a session in your project and ask
 the agent for a small edit. You will see the plugin working: the edit is
 checked against guardrails before it lands, your linter runs on the edited
 file, and when the session goes idle the completion gate runs your
