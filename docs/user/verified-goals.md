@@ -39,6 +39,12 @@ mark complete while the gate fails (or keep going after it passes), and the
 framework stands down after `gate.max_blocks` at the latest (earlier on
 zero progress).
 
+The contract insists on a tool-result PASS rather than the agent's
+assertion because prose is interpretation surface: a capable agent
+satisfies the letter of a condition while missing its intent. Exit codes
+don't negotiate — that is why the evidence is a verdict the agent
+produces, never a summary it writes.
+
 ## Requirements (all three, or it refuses)
 
 1. **Native `/goal` on the core.** Otherwise a clear capability error — no

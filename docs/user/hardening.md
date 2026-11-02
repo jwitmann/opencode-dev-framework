@@ -4,7 +4,10 @@ The completion gate is the backstop, not the full check: it runs your fast
 unit gates (typecheck, unit tests, changed-file lint). Hardening teaches the
 agent everything else that must hold *before it declares a task done* —
 your build system, your full verification pass, your review discipline, your
-scope rules — without being asked each time.
+scope rules — without being asked each time. A vague injunction ("be
+thorough", "run the full suite") will be interpreted minimally — that is
+the premise of this file. It names exact commands, ordering traps, and
+evidence standards so there is nothing left to interpret.
 
 ## The pattern
 
