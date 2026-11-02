@@ -1603,6 +1603,30 @@ record, same exposure pre-exists in `asCount`); hook/net double-run window
 and failed-`clear` resurrection (both pre-existing `BlockStore` patterns,
 unchanged by Phase 30).
 
+## Host capability matrix — corrected 2026-11-02
+
+Correction to the 2026-11-01 entry below: Claude Code **does** have a goal
+lifecycle (`/goal` — documented at `code.claude.com/docs/en/goal`).
+Same shape as native `/goal`: 4,000-char condition, separate evaluator
+model (met / not-yet / impossible), no-progress loop detection, session
+restore. The "only host with both" claim is withdrawn within 24 hours —
+a new record, and a lesson in asserting from cutoff instead of checking.
+
+Revised matrix:
+
+| Host | Veto | Goal lifecycle | Deterministic proof layer |
+| ---- | ---- | -------------- | ------------------------- |
+| Claude Code | yes (Stop hook, exit 2) | yes (`/goal` + evaluator) | no (evaluator judges the transcript only; deterministic checks need a hand-built Stop-hook script) |
+| OpenCode today | no (synthetic continuations + budgets) | yes (native `/goal`) | yes (this plugin: gate suites, acceptance, review artifact) |
+| OpenCode + `#54487` | yes | yes | yes |
+
+The differentiator was never the loop — both hosts now have one. It is
+the proof: typed gate suites, acceptance checks, a review artifact, and
+evidence discipline, composed with (not replaced by) the semantic judge.
+That composition is exactly plan 13's recommended architecture, and it is
+what a Claude Code port would need to build — the lifecycle transfers,
+the contract layer does not.
+
 ## Host capability matrix — why this harness lives on OpenCode (2026-11-01)
 
 The design assumes two host capabilities: a core-owned goal lifecycle
