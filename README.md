@@ -1,5 +1,12 @@
 # opencode-dev-framework
 
+AI agents finish by *saying* they're done — and prose rules ("be
+thorough", "run the tests") are interpretation surface a capable agent
+routes around. This plugin replaces assertion with evidence: guardrails
+that deny instead of advise, a completion gate that re-runs your checks
+at the idle boundary, and verified goals whose contract requires a
+tool-result PASS on the final tree. Exit codes don't negotiate.
+
 An [OpenCode](https://opencode.ai) plugin that enforces project-specific
 quality gates during AI coding sessions — and verifies whole tasks, not just
 edits, through `/df-goal`. Inspired by
