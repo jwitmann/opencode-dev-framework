@@ -571,7 +571,9 @@ for parallel gate runs, or (c) the Effect API goes stable (it is beta, same as
 the promise API), or (d) the ecosystem consolidates on Effect (dedicated
 `/v2/docs/build/plugins/effect` page exists; loader treats `effect()` as a
 peer of `setup()`; canonical examples still promise-style, so this trigger
-is about direction of travel, not a deprecation). Spike first: port only the `event.subscribe` loop to an
+is about direction of travel, not a deprecation — concretely: watch for
+new plugin capabilities landing effect-first or effect-only, which would
+be the first real skew signal). Spike first: port only the `event.subscribe` loop to an
 Effect fiber with a finalizer, compare teardown behavior against
 `teardown.test.ts`, then decide. Do NOT rewrite the whole plugin to Effect
 without that spike + peer review.
