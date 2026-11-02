@@ -12,7 +12,8 @@ host I/O behind an injectable seam so unit tests never shell out.
   `/df-profile`, `/df-verify` modals. Resolved through `package.json`
   `exports` from the repo root; one `plugins` entry loads server + TUI.
 - `bin/df` — the `df init / profile / status / version` CLI (scaffolding
-  via `src/installer.ts` + `templates/`).
+  via `src/installer.ts` + `templates/`; `df init --wizard` also prints the
+  wizard brief).
 
 ## Modules
 
@@ -26,6 +27,7 @@ host I/O behind an injectable seam so unit tests never shell out.
 | `harness.ts` | Pre/post-flight verdicts, changed-file union, pass cache |
 | `goal.ts` | `/df-goal` pure policy (thin adapter over native `/goal`) |
 | `commands.ts` | Shared slash-command logic (`verifyGate`, `changeProfile`) |
+| `installer.ts` | Template scaffolding, detection config writer, trial-run, wizard brief |
 | `registry.ts` | Per-project hook state registry |
 | `host.ts` | `RunCommand` abstraction (stubbed in tests, real spawn in prod) |
 | `block-store.ts` | Storage-backed gate block counts |

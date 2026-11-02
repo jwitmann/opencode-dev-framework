@@ -18,10 +18,14 @@ companion module. They open instantly and **never** feed text back to the LLM:
   manually and shows a pass/fail summary in a modal dialog.
 
 You can still run `df init` to install the bundled agents, skills, and default
-config; the commands themselves are provided by the plugin. The
+config; `df init --wizard` adds a wizard brief (detection, trial results,
+Makefile target names, the enforceability verdict, at most 3 open questions)
+for the `project-config` skill.
+The commands themselves are provided by the plugin. The
 `dev_framework_*` custom *tools* remain
 available for in-agent use (e.g. when the model wants to change the profile
-itself).
+itself); `dev_framework_init` accepts `wizard: true` to append the same
+brief to its result for the session agent.
 
 `/df-goal <objective>` is a **server-side command** instead (registered by the
 server plugin, not the TUI): it starts a **verified** native goal. The plugin
