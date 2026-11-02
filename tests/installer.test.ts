@@ -3,8 +3,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
+  buildWizardBrief,
   formatTrialRun,
+  formatWizardBrief,
   installTemplates,
+  listMakefileTargets,
   listTemplateFiles,
   statusTemplates,
   trialRunDetectedCommands,
@@ -256,5 +259,80 @@ describe("project-config skill pin (Phase 15)", () => {
     ]) {
       expect(content).toContain(hook);
     }
+  });
+});
+
+describe("wizard brief (Phase 32)", () => {
+  const ok: CommandResult = { stdout: "", stderr: "", exitCode: 0, timedOut: false };
+
+  async function writeMakefile(content: string): Promise<void> {
+    const { writeFile } = await import("node:fs/promises");
+    await writeFile(join(dir, "Makefile"), content, "utf8");
+  }
+
+  function stubRun(result: CommandResult): RunCommand {
+    return async () => result;
+  }
+
+  it("lists Makefile targets, skipping dot-directives, vars, and pattern rules", async () => {
+    await writeMakefile(
+      ".PHONY: check test\n\ncheck: lint test\n\ntest:\n\tgo test ./...\n\n%.gz: %\n\tgzip -cn $< > $@\n\nFOO := bar\n",
+    );
+    expect(await listMakefileTargets(dir)).toEqual(["check", "test"]);
+  });
+
+  it("splits grouped targets and skips make keywords", async () => {
+    await writeMakefile("lint test: deps\n\nexport FOO\n\ninclude extra.mk\n");
+    expect(await listMakefileTargets(dir)).toEqual(["lint", "test"]);
+  });
+
+  it("prefers GNUmakefile, then lowercase makefile", async () => {
+    const { writeFile } = await import("node:fs/promises");
+    await writeMakefile("wrong:\n\tfalse\n");
+    await writeFile(join(dir, "GNUmakefile"), "right:\n\ttrue\n", "utf8");
+    expect(await listMakefileTargets(dir)).toEqual(["right"]);
+  });
+
+  it("returns no targets without a Makefile", async () => {
+    expect(await listMakefileTargets(dir)).toEqual([]);
+  });
+
+  it("briefs detection, trial, targets, and the wrapper question", async () => {
+    await writeMakefile("check: lint test\n\ntest:\n\tgo test ./...\n");
+    const brief = await buildWizardBrief(dir, stubRun(ok));
+    expect(brief.makeTargets).toEqual(["check", "test"]);
+    expect(brief.trial).toHaveLength(0); // no package.json/go.mod in tmp dir
+    expect(brief.enforceability.ok).toBe(true); // standard review default carries the bar
+    expect(brief.questions.length).toBeLessThanOrEqual(3);
+    expect(brief.questions[0]).toContain("Makefile targets detected");
+    const lines = formatWizardBrief(brief);
+    expect(lines[0]).toContain("Wizard brief");
+    expect(lines.some((l) => l.includes("Makefile targets: check, test"))).toBe(true);
+    expect(lines[lines.length - 1]).toContain("project-config skill");
+  });
+
+  it("renders the unenforceable verdict distinctly", () => {
+    const lines = formatWizardBrief({
+      language: "none",
+      commands: {},
+      trial: [],
+      makeTargets: [],
+      enforceability: { ok: false, error: "profile is off" },
+      questions: ["Draft is not enforceable: profile is off"],
+    });
+    expect(lines.some((l) => l.includes("Enforceability: FAIL"))).toBe(true);
+    expect(lines.some((l) => l.includes("1. Draft is not enforceable"))).toBe(true);
+  });
+
+  it("caps open questions at 3 with wrappers first", async () => {
+    await writeMakefile("check:\n\tmake test\n");
+    const fail: CommandResult = { stdout: "", stderr: "", exitCode: 1, timedOut: false };
+    const { writeFile } = await import("node:fs/promises");
+    await writeFile(join(dir, "package.json"), '{"scripts":{"test":"exit 1"}}', "utf8");
+    await writeFile(join(dir, "tsconfig.json"), "{}", "utf8");
+    const brief = await buildWizardBrief(dir, stubRun(fail));
+    expect(brief.questions).toHaveLength(3);
+    expect(brief.questions[0]).toContain("Makefile targets detected");
+    expect(brief.questions[1]).toContain("Trial-run flagged test");
   });
 });

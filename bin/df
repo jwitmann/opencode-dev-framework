@@ -6,7 +6,9 @@ import { readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  buildWizardBrief,
   formatTrialRun,
+  formatWizardBrief,
   installTemplates,
   resolveTargetDir,
   setProfileInFile,
@@ -33,7 +35,12 @@ Usage:
   df version           Print the plugin version
   df help              Show this help
 
+  df init --wizard [dir]  Scaffold, trial-run, and print an agent-handoff
+                       brief (detection, trial results, Makefile targets,
+                       open questions) for the project-config skill.
+
 Options:
+  --wizard              Print the wizard brief after init (agent-led handoff)
   --overwrite-existing  Overwrite files that already exist (non-interactive)
   --skip-existing       Skip files that already exist (non-interactive)
 `);
@@ -126,7 +133,16 @@ async function main() {
     console.log(line);
   }
   console.log(`\nConfig: ${configResult.action}`);
-  if (configResult.action === "created" || configResult.action === "overwritten") {
+  if (flags.has("--wizard")) {
+    try {
+      const brief = await buildWizardBrief(targetDir, runCommand);
+      for (const line of ["", ...formatWizardBrief(brief)]) {
+        console.log(line);
+      }
+    } catch (error) {
+      console.log(`\n${formatBriefSkipped(error)}`);
+    }
+  } else if (configResult.action === "created" || configResult.action === "overwritten") {
     try {
       const { commands } = detectProject(targetDir);
       const trial = await trialRunDetectedCommands(targetDir, commands, runCommand);

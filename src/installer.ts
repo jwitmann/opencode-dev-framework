@@ -3,7 +3,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createInterface } from "node:readline";
 import { splitCommand } from "./command-utils.js";
-import { DEFAULT_PROTECT } from "./config.js";
+import { checkConfigEnforceable, DEFAULT_PROTECT, resolveConfig } from "./config.js";
 import { detectProject } from "./detect.js";
 import type { CommandResult, RunCommand } from "./host.js";
 import type { CommandsConfig, Profile } from "./types.js";
@@ -415,6 +415,134 @@ export function formatTrialRun(results: TrialRunResult[]): string[] {
 /** Resolve a user-supplied directory (default cwd) to an absolute path. */
 export function resolveTargetDir(dir?: string): string {
   return resolve(dir ?? process.cwd());
+}
+
+/**
+ * List Makefile target names (plan 16). Names only, no semantics: the
+ * agent decides which (if any) are canonical wrappers. Capped at 30.
+ * Grouped targets (`lint test: deps`) split into both names; pattern
+ * rules, dot-directives, assignments, and make keywords never match.
+ * Probes GNUmakefile/makefile/Makefile in GNU make precedence order.
+ * Empty when no makefile exists or none is readable — report-only.
+ */
+export async function listMakefileTargets(directory: string): Promise<string[]> {
+  let content: string | null = null;
+  for (const name of ["GNUmakefile", "makefile", "Makefile"]) {
+    try {
+      content = await fs.readFile(join(directory, name), "utf8");
+      break;
+    } catch {
+      // Not present or unreadable — try the next name.
+    }
+  }
+  if (content === null) return [];
+  const keywords =
+    /^(export|unexport|override|define|endef|ifeq|ifneq|ifdef|ifndef|else|endif|include|-include|sinclude)$/;
+  const namePattern = /^[A-Za-z0-9_][A-Za-z0-9_.%-]*$/;
+  const targets: string[] = [];
+  for (const line of content.split("\n")) {
+    // Leading char excludes comments, recipes, dot-directives, and `%`
+    // pattern rules; `[^:=]` keeps the match left of any assignment.
+    const match = /^([^:#=\s][^:=]*?)\s*:(?!=)/.exec(line);
+    if (match === null) continue;
+    for (const token of match[1].split(/\s+/)) {
+      if (!namePattern.test(token) || keywords.test(token) || targets.includes(token)) continue;
+      targets.push(token);
+      if (targets.length >= 30) break;
+    }
+    if (targets.length >= 30) break;
+  }
+  return targets;
+}
+
+export interface WizardBrief {
+  language: string | null;
+  commands: { test?: string; typecheck?: string };
+  trial: TrialRunResult[];
+  makeTargets: string[];
+  enforceability: { ok: true } | { ok: false; error: string };
+  /** Open questions for the agent, capped at 3 — never exhaustive. */
+  questions: string[];
+}
+
+/**
+ * Build the agent-handoff brief (plan 16): detection, trial-run, Makefile
+ * target names, and the shared enforceability verdict in one bundle. The
+ * LLM session agent is the wizard's presenter — this is the machine side,
+ * hints only, and the project-config skill still verifies everything by
+ * running. Trial/target failures annotate, never throw; a nonexistent
+ * directory rejects via detection, so both callers isolate the brief in
+ * try/catch (see `formatBriefSkipped`).
+ */
+export async function buildWizardBrief(
+  directory: string,
+  run: RunCommand,
+  opts: { timeout?: number } = {},
+): Promise<WizardBrief> {
+  const { language, commands } = detectProject(directory);
+  const [trial, makeTargets] = await Promise.all([
+    trialRunDetectedCommands(directory, commands, run, opts),
+    listMakefileTargets(directory),
+  ]);
+  const enforceability = checkConfigEnforceable(resolveConfig({ profile: "standard", commands }));
+  const questions: string[] = [];
+  if (makeTargets.length > 0) {
+    const shown = makeTargets.slice(0, 8).join(", ");
+    questions.push(
+      `Makefile targets detected (${shown}${makeTargets.length > 8 ? ", …" : ""}) — ` +
+        "do canonical wrappers (e.g. make check/test/lint) replace the guessed bare commands?",
+    );
+  }
+  for (const t of trial) {
+    if (t.ok || questions.length >= 3) continue;
+    questions.push(
+      `Trial-run flagged ${t.name} (${t.command}) — verify the real command before trusting the guess.`,
+    );
+  }
+  if (enforceability.ok === false && questions.length < 3) {
+    questions.push(`Draft is not enforceable: ${enforceability.error}`);
+  }
+  return {
+    language,
+    commands,
+    trial,
+    makeTargets,
+    enforceability,
+    questions: questions.slice(0, 3),
+  };
+}
+
+/** Shared report-only fallback when the brief itself cannot be built. */
+export function formatBriefSkipped(error: unknown): string {
+  const detail = error instanceof Error ? error.message : String(error);
+  return `Wizard brief: skipped (${detail}) — verify commands manually`;
+}
+
+/** Render the wizard brief as CLI/tool output lines, ending in the handoff. */
+export function formatWizardBrief(brief: WizardBrief): string[] {
+  const guessed = `Guessed commands: test=${brief.commands.test ?? "(none)"}, typecheck=${brief.commands.typecheck ?? "(none)"}`;
+  const lines = [
+    "Wizard brief (machine-generated hints — verify by running, see the project-config skill):",
+    `Detected language: ${brief.language ?? "(unknown)"}`,
+    guessed,
+    ...formatTrialRun(brief.trial),
+    brief.makeTargets.length > 0
+      ? `Makefile targets: ${brief.makeTargets.join(", ")}`
+      : "Makefile targets: (none — no Makefile)",
+    brief.enforceability.ok
+      ? "Enforceability: draft passes the shared bar (blocking profile + real checks)."
+      : `Enforceability: FAIL — ${brief.enforceability.error}`,
+  ];
+  if (brief.questions.length > 0) {
+    lines.push("Open questions (at most 3):", ...brief.questions.map((q, i) => `  ${i + 1}. ${q}`));
+  }
+  lines.push(
+    "",
+    "Handoff: follow the project-config skill (templates/.opencode/skills/project-config/SKILL.md) " +
+      "to resolve the questions above, run the real commands, and present " +
+      ".opencode-dev-framework.yml + hardening.md for review. Do not write without review.",
+  );
+  return lines;
 }
 
 /**

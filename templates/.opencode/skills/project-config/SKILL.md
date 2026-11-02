@@ -20,6 +20,26 @@ detection alone. Also when the existing config smells wrong — gate
 passing vacuously, commands that don't match CI, a red tree nobody can
 explain.
 
+## Wizard brief (when `df init --wizard` ran first)
+
+The brief hands you machine-generated hints: detected language, guessed
+commands with trial-run results, Makefile target names, the shared
+enforceability verdict, and at most 3 open questions. Treat it as a
+starting brief, not findings:
+
++ Re-run every command yourself before trusting it — trial results go
+  stale, and a PASS can still hide a semantic gap (e.g. a typecheck
+  that skips generated artifacts).
++ The Makefile target list is names only; you decide which are
+  canonical wrappers.
++ Answer the brief's questions first, then do your own pass — the
+  brief doesn't know about CI tiebreakers or env-gated suites.
+
+Interaction budget: resolve everything resolvable yourself; come back
+with the review diff plus at most 3 questions, all genuinely
+user-only. Never interrogate mid-run — proceed on safe defaults and
+list assumptions.
+
 ## Steps
 
 1. **Read the build truth, in authority order.** CI workflow first (it is

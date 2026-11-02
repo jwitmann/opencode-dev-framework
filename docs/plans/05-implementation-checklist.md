@@ -542,6 +542,23 @@ Dogfood the fork's V2 pre-terminal hook (upstream PR
   Should-fix fixed + tested, rest fixed-or-justified in `08-notes.md`);
   committed on a framework-repo branch (`feat/experimental-stopping-dogfood`).
 
+## Phase 32 — Agent-led init wizard (plan 16, IN PROGRESS)
+
+- [x] 32.1 `buildWizardBrief` / `formatWizardBrief` / `listMakefileTargets`
+  in `src/installer.ts` (detection + trial + target names + shared
+  enforceability verdict + questions capped at 3, wrappers first).
+- [x] 32.2 `df init --wizard` + `dev_framework_init` `wizard: true`
+  (brief appended to tool result for the in-session agent; single trial
+  run, no double-run).
+- [x] 32.3 Skill `Wizard brief` consumer section + interaction budget
+  (resolve all resolvable, ≤3 user-only questions, review diff at end).
+- [x] 32.4 `configuration.md` three paths (fast / wizard / thorough) +
+  advertised budget.
+- [x] 32.5 Peer-review skill gate (no Blocking; 2 Should-fix + 4 Notes
+  all fixed) + dogfood `--wizard` on bare animeRSS copy and Go fixture
+  (lowercase makefile probe works); full suite 335 green; commit
+  locally, never push.
+
 ## Phase 31 — Agentic init (plan 15, DONE 2026-11-02)
 
 - [x] 31.1 Trial-run in `writeDetectedConfig` callers (`bin/df`,

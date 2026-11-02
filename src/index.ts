@@ -786,7 +786,7 @@ const plugin = Plugin.define({
         editor.add({
           name: "dev_framework_init",
           description:
-            "Scaffold opencode-dev-framework project files (agents, skills, commands, default config) into the current project. Missing files are created; existing files are skipped unless overwrite is true.",
+            "Scaffold opencode-dev-framework project files (agents, skills, commands, default config) into the current project. Missing files are created; existing files are skipped unless overwrite is true. With wizard:true, appends a wizard brief (detection, trial-run, Makefile targets, open questions) — follow the project-config skill to resolve it and present the config for review.",
           input: {
             type: "object",
             properties: {
@@ -798,17 +798,25 @@ const plugin = Plugin.define({
                 type: "boolean",
                 description: "Overwrite existing files that differ from templates",
               },
+              wizard: {
+                type: "boolean",
+                description:
+                  "Append a wizard brief for agent-led handoff to the project-config skill",
+              },
             },
             additionalProperties: false,
           },
           async execute(input: unknown) {
             const {
+              buildWizardBrief,
+              formatBriefSkipped,
               formatTrialRun,
+              formatWizardBrief,
               installTemplates,
               trialRunDetectedCommands,
               writeDetectedConfig,
             } = await import("./installer.js");
-            const args = input as { directory?: string; overwrite?: boolean };
+            const args = input as { directory?: string; overwrite?: boolean; wizard?: boolean };
             const targetDir = args.directory ?? directory;
             const result = await installTemplates(targetDir, {
               overwriteExisting: args.overwrite ?? false,
@@ -829,7 +837,14 @@ const plugin = Plugin.define({
               lines.push("", "Created files:", ...result.created.map((f) => `- ${f}`));
             if (result.overwritten.length > 0)
               lines.push("", "Overwritten files:", ...result.overwritten.map((f) => `- ${f}`));
-            if (configResult.action === "created" || configResult.action === "overwritten") {
+            if (args.wizard === true) {
+              try {
+                const brief = await buildWizardBrief(targetDir, state.run);
+                lines.push("", ...formatWizardBrief(brief));
+              } catch (error) {
+                lines.push("", formatBriefSkipped(error));
+              }
+            } else if (configResult.action === "created" || configResult.action === "overwritten") {
               try {
                 const { detectProject } = await import("./detect.js");
                 const { commands } = detectProject(targetDir);
