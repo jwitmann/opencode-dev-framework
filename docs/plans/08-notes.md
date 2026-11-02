@@ -576,6 +576,13 @@ Effect fiber with a finalizer, compare teardown behavior against
 `teardown.test.ts`, then decide. Do NOT rewrite the whole plugin to Effect
 without that spike + peer review.
 
+**Direction-of-travel datum 2026-11-02:** the maintainer bot (issue
+16626) demonstrated v2's `experimental.idle` hook with an Effect-style
+canonical example (`yield*`, `Effect.void`, `.pipe(Effect.ignore)`),
+not the promise flavor. Promise is the documented on-ramp; Effect is
+the idiom the house thinks in. Trigger (d) above exists for exactly
+this kind of evidence — no action, but the drift is real.
+
 **Re-checked 2026-10-09 (no code changed):** triggers still unmet — (a) no
 strain observed (see strain probe below), (b) gate steps still run
 sequentially (`Promise.all` would cover parallelism if ever needed), (c)
