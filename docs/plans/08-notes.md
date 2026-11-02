@@ -1644,6 +1644,17 @@ veto, verification contract — exist in the same session, and the
 continuation machinery (dual levers, budgets, stuck snapshots) drops to
 fallback. Recorded so the shape of the harness stays explicable.
 
+## Watch: in-memory skills → `df init` simplification (2026-11-02)
+
+Core PR [#60921](https://github.com/anomalyco/opencode/pull/60921)
+(`skill://` URIs, in-memory skill files) merged to `dev` 2026-11-01 —
+not in any release yet. If the plugin-facing half lands
+(`skill.list`/`skill.load` hooks, #11060), the `df init` scaffolding
+(`templates/.opencode/` agents/skills/rules copied to disk) could be
+served from memory instead: no file litter, no drift, works in repos
+the user doesn't own. Do not build on it until #11060 lands — core
+support alone is not plugin-usable. Agents have no equivalent yet.
+
 ## References
 
 - OpenCode plugin docs: <https://opencode.ai/docs/plugins>
