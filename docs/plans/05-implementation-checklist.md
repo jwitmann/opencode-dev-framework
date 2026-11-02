@@ -540,6 +540,21 @@ Dogfood the fork's V2 pre-terminal hook (upstream PR
   Should-fix fixed + tested, rest fixed-or-justified in `08-notes.md`);
   committed on a framework-repo branch (`feat/experimental-stopping-dogfood`).
 
+## Phase 31 — Agentic init (plan 15, UNSCHEDULED)
+
+- [ ] 31.1 Trial-run in `writeDetectedConfig` callers (`bin/df`,
+  `dev_framework_init`) per `docs/plans/15-agentic-init.md` §3.1
+  (test + typecheck only, bounded timeout, report-only, tested).
+- [ ] 31.2 `checkConfigEnforceable` factored from
+  `checkGoalAvailability`; verbatim messages; unit tests per plan §5.
+- [ ] 31.3 `project-config` skill in templates + pin test per plan §5.
+- [ ] 31.4 Dogfood per plan §6 (Makefile-wrapper fixture, grade the
+  draft mapping + acceptance placement, receipts in `08-notes.md`).
+- [ ] 31.5 Peer-review skill gate, no Blocking; `configuration.md`
+  documents fast vs thorough paths + trust model (agent proposes,
+  validator checks, user reviews + commits); commit locally, never
+  push.
+
 ## Phase 30 — No-progress early stand-down (plan 14, DONE 2026-11-01)
 
 - [x] 30.1 Snapshot record/compare/clear in `evaluateCompletion` per
