@@ -1655,6 +1655,16 @@ served from memory instead: no file litter, no drift, works in repos
 the user doesn't own. Do not build on it until #11060 lands — core
 support alone is not plugin-usable. Agents have no equivalent yet.
 
+Security gate (non-negotiable before adopting): a skill is a standing
+grant of authority (pre-approved tools, executables, load-time shell),
+so the write path is a privilege-escalation primitive. Adopt only if
+registration is host-side plugin code, never model-invocable — or, if
+the model can invoke it, behind explicit user approval with provenance
+tagging (who registered it) and full visibility wherever file skills
+are listed. A model-writable, unlisted skill registry is a backdoor
+with no file to find. Review #11060's gating design first, adopt
+second.
+
 ## References
 
 - OpenCode plugin docs: <https://opencode.ai/docs/plugins>
