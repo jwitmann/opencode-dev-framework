@@ -23,12 +23,15 @@ explain.
 ## Steps
 
 1. **Read the build truth, in authority order.** CI workflow first (it is
-   the tiebreaker when scripts disagree), then `Makefile` / `package.json`
-   scripts / `go.mod` toolchains / `pyproject.toml`, then CONTRIBUTING and
-   existing lint configs. You are looking for: the full verification
-   command(s), per-language lint/format invocations, integration tests
-   with special needs (docker, network, credentials), generated assets
-   and how they rebuild, and paths that must never be edited.
+   the tiebreaker when scripts disagree), then the build files for the
+   project's ecosystem — `Makefile`, `package.json` scripts, `go.mod`
+   toolchains, `pyproject.toml` / `tox.ini` / `noxfile.py`, `Cargo.toml`
+   + `.cargo/config.toml`, `pom.xml` / `build.gradle(.kts)`, `Rakefile`,
+   `composer.json` — then CONTRIBUTING and existing lint configs. You are
+   looking for: the full verification command(s), per-language
+   lint/format invocations, integration tests with special needs (docker,
+   network, credentials), generated assets and how they rebuild, and
+   paths that must never be edited.
 
 2. **Prefer wrappers over bare tools.** If the project verifies via
    `make check`, `npm run verify`, or a CI job, the config's `commands`
@@ -60,16 +63,16 @@ explain.
 
 ## Output
 
-- The proposed `.opencode-dev-framework.yml` and `hardening.md` content
++ The proposed `.opencode-dev-framework.yml` and `hardening.md` content
   as a reviewable diff, each command annotated verified-by-running,
   inferred-from-files, or needs-confirmation.
-- The enforceability self-check result (blocking profile + at least one
++ The enforceability self-check result (blocking profile + at least one
   real check, or the deficiencies fixed before presenting).
 
 ## What stays out
 
-- Secrets, tokens, internal URLs, customer names — the config and the
++ Secrets, tokens, internal URLs, customer names — the config and the
   hardening file are designed to be committable.
-- Anything the gate already enforces (don't restate the config inside
++ Anything the gate already enforces (don't restate the config inside
   the hardening file).
-- Auto-commit. The skill ends at the reviewed diff.
++ Auto-commit. The skill ends at the reviewed diff.
