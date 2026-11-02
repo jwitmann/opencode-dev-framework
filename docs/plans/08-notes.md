@@ -568,7 +568,10 @@ by `tests/teardown.test.ts` (Phase 20), so migration is churn with no behavior
 gain today. Re-evaluate when: (a) the promise API shows strain (leaked loops,
 reload races the stale-guard can't cover), (b) we need structured concurrency
 for parallel gate runs, or (c) the Effect API goes stable (it is beta, same as
-the promise API). Spike first: port only the `event.subscribe` loop to an
+the promise API), or (d) the ecosystem consolidates on Effect (dedicated
+`/v2/docs/build/plugins/effect` page exists; loader treats `effect()` as a
+peer of `setup()`; canonical examples still promise-style, so this trigger
+is about direction of travel, not a deprecation). Spike first: port only the `event.subscribe` loop to an
 Effect fiber with a finalizer, compare teardown behavior against
 `teardown.test.ts`, then decide. Do NOT rewrite the whole plugin to Effect
 without that spike + peer review.
