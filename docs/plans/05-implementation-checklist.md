@@ -368,7 +368,8 @@ true hard gate via `tool.execute.before`.
 - [x] 19.6 Docs: README (completion gate + pre-flight bullets, profiles table,
   config example, limitations), `08-notes.md`, corrected the false 11.6/11.11
   `session.stopping` claims, AGENTS.md enforcement caveat updated.
-- [ ] 19.7 Bump version and tag (user action).
+- [x] 19.7 Bump version and tag — SUPERSEDED: releases go through
+  `scripts/release.sh` + user push (v1.0.0, v1.1.0, v1.2.0 all so).
 
 ## Phase 20 — Teardown disposal + fail-open guard (issue #1, v0.2.3)
 
@@ -386,7 +387,8 @@ stayed registered — every subsequent tool call threw permanently
   session; matches the other hooks which already no-op on missing state.
 - [x] 20.3 `tests/teardown.test.ts`: teardown disposes registrations,
   stale guard allows tool calls, fresh setup after teardown guards again.
-- [ ] 20.4 Bump version and tag (user action).
+- [x] 20.4 Bump version and tag — SUPERSEDED: releases go through
+  `scripts/release.sh` + user push (v1.0.0, v1.1.0, v1.2.0 all so).
 
 ## Phase 21 — Upgrade probe 2.0.11 → 2.0.26 (no behavior change)
 
