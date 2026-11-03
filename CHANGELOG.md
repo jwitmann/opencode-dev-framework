@@ -6,6 +6,21 @@ Generated from conventional commits (`scripts/changelog.sh`).
 Single source: CI publishes each version's section as the GitHub
 release notes, so this file and the release page never diverge.
 
+## [v1.5.1] - 2026-11-03
+
+### Features
+
+- generated changelog, published twice (CHANGELOG + GitHub releases) ([`ba4637b`](https://github.com/jwitmann/opencode-dev-framework/commit/ba4637bdf900da3b108d0ee0cbe87202445d97fd))
+
+### Fixes
+
+- drop duplicated dialog title from runtime status body ([`cb600bb`](https://github.com/jwitmann/opencode-dev-framework/commit/cb600bbc803af55b8c3a39a69b0b4e40ea2874fa))
+- strip duplicated headings at all TUI dialog call sites ([`a744437`](https://github.com/jwitmann/opencode-dev-framework/commit/a7444372292e890fa592897d6e9fde1026576ee4))
+
+### Documentation
+
+- restart brief reflects plan-complete state and ghost semantics ([`38608f8`](https://github.com/jwitmann/opencode-dev-framework/commit/38608f8420a2f096bb3ad40295500c1127633e5f))
+
 ## [v1.0.0] - 2026-10-30
 
 Initial stable release line.
