@@ -38,8 +38,13 @@ NEW_VERSION=$(node -p "require('./package.json').version")
 TAG="v$NEW_VERSION"
 
 echo ""
+echo "==> Generating changelog..."
+PREV_TAG=$(git describe --tags --abbrev=0)
+./scripts/changelog.sh "$PREV_TAG" "$NEW_VERSION"
+
+echo ""
 echo "==> Committing and tagging..."
-git add package.json package-lock.json
+git add package.json package-lock.json CHANGELOG.md
 git commit -m "Release $TAG"
 git tag -a "$TAG" -m "Release $TAG"
 
@@ -49,4 +54,5 @@ echo ""
 echo "To publish, push the tag:"
 echo "  git push origin main --tags"
 echo ""
-echo "CI will publish to npm automatically."
+echo "CI will publish to npm automatically and attach this version's"
+echo "CHANGELOG section as the GitHub release notes."
