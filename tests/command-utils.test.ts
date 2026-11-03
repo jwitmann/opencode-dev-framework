@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { normalizeCommandMap, splitCommand } from "../src/command-utils";
+import { normalizeCommandMap, splitCommand, toAbsolutePath } from "../src/command-utils";
 
 describe("splitCommand", () => {
   it("splits a simple command into tokens", () => {
@@ -45,5 +45,19 @@ describe("normalizeCommandMap", () => {
     const result = normalizeCommandMap(undefined);
     expect(result.default).toBeUndefined();
     expect(result.byExtension).toEqual({});
+  });
+});
+
+describe("toAbsolutePath", () => {
+  it("passes absolute paths through untouched", () => {
+    expect(toAbsolutePath("/abs/main.go", "/project")).toBe("/abs/main.go");
+  });
+
+  it("joins relative paths onto cwd", () => {
+    expect(toAbsolutePath("src/a.ts", "/project")).toBe("/project/src/a.ts");
+  });
+
+  it("passes relative paths through when cwd is absent", () => {
+    expect(toAbsolutePath("src/a.ts")).toBe("src/a.ts");
   });
 });

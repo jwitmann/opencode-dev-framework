@@ -10,8 +10,8 @@
  */
 
 import { existsSync } from "node:fs";
-import { isAbsolute, join, relative } from "node:path";
-import { splitCommand } from "./command-utils.js";
+import { isAbsolute, relative } from "node:path";
+import { splitCommand, toAbsolutePath } from "./command-utils.js";
 import type { CommandResult, RunCommand } from "./host.js";
 import { lintFile, MAX_CONCURRENT_LINTS, type LintLimiter } from "./lint.js";
 import type { ResolvedConfig } from "./types.js";
@@ -89,9 +89,7 @@ function isFailure(result: CommandResult): boolean {
  * whose commands name no files cannot race this way.
  */
 function ghostRace(files: string[], cwd?: string): boolean {
-  return files.some(
-    (file) => !existsSync(isAbsolute(file) ? file : cwd !== undefined ? join(cwd, file) : file),
-  );
+  return files.some((file) => !existsSync(toAbsolutePath(file, cwd)));
 }
 
 /**
@@ -205,9 +203,7 @@ export async function runGate(
   // the journal semantics of `changedFiles` stay intact for skip_unchanged,
   // review, signature, and verdict consumers.
   const existingFiles = changedFiles.filter((file) =>
-    existsSync(
-      isAbsolute(file) ? file : options?.cwd !== undefined ? join(options.cwd, file) : file,
-    ),
+    existsSync(toAbsolutePath(file, options?.cwd)),
   );
 
   if (config.gate.run_tests) {

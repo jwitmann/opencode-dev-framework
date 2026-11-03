@@ -1,3 +1,4 @@
+import { isAbsolute, join } from "node:path";
 import picomatch from "picomatch";
 import type { CommandMap } from "./types.js";
 
@@ -19,6 +20,17 @@ export function normalizeCommandMap(map: CommandMap | undefined): NormalizedComm
   }
   const { default: defaultCommand, ...byExtension } = map;
   return defaultCommand === undefined ? { byExtension } : { default: defaultCommand, byExtension };
+}
+
+/**
+ * Resolve a tracked file path against the project directory. Absolute paths
+ * pass through; relative paths join onto `cwd`. Without `cwd` the relative
+ * path passes through untouched (resolves against the process cwd) — both
+ * production callers always set it.
+ */
+export function toAbsolutePath(filePath: string, cwd?: string): string {
+  if (isAbsolute(filePath)) return filePath;
+  return cwd !== undefined ? join(cwd, filePath) : filePath;
 }
 
 /** Split a command string into argv tokens, honoring simple quotes. */
