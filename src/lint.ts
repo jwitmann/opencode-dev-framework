@@ -4,7 +4,8 @@
  * hook wiring lives in src/index.ts.
  */
 
-import { basename, dirname, extname, isAbsolute, relative } from "node:path";
+import { existsSync } from "node:fs";
+import { basename, dirname, extname, isAbsolute, join, relative } from "node:path";
 import { compileGlobMatchers, normalizeCommandMap, splitCommand } from "./command-utils.js";
 import type { CommandResult, RunCommand } from "./host.js";
 import type { ResolvedConfig } from "./types.js";
@@ -129,12 +130,20 @@ export async function detectPreCommitAvailability(
 /**
  * Lint a single file. Excluded files and file types without a configured
  * linter are skipped; everything else runs through the injected runner.
+ * Files that no longer exist (deleted mid-session but still tracked) are
+ * skipped with reason "file no longer exists" — never failed. Relative
+ * `filePath` values resolve against `options.cwd`; both production callers
+ * always set it.
  */
 export async function lintFile(
   run: RunCommand,
   config: ResolvedConfig,
   filePath: string,
-  options?: { cwd?: string; timeout?: number; precommitAvailable?: boolean },
+  options?: {
+    cwd?: string;
+    timeout?: number;
+    precommitAvailable?: boolean;
+  },
 ): Promise<LintOutcome> {
   const excluded = matchExclude(config, filePath, options?.cwd);
   if (excluded !== undefined) {
@@ -148,6 +157,20 @@ export async function lintFile(
 
   if (command === undefined) {
     return { skipped: true, reason: "no lint command configured for this file type", filePath };
+  }
+
+  // Ghost entries: the tracker holds every file touched this session and
+  // only clears on pass, so files deleted mid-session are still listed.
+  // There is nothing to lint in a file that isn't there — skip, never fail.
+  // (TOCTOU accepted: a file deleted between this probe and the linter
+  // spawn self-heals to a skip on the next idle.)
+  const absolute = isAbsolute(filePath)
+    ? filePath
+    : options?.cwd !== undefined
+      ? join(options.cwd, filePath)
+      : filePath;
+  if (!existsSync(absolute)) {
+    return { skipped: true, reason: "file no longer exists", filePath };
   }
 
   const result = await run(command, {

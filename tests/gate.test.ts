@@ -1,4 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, describe, expect, it } from "vitest";
 import { resolveConfig } from "../src/config";
 import {
   createChangedFileTracker,
@@ -37,6 +40,20 @@ const GATE_COMMANDS = {
   test: "npm test",
   test_changed: "vitest related {files}",
 };
+
+const tempDirs: string[] = [];
+
+afterEach(() => {
+  for (const dir of tempDirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+});
+
+/** Real temp dir with the named files materialized (ghosts stay absent). */
+function makeTempDir(...files: string[]): string {
+  const dir = mkdtempSync(join(tmpdir(), "odf-gate-"));
+  tempDirs.push(dir);
+  for (const f of files) writeFileSync(join(dir, f), "export {};\n", "utf8");
+  return dir;
+}
 
 describe("changed-file tracker", () => {
   it("tracks, deduplicates, and clears files", () => {
@@ -131,6 +148,7 @@ describe("runGate", () => {
   });
 
   it("scopes tests to changed files when scope is changed", async () => {
+    const dir = makeTempDir("a.ts", "b.ts");
     const config = resolve({
       profile: "standard",
       commands: GATE_COMMANDS,
@@ -138,11 +156,27 @@ describe("runGate", () => {
     });
     const { calls, run } = stubRun();
 
-    const report = await runGate(run, config, ["src/a.ts", "src/b.ts"], { cwd: "/project" });
+    const report = await runGate(run, config, ["a.ts", "b.ts"], { cwd: dir });
 
     expect(report.ok).toBe(true);
     const testCall = calls.find((c) => c.command[0] === "vitest");
-    expect(testCall?.command).toEqual(["vitest", "related", "src/a.ts", "src/b.ts"]);
+    expect(testCall?.command).toEqual(["vitest", "related", "a.ts", "b.ts"]);
+  });
+
+  it("drops deleted files from changed-scope test substitution", async () => {
+    const dir = makeTempDir("a.ts");
+    const config = resolve({
+      profile: "standard",
+      commands: GATE_COMMANDS,
+      gate: { scope: "changed" },
+    });
+    const { calls, run } = stubRun();
+
+    const report = await runGate(run, config, ["a.ts", "deleted.ts"], { cwd: dir });
+
+    expect(report.ok).toBe(true);
+    const testCall = calls.find((c) => c.command[0] === "vitest");
+    expect(testCall?.command).toEqual(["vitest", "related", "a.ts"]);
   });
 
   it("skips the test step when scope is changed but test_changed is not configured", async () => {
@@ -186,6 +220,7 @@ describe("runGate", () => {
   });
 
   it("lints each changed file when lint_changed is enabled", async () => {
+    const dir = makeTempDir("main.go", "util.go");
     const config = resolve({
       profile: "strict",
       commands: { lint: { ".go": "golangci-lint run {file}" } },
@@ -193,7 +228,7 @@ describe("runGate", () => {
     });
     const { calls, run } = stubRun();
 
-    const report = await runGate(run, config, ["main.go", "util.go"], { cwd: "/project" });
+    const report = await runGate(run, config, ["main.go", "util.go"], { cwd: dir });
 
     expect(report.ok).toBe(true);
     expect(report.steps.map((s) => s.name)).toEqual(["lint:main.go", "lint:util.go"]);
@@ -204,6 +239,7 @@ describe("runGate", () => {
   });
 
   it("marks the gate failed when a lint step fails", async () => {
+    const dir = makeTempDir("a.ts");
     const config = resolve({
       profile: "strict",
       commands: { lint: "eslint {file}" },
@@ -211,10 +247,10 @@ describe("runGate", () => {
     });
     const { run } = stubRun(() => ({ exitCode: 2 }));
 
-    const report = await runGate(run, config, ["src/a.ts"], { cwd: "/project" });
+    const report = await runGate(run, config, ["a.ts"], { cwd: dir });
 
     expect(report.ok).toBe(false);
-    expect(report.failedSteps.map((s) => s.name)).toEqual(["lint:src/a.ts"]);
+    expect(report.failedSteps.map((s) => s.name)).toEqual(["lint:a.ts"]);
   });
 
   it("reports ran=false when no gate commands are configured", async () => {
@@ -347,17 +383,18 @@ describe("runGate acceptance commands", () => {
   });
 
   it("substitutes {files} and uses the project cwd", async () => {
+    const dir = makeTempDir("a.ts", "b.ts");
     const config = resolve({
       ...BASE,
       gate: { acceptance: [{ name: "contract", command: "verify-contract {files}" }] },
     });
     const { calls, run } = stubRun();
 
-    await runGate(run, config, ["src/a.ts", "src/b.ts"], { cwd: "/project" });
+    await runGate(run, config, ["a.ts", "b.ts"], { cwd: dir });
 
     const call = calls.find((c) => c.command[0] === "verify-contract");
-    expect(call?.command).toEqual(["verify-contract", "src/a.ts", "src/b.ts"]);
-    expect(call?.options?.cwd).toBe("/project");
+    expect(call?.command).toEqual(["verify-contract", "a.ts", "b.ts"]);
+    expect(call?.options?.cwd).toBe(dir);
   });
 
   it("skips acceptance checks when the gate skips", async () => {
@@ -413,7 +450,8 @@ describe("runGate concurrency", () => {
       profile: "strict",
       commands: { ...GATE_COMMANDS, lint: "eslint {file}" },
     });
-    const files = Array.from({ length: 8 }, (_, i) => `src/f${i}.ts`);
+    const files = Array.from({ length: 8 }, (_, i) => `f${i}.ts`);
+    const dir = makeTempDir(...files);
     let active = 0;
     let maxActive = 0;
     const run: RunCommand = async (command) => {
@@ -426,7 +464,7 @@ describe("runGate concurrency", () => {
       return { stdout: "", stderr: "", exitCode: 0, timedOut: false };
     };
 
-    const report = await runGate(run, config, files, { cwd: "/project" });
+    const report = await runGate(run, config, files, { cwd: dir });
 
     expect(report.ok).toBe(true);
     expect(maxActive).toBe(4);
@@ -444,6 +482,7 @@ describe("runGate concurrency", () => {
       commands: { lint: "eslint {file}" },
     });
     const files = ["a.ts", "b.ts", "c.ts"];
+    const dir = makeTempDir(...files);
     let active = 0;
     let maxActive = 0;
     const serialRun: RunCommand = async (command) => {
@@ -457,12 +496,48 @@ describe("runGate concurrency", () => {
     };
 
     const report = await runGate(serialRun, lintOnly, files, {
-      cwd: "/project",
+      cwd: dir,
       lintLimiter: createLintLimiter(1),
     });
 
     expect(report.ok).toBe(true);
     expect(maxActive).toBe(1);
     expect(report.steps.map((s) => s.name)).toEqual(files.map((f) => `lint:${f}`));
+  });
+});
+
+describe("runGate deleted files (ghost entries)", () => {
+  it("skips lint for tracked files deleted mid-session instead of failing", async () => {
+    const dir = makeTempDir("alive.go");
+    const config = resolve({
+      profile: "strict",
+      commands: { lint: { ".go": "golangci-lint run {file}" } },
+      gate: { run_typecheck: false, run_tests: false, lint_changed: true },
+    });
+    const { calls, run } = stubRun();
+
+    // The ghost is skipped before any command runs (only alive.go is
+    // linted), so the gate passes despite the deleted tracked entry.
+    const report = await runGate(run, config, ["alive.go", "deleted.go"], { cwd: dir });
+
+    expect(report.ok).toBe(true);
+    expect(report.steps.map((s) => s.name)).toEqual(["lint:alive.go", "lint:deleted.go"]);
+    expect(calls.map((c) => c.command)).toEqual([["golangci-lint", "run", "alive.go"]]);
+  });
+});
+
+describe("summarizeGate all-skipped gates", () => {
+  it("names the reason and lists per-step skips", async () => {
+    const config = resolve({
+      profile: "strict",
+      commands: { lint: { ".go": "golangci-lint run {file}" } },
+      gate: { run_typecheck: false, run_tests: false, lint_changed: true },
+    });
+    const report = await runGate(stubRun().run, config, ["deleted.go"], { cwd: makeTempDir() });
+    expect(report.ran).toBe(false);
+    expect(report.reason).toBe("all changed files skipped");
+    const summary = summarizeGate(report);
+    expect(summary).toContain("all changed files skipped");
+    expect(summary).toContain("lint:deleted.go: skipped (file no longer exists)");
   });
 });

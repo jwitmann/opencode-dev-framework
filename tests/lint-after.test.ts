@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -104,6 +104,9 @@ describe("Phase 24: per-edit lint via tool.hook(execute.after)", () => {
 
   it("edit→lint: completed edit tracks the file and runs the linter", async () => {
     const { afterHook, addedTools } = await setup();
+    // A completed edit leaves a real file behind — ghosts are skipped.
+    mkdirSync(join(directory, "src"), { recursive: true });
+    writeFileSync(join(directory, "src", "a.ts"), "export {};\n", "utf8");
     await afterHook({
       tool: "edit",
       sessionID: "lint-after-s1",

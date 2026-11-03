@@ -733,16 +733,17 @@ describe("passCache", () => {
     expect(nonGitCalls(calls)).toHaveLength(3);
   });
 
-  it("re-runs when a changed file is unreadable", async () => {
+  it("caches a pass when the only changed file is deleted", async () => {
     const config = cacheableConfig();
     const { calls, run } = stubRun((cmd) => (cmd[0] === "git" ? NO_GIT() : {}));
     const passCache = createPassCache();
     const deps = { run, config, directory: dir, trackerFiles: ["ghost.ts"], passCache };
 
     expect((await inspectCompletion(deps)).ok).toBe(true);
+    // The ghost contributes no fingerprint part (ENOENT is skipped, not a
+    // bail), so the clean pass is cached and the second inspection replays it.
     expect((await inspectCompletion(deps)).ok).toBe(true);
-    // No fingerprint can be proven for a missing file, so both ran.
-    expect(nonGitCalls(calls)).toHaveLength(2);
+    expect(nonGitCalls(calls)).toHaveLength(1);
   });
 
   it("re-runs when exclude changes lint coverage", async () => {

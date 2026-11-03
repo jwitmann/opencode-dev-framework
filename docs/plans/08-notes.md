@@ -1723,6 +1723,41 @@ rebuilt first. Run log: `run-skill.log` beside the fixture.
   from exit failures. Diverges from `runGate`'s trust deliberately;
   JSDoc says so.
 
+## Ghost-file gate block — user-reported, fixed (2026-11-03)
+
+Report: gate blocked citing lint failures on files that don't exist
+(deleted mid-session harnesses) plus a file clean on the reporter's
+machine. Reporter ruled out their tree first (build, vet, gofmt,
+package tests, full suite, `make check` — all green), then read the
+gate implementation read-only and nailed it: the tracker holds every
+file touched this session and clears only on pass, and nothing checked
+existence before linting.
+
+Confirmed in code with one refinement: the set clears on pass,
+advisory-pass, *and* stand-down (stuck ×3 identical, max_blocks
+exceeded) — so not a permanent deadlock, but up to 3+ crying-wolf
+blocks blaming the user's tree first. The mechanism otherwise matched
+exactly (`tracker.add` on every edit event, `lintFile` with no
+existence check, ghosts failing via `isLintFailure`).
+
+Fix (peer-reviewed, no Blocking):
+
+- `lintFile` skips nonexistent files ("file no longer exists") —
+  covers gate + per-edit paths; relative paths resolve against `cwd`.
+- `runGate` filters ghosts out of `test_changed`/`acceptance`
+  `{files}` substitution (same class, other legs); the lint loop
+  still sees ghosts so they render as visible skips.
+- All-skipped gates now report "all changed files skipped" (not "no
+  gate commands configured") with per-step skip lines in the summary.
+- Pass-cache fingerprint skips ENOENT instead of bailing, so a
+  deletion-only pass stays cacheable; other stat failures still bail.
+- TOCTOU (delete between probe and spawn) accepted as self-healing;
+  no-`cwd` relative paths documented as caller contract.
+
+Instant unblock for the reporter: open a fresh session (tracker is
+in-memory per session — ghosts die with it). 340 tests green,
+format/lint/md/typecheck/build clean.
+
 ## References
 
 - OpenCode plugin docs: <https://opencode.ai/docs/plugins>

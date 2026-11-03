@@ -1,4 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, describe, expect, it } from "vitest";
 import { resolveConfig } from "../src/config";
 import type { CommandResult, RunCommand, RunCommandOptions } from "../src/host";
 import {
@@ -21,6 +24,20 @@ function resolve(raw: Config) {
 interface RunCall {
   command: string[];
   options?: RunCommandOptions;
+}
+
+const tempDirs: string[] = [];
+
+afterEach(() => {
+  for (const dir of tempDirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+});
+
+/** Real temp dir with the named file materialized (ghosts stay absent). */
+function makeTempDir(...files: string[]): string {
+  const dir = mkdtempSync(join(tmpdir(), "odf-lint-"));
+  tempDirs.push(dir);
+  for (const f of files) writeFileSync(join(dir, f), "export {};\n", "utf8");
+  return dir;
 }
 
 /** Stubbed command runner recording calls and returning a canned result. */
@@ -113,18 +130,22 @@ describe("matchExclude", () => {
 
 describe("lintFile", () => {
   it("runs the linter for a changed .go file and captures output", async () => {
+    const dir = makeTempDir("main.go");
     const config = resolve({
       profile: "standard",
       commands: { lint: { ".go": "golangci-lint run {file}" } },
     });
     const { calls, run } = stubRun({ stdout: "all good", exitCode: 0 });
 
-    const outcome = await lintFile(run, config, "main.go", { cwd: "/project", timeout: 30 });
+    const outcome = await lintFile(run, config, "main.go", {
+      cwd: dir,
+      timeout: 30,
+    });
 
     expect(outcome.skipped).toBe(false);
     expect(calls).toHaveLength(1);
     expect(calls[0].command).toEqual(["golangci-lint", "run", "main.go"]);
-    expect(calls[0].options).toEqual({ cwd: "/project", timeout: 30 });
+    expect(calls[0].options).toEqual({ cwd: dir, timeout: 30 });
     expect(outcome.result?.stdout).toBe("all good");
     expect(isLintFailure(outcome)).toBe(false);
   });
@@ -155,29 +176,32 @@ describe("lintFile", () => {
   });
 
   it("applies the default timeout when none is given", async () => {
+    const dir = makeTempDir("main.ts");
     const config = resolve({ profile: "standard", commands: { lint: "eslint {file}" } });
     const { calls, run } = stubRun();
 
-    await lintFile(run, config, "main.ts", { cwd: "/project" });
+    await lintFile(run, config, "main.ts", { cwd: dir });
 
     expect(calls[0].options?.timeout).toBe(DEFAULT_LINT_TIMEOUT_SECONDS);
   });
 
   it("treats a timed-out lint as a failure", async () => {
+    const dir = makeTempDir("main.ts");
     const config = resolve({ profile: "standard", commands: { lint: "eslint {file}" } });
     const { run } = stubRun({ timedOut: true, exitCode: 1 });
 
-    const outcome = await lintFile(run, config, "main.ts", { cwd: "/project", timeout: 1 });
+    const outcome = await lintFile(run, config, "main.ts", { cwd: dir, timeout: 1 });
 
     expect(isLintFailure(outcome)).toBe(true);
     expect(summarizeLint(outcome)).toContain("timed out");
   });
 
   it("treats a non-zero exit code as a failure and captures stderr", async () => {
+    const dir = makeTempDir("main.ts");
     const config = resolve({ profile: "standard", commands: { lint: "eslint {file}" } });
     const { run } = stubRun({ exitCode: 2, stderr: "1 problem" });
 
-    const outcome = await lintFile(run, config, "main.ts", { cwd: "/project" });
+    const outcome = await lintFile(run, config, "main.ts", { cwd: dir });
 
     expect(isLintFailure(outcome)).toBe(true);
     expect(outcome.result?.stderr).toBe("1 problem");
@@ -185,6 +209,7 @@ describe("lintFile", () => {
   });
 
   it("uses pre-commit when configured and available", async () => {
+    const dir = makeTempDir("main.go");
     const config = resolve({
       profile: "standard",
       commands: { lint: { ".go": "golangci-lint run {file}" } },
@@ -193,7 +218,7 @@ describe("lintFile", () => {
     const { calls, run } = stubRun();
 
     const outcome = await lintFile(run, config, "main.go", {
-      cwd: "/project",
+      cwd: dir,
       precommitAvailable: true,
     });
 
@@ -202,6 +227,7 @@ describe("lintFile", () => {
   });
 
   it("falls back to configured lint when pre-commit is not available", async () => {
+    const dir = makeTempDir("main.go");
     const config = resolve({
       profile: "standard",
       commands: { lint: { ".go": "golangci-lint run {file}" } },
@@ -210,7 +236,7 @@ describe("lintFile", () => {
     const { calls, run } = stubRun();
 
     const outcome = await lintFile(run, config, "main.go", {
-      cwd: "/project",
+      cwd: dir,
       precommitAvailable: false,
     });
 
@@ -219,6 +245,7 @@ describe("lintFile", () => {
   });
 
   it("ignores pre-commit when precommit is off", async () => {
+    const dir = makeTempDir("main.go");
     const config = resolve({
       profile: "standard",
       commands: { lint: { ".go": "golangci-lint run {file}" } },
@@ -226,7 +253,10 @@ describe("lintFile", () => {
     });
     const { calls, run } = stubRun();
 
-    await lintFile(run, config, "main.go", { cwd: "/project", precommitAvailable: true });
+    await lintFile(run, config, "main.go", {
+      cwd: dir,
+      precommitAvailable: true,
+    });
 
     expect(calls[0].command).toEqual(["golangci-lint", "run", "main.go"]);
   });
@@ -321,5 +351,37 @@ describe("createLintLimiter", () => {
       }),
     ]);
     expect(order).toEqual([0, 1]);
+  });
+});
+
+describe("lintFile deleted files (ghost entries)", () => {
+  it("skips files that no longer exist without running the linter", async () => {
+    const dir = makeTempDir();
+    const config = resolve({
+      profile: "standard",
+      commands: { lint: { ".go": "golangci-lint run {file}" } },
+    });
+    const { calls, run } = stubRun({ exitCode: 1 });
+
+    const outcome = await lintFile(run, config, "deleted.go", { cwd: dir });
+
+    expect(outcome.skipped).toBe(true);
+    expect(outcome.reason).toContain("no longer exists");
+    expect(calls).toHaveLength(0);
+    expect(isLintFailure(outcome)).toBe(false);
+  });
+
+  it("lints files that still exist", async () => {
+    const dir = makeTempDir("alive.go");
+    const config = resolve({
+      profile: "standard",
+      commands: { lint: { ".go": "golangci-lint run {file}" } },
+    });
+    const { calls, run } = stubRun();
+
+    const outcome = await lintFile(run, config, "alive.go", { cwd: dir });
+
+    expect(outcome.skipped).toBe(false);
+    expect(calls).toHaveLength(1);
   });
 });

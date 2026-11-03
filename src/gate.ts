@@ -9,7 +9,8 @@
  *   hook skips.
  */
 
-import { isAbsolute, relative } from "node:path";
+import { existsSync } from "node:fs";
+import { isAbsolute, join, relative } from "node:path";
 import { splitCommand } from "./command-utils.js";
 import type { CommandResult, RunCommand } from "./host.js";
 import { lintFile, MAX_CONCURRENT_LINTS, type LintLimiter } from "./lint.js";
@@ -178,11 +179,21 @@ export async function runGate(
     }
   }
 
+  // Ghost entries (tracked files deleted mid-session) are filtered out of
+  // `{files}` substitution inputs: commands cannot run against paths that
+  // aren't there. The lint loop below still sees the full list so ghosts
+  // surface as visible skips instead of vanishing from the summary.
+  const existingFiles = changedFiles.filter((file) =>
+    existsSync(
+      isAbsolute(file) ? file : options?.cwd !== undefined ? join(options.cwd, file) : file,
+    ),
+  );
+
   if (config.gate.run_tests) {
     const template =
       config.gate.scope === "changed" ? config.commands.test_changed : config.commands.test;
     if (template !== undefined) {
-      const command = substituteFiles(template, changedFiles);
+      const command = substituteFiles(template, existingFiles);
       independent.push(
         run(command, runOptions).then((result) => {
           testStep = { name: "test", command, skipped: false, result };
@@ -231,7 +242,7 @@ export async function runGate(
   // remaining steps. `{files}` substitution and the project `cwd` match the
   // test-command semantics; per-check timeout overrides the gate default.
   for (const check of config.gate.acceptance) {
-    const command = substituteFiles(check.command, changedFiles);
+    const command = substituteFiles(check.command, existingFiles);
     steps.push({
       name: `acceptance:${check.name}`,
       command,
@@ -244,9 +255,17 @@ export async function runGate(
   const failedSteps = steps.filter(
     (step) => !step.skipped && step.result !== undefined && isFailure(step.result),
   );
+  // Ghost-only idles (every step a skipped lint) name the real cause;
+  // anything else that ran nothing is a configuration shape, as before.
+  const allLintSkips =
+    steps.length > 0 && steps.every((step) => step.skipped && step.name.startsWith("lint:"));
   return {
     ran,
-    reason: ran ? undefined : "no gate commands configured",
+    reason: ran
+      ? undefined
+      : allLintSkips
+        ? "all changed files skipped"
+        : "no gate commands configured",
     steps,
     ok: failedSteps.length === 0,
     failedSteps,
@@ -256,7 +275,13 @@ export async function runGate(
 /** One-line-per-step summary of a gate report for logging. */
 export function summarizeGate(report: GateReport): string {
   if (!report.ran) {
-    return `completion gate skipped: ${report.reason ?? "unknown reason"}`;
+    // Keep per-step skip reasons visible (e.g. ghosts skipped as
+    // "file no longer exists") instead of collapsing to the headline.
+    const skips = report.steps
+      .filter((step) => step.skipped)
+      .map((step) => `${step.name}: skipped (${step.reason ?? "unknown reason"})`);
+    const detail = skips.length > 0 ? `\n${skips.join("\n")}` : "";
+    return `completion gate skipped: ${report.reason ?? "unknown reason"}${detail}`;
   }
   const lines = report.steps.map((step) => {
     if (step.skipped) {

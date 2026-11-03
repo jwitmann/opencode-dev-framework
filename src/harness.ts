@@ -245,7 +245,11 @@ async function passCacheKey(
     try {
       const s = await stat(join(directory, file));
       parts.push(`${file}:${s.mtimeMs}:${s.size}`);
-    } catch {
+    } catch (error) {
+      // Deleted-but-tracked ghosts are known state (gone), not unknown
+      // state: skip them so a clean pass stays cacheable. Any other stat
+      // failure still bails — the tree may be unreadable.
+      if ((error as { code?: unknown })?.code === "ENOENT") continue;
       return null;
     }
   }
