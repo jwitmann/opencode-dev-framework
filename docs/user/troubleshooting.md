@@ -68,6 +68,15 @@ blocking profile, not a bug. Your options:
   spending the rest of `gate.max_blocks`. Bounded either way, but the
   early stop saves the wasted continuations.
 
+## Files you deleted mid-session
+
+Lint steps skip tracked files that no longer exist — a missing file can
+never fail the gate. But a deletion is still a real change: typecheck
+and test steps run, because removing a file can break its dependents,
+and the clean pass is cached so the gate does not re-run it every idle.
+If your gate ever cites a file you already deleted, update the plugin —
+that was a bug in older versions, not your tree.
+
 ## Still stuck
 
 Run a private server with the plugin trace on and read the log:
