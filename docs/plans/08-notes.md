@@ -1761,8 +1761,11 @@ notes (static imports, temp-dir helpers + cleanup, real files over
 fake cwds) were all accepted, as were the substitution-scope and
 unreadable-file observations that shaped this design.
 
-- TOCTOU (delete between probe and spawn) accepted as self-healing;
-  no-`cwd` relative paths documented as caller contract.
+- TOCTOU (delete between probe and spawn) now closed in `lintFile`:
+  on failure, re-probe before blaming the file — a missing file can
+  never be at fault, so only that direction is sound. `{files}`
+  substitution keeps the accepted race (per-runner ENOENT dialects
+  unbounded); it self-heals next idle.
 
 Instant unblock for the reporter: open a fresh session (tracker is
 in-memory per session — ghosts die with it). 340 tests green,

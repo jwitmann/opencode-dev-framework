@@ -384,4 +384,24 @@ describe("lintFile deleted files (ghost entries)", () => {
     expect(outcome.skipped).toBe(false);
     expect(calls).toHaveLength(1);
   });
+
+  it("converts a failure into a ghost skip when the file vanishes mid-lint (TOCTOU)", async () => {
+    const dir = makeTempDir("flaky.go");
+    const config = resolve({
+      profile: "standard",
+      commands: { lint: { ".go": "golangci-lint run {file}" } },
+    });
+    // The file exists at probe time, then vanishes before the linter
+    // reports: re-probe must excuse the ghost, not fail the gate.
+    const run: RunCommand = async (_command, _options) => {
+      rmSync(join(dir, "flaky.go"));
+      return { stdout: "", stderr: "some error", exitCode: 2, timedOut: false };
+    };
+
+    const outcome = await lintFile(run, config, "flaky.go", { cwd: dir });
+
+    expect(outcome.skipped).toBe(true);
+    expect(outcome.reason).toContain("no longer exists");
+    expect(isLintFailure(outcome)).toBe(false);
+  });
 });

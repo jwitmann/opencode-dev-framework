@@ -177,6 +177,14 @@ export async function lintFile(
     cwd: options?.cwd,
     timeout: options?.timeout ?? DEFAULT_LINT_TIMEOUT_SECONDS,
   });
+  if (result.timedOut || result.exitCode !== 0) {
+    // TOCTOU safety net: the file may have vanished between the probe
+    // above and the linter spawn. A missing file can never be at fault,
+    // so re-probe before blaming it — skip rather than fail on a ghost.
+    if (!existsSync(absolute)) {
+      return { skipped: true, reason: "file no longer exists", filePath };
+    }
+  }
   return { skipped: false, filePath, command, result };
 }
 
