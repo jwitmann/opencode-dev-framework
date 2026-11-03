@@ -19,11 +19,15 @@ It is an OpenCode plugin that enforces a project-specific quality bar on AI codi
 - Guards protected paths and dangerous commands.
 - Formats and lints edited files, with optional `pre-commit` delegation.
 - Runs a completion gate (tests / type-check / lint) when the session goes idle.
+- Wraps whole tasks as verified goals (`/df-goal`) with a tool-result
+  evidence contract.
 
 The gate continues the turn via `synthetic` at the would-go-idle boundary
 (`session.hook("experimental.idle")`, same execution) up to
 `gate.max_blocks` times, with an `event.subscribe` idle net for the
 boundaries the hook skips; it is a bounded continuation, not a veto.
+Deleted tracked files never fail it (lint skips ghosts, typecheck still
+runs — a deletion can break dependents).
 
 ## Key decisions already made
 
@@ -35,14 +39,23 @@ boundaries the hook skips; it is a bounded continuation, not a veto.
 
 ## Where to start next session
 
-Read this file, then open:
+The implementation plan is complete (all checklist items done through
+Phase 32; `v1.5.0` on npm). There is no next unchecked item. Instead:
 
-1. `01-master-plan.md` for goals and scope.
-2. `03-config-spec.md` for the config schema.
-3. `05-implementation-checklist.md` for the task list.
+1. Read `05-implementation-checklist.md` for state and `08-notes.md`
+   for tripwires (pre-stop veto, plugin skill hooks, Effect-first
+   landing) — next work starts when the user directs it or a tripwire
+   fires, not from the list.
+2. `01-master-plan.md` for goals and scope.
+3. `03-config-spec.md` for the config schema.
 4. `02-architecture.md` for the technical design.
 
-Then run the next unchecked checklist item (or continue the current phase).
+## Mandatory validation before any commit
+
+- `npm run format:check` (fix with `format:fix`), `npm run lint`,
+  `npm run lint:md`, `npm run typecheck`, `npm run test`,
+  `npm run build` with `dist/` produced — or just
+  `./scripts/release.sh [patch|minor|major]`, which runs the matrix.
 
 ## Mandatory validation before any release
 
