@@ -1740,17 +1740,27 @@ blocks blaming the user's tree first. The mechanism otherwise matched
 exactly (`tracker.add` on every edit event, `lintFile` with no
 existence check, ghosts failing via `isLintFailure`).
 
-Fix (peer-reviewed, no Blocking):
+Fix (peer-reviewed, no Blocking; simplified after review):
 
 - `lintFile` skips nonexistent files ("file no longer exists") —
   covers gate + per-edit paths; relative paths resolve against `cwd`.
 - `runGate` filters ghosts out of `test_changed`/`acceptance`
-  `{files}` substitution (same class, other legs); the lint loop
-  still sees ghosts so they render as visible skips.
-- All-skipped gates now report "all changed files skipped" (not "no
-  gate commands configured") with per-step skip lines in the summary.
-- Pass-cache fingerprint skips ENOENT instead of bailing, so a
-  deletion-only pass stays cacheable; other stat failures still bail.
+  `{files}` substitution (runners cannot take ghost paths).
+- Pass-cache fingerprint records deletions as `path:deleted`
+  (known state, cacheable) instead of bailing; other stat failures
+  still bail.
+
+Deliberately NOT done (review proposed, declined with proof):
+filtering ghosts at the harness merge point. That drops deletions
+from `changedFiles` entirely, so a deletion-only idle hits
+`skip_unchanged` and skips typecheck — but a deleted file can break
+dependents, and catching that is the typecheck step's job. The
+journal keeps ghosts; only path-consuming legs filter. Mechanism
+count lost to per-consumer correctness. The review's test-hygiene
+notes (static imports, temp-dir helpers + cleanup, real files over
+fake cwds) were all accepted, as were the substitution-scope and
+unreadable-file observations that shaped this design.
+
 - TOCTOU (delete between probe and spawn) accepted as self-healing;
   no-`cwd` relative paths documented as caller contract.
 

@@ -130,6 +130,11 @@ export interface GateOptions {
  * concurrently while the reported step order stays stable (typecheck, test,
  * lint per file, acceptance in declaration order). All results are
  * aggregated — a failing step does not abort the remaining steps.
+ * `changedFiles` carries the full session journal, deletions included:
+ * a deleted file can break dependents, so typecheck/test still run.
+ * Only path-consuming legs filter: `{files}` substitution drops
+ * nonexistent paths (runners cannot take them), and `lintFile` skips
+ * deleted entries (there is nothing to lint).
  */
 export async function runGate(
   run: RunCommand,
@@ -180,9 +185,12 @@ export async function runGate(
   }
 
   // Ghost entries (tracked files deleted mid-session) are filtered out of
-  // `{files}` substitution inputs: commands cannot run against paths that
-  // aren't there. The lint loop below still sees the full list so ghosts
-  // surface as visible skips instead of vanishing from the summary.
+  // `{files}` substitution inputs only: commands cannot run against paths
+  // that aren't there. Typecheck/test still run (a deletion can break
+  // dependents); the lint loop still sees the full list so ghosts surface
+  // as visible skips. Existence is checked here, not in the harness, so
+  // the journal semantics of `changedFiles` stay intact for skip_unchanged,
+  // review, signature, and verdict consumers.
   const existingFiles = changedFiles.filter((file) =>
     existsSync(
       isAbsolute(file) ? file : options?.cwd !== undefined ? join(options.cwd, file) : file,
@@ -255,17 +263,9 @@ export async function runGate(
   const failedSteps = steps.filter(
     (step) => !step.skipped && step.result !== undefined && isFailure(step.result),
   );
-  // Ghost-only idles (every step a skipped lint) name the real cause;
-  // anything else that ran nothing is a configuration shape, as before.
-  const allLintSkips =
-    steps.length > 0 && steps.every((step) => step.skipped && step.name.startsWith("lint:"));
   return {
     ran,
-    reason: ran
-      ? undefined
-      : allLintSkips
-        ? "all changed files skipped"
-        : "no gate commands configured",
+    reason: ran ? undefined : "no gate commands configured",
     steps,
     ok: failedSteps.length === 0,
     failedSteps,
@@ -275,13 +275,7 @@ export async function runGate(
 /** One-line-per-step summary of a gate report for logging. */
 export function summarizeGate(report: GateReport): string {
   if (!report.ran) {
-    // Keep per-step skip reasons visible (e.g. ghosts skipped as
-    // "file no longer exists") instead of collapsing to the headline.
-    const skips = report.steps
-      .filter((step) => step.skipped)
-      .map((step) => `${step.name}: skipped (${step.reason ?? "unknown reason"})`);
-    const detail = skips.length > 0 ? `\n${skips.join("\n")}` : "";
-    return `completion gate skipped: ${report.reason ?? "unknown reason"}${detail}`;
+    return `completion gate skipped: ${report.reason ?? "unknown reason"}`;
   }
   const lines = report.steps.map((step) => {
     if (step.skipped) {

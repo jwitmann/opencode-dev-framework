@@ -739,11 +739,30 @@ describe("passCache", () => {
     const passCache = createPassCache();
     const deps = { run, config, directory: dir, trackerFiles: ["ghost.ts"], passCache };
 
+    // The deletion fingerprints as `ghost.ts:deleted` (known state, not a
+    // bail), so the suite still runs once to validate the tree, then the
+    // clean pass is cached and the second inspection replays it.
     expect((await inspectCompletion(deps)).ok).toBe(true);
-    // The ghost contributes no fingerprint part (ENOENT is skipped, not a
-    // bail), so the clean pass is cached and the second inspection replays it.
     expect((await inspectCompletion(deps)).ok).toBe(true);
     expect(nonGitCalls(calls)).toHaveLength(1);
+  });
+
+  it("drops deleted files before the gate runs (mixed live + ghost)", async () => {
+    const config = resolve({
+      profile: "standard",
+      commands: { test: "npm test", lint: { ".ts": "eslint {file}" } },
+      gate: { run_typecheck: false, require_review: false, lint_changed: true },
+    });
+    const { calls, run } = stubRun((cmd) => (cmd[0] === "git" ? NO_GIT() : {}));
+    const passCache = createPassCache();
+    const deps = { run, config, directory: dir, trackerFiles: ["a.ts", "ghost.ts"], passCache };
+
+    const inspection = await inspectCompletion(deps);
+    expect(inspection.ok).toBe(true);
+    // The journal keeps the ghost (skip_unchanged, review, and signature
+    // consumers all see the real session); only path-consuming legs drop it.
+    expect(inspection.changedFiles).toEqual(["a.ts", "ghost.ts"]);
+    expect(nonGitCalls(calls).map((c) => c.command[0])).toEqual(["npm", "eslint"]);
   });
 
   it("re-runs when exclude changes lint coverage", async () => {

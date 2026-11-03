@@ -525,19 +525,3 @@ describe("runGate deleted files (ghost entries)", () => {
     expect(calls.map((c) => c.command)).toEqual([["golangci-lint", "run", "alive.go"]]);
   });
 });
-
-describe("summarizeGate all-skipped gates", () => {
-  it("names the reason and lists per-step skips", async () => {
-    const config = resolve({
-      profile: "strict",
-      commands: { lint: { ".go": "golangci-lint run {file}" } },
-      gate: { run_typecheck: false, run_tests: false, lint_changed: true },
-    });
-    const report = await runGate(stubRun().run, config, ["deleted.go"], { cwd: makeTempDir() });
-    expect(report.ran).toBe(false);
-    expect(report.reason).toBe("all changed files skipped");
-    const summary = summarizeGate(report);
-    expect(summary).toContain("all changed files skipped");
-    expect(summary).toContain("lint:deleted.go: skipped (file no longer exists)");
-  });
-});

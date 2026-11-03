@@ -246,10 +246,14 @@ async function passCacheKey(
       const s = await stat(join(directory, file));
       parts.push(`${file}:${s.mtimeMs}:${s.size}`);
     } catch (error) {
-      // Deleted-but-tracked ghosts are known state (gone), not unknown
-      // state: skip them so a clean pass stays cacheable. Any other stat
+      // A deleted file is known state (gone), not unknown state: finger-
+      // print the deletion itself so a clean pass stays cacheable, and so
+      // a deletion vs. an empty list never share a key. Any other stat
       // failure still bails — the tree may be unreadable.
-      if ((error as { code?: unknown })?.code === "ENOENT") continue;
+      if ((error as { code?: unknown })?.code === "ENOENT") {
+        parts.push(`${file}:deleted`);
+        continue;
+      }
       return null;
     }
   }
