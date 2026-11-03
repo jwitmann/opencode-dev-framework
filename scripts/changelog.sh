@@ -78,19 +78,17 @@ if [ "${1:-}" = "--backfill" ]; then
   mapfile -t tags < <(git tag --sort=-v:refname | grep -E '^v1\.')
   {
     write_header
-    prev=""
-    ordered=()
-    for (( i=${#tags[@]}-1; i>=0; i-- )); do ordered+=("${tags[i]}"); done
-    for idx in "${!ordered[@]}"; do
-      tag="${ordered[idx]}"
-      if [ "$idx" -eq 0 ]; then
+    for idx in "${!tags[@]}"; do
+      tag="${tags[idx]}"
+      if [ "$idx" -eq $((${#tags[@]} - 1)) ]; then
+        # Oldest tag: no predecessor in range, seed instead of an empty section.
         echo "## [${tag}] - $(git log -1 --format=%cs "$tag")"
         echo ""
         echo "Initial stable release line."
         echo ""
         continue
       fi
-      prev="${ordered[idx-1]}"
+      prev="${tags[idx+1]}"
       section_for "$prev" "$tag" "$tag" "$(git log -1 --format=%cs "$tag")"
     done
   } > CHANGELOG.md
