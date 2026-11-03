@@ -82,6 +82,19 @@ function isFailure(result: CommandResult): boolean {
 }
 
 /**
+ * True when any of a step's substituted inputs vanished mid-run: the failure
+ * may blame a ghost rather than the tree. Callers convert such failures to
+ * skips — the next idle re-evaluates with the ghost filtered out, so a
+ * genuine failure is only ever deferred by one idle, never masked. Steps
+ * whose commands name no files cannot race this way.
+ */
+function ghostRace(files: string[], cwd?: string): boolean {
+  return files.some(
+    (file) => !existsSync(isAbsolute(file) ? file : cwd !== undefined ? join(cwd, file) : file),
+  );
+}
+
+/**
  * Substitute the `{files}` token with the changed-file list. A token that is
  * exactly `{files}` expands to multiple argv entries (the commands run
  * without a shell); an embedded token is replaced inline.
@@ -201,10 +214,20 @@ export async function runGate(
     const template =
       config.gate.scope === "changed" ? config.commands.test_changed : config.commands.test;
     if (template !== undefined) {
+      const substituted = template.includes("{files}") ? existingFiles : [];
       const command = substituteFiles(template, existingFiles);
       independent.push(
         run(command, runOptions).then((result) => {
-          testStep = { name: "test", command, skipped: false, result };
+          if (isFailure(result) && ghostRace(substituted, options?.cwd)) {
+            testStep = {
+              name: "test",
+              command,
+              skipped: true,
+              reason: "inputs changed mid-run (tracked file deleted)",
+            };
+          } else {
+            testStep = { name: "test", command, skipped: false, result };
+          }
         }),
       );
     } else {
@@ -250,13 +273,24 @@ export async function runGate(
   // remaining steps. `{files}` substitution and the project `cwd` match the
   // test-command semantics; per-check timeout overrides the gate default.
   for (const check of config.gate.acceptance) {
+    const substituted = check.command.includes("{files}") ? existingFiles : [];
     const command = substituteFiles(check.command, existingFiles);
-    steps.push({
-      name: `acceptance:${check.name}`,
-      command,
-      skipped: false,
-      result: await run(command, { cwd: options?.cwd, timeout: check.timeout ?? timeout }),
-    });
+    const result = await run(command, { cwd: options?.cwd, timeout: check.timeout ?? timeout });
+    if (isFailure(result) && ghostRace(substituted, options?.cwd)) {
+      steps.push({
+        name: `acceptance:${check.name}`,
+        command,
+        skipped: true,
+        reason: "inputs changed mid-run (tracked file deleted)",
+      });
+    } else {
+      steps.push({
+        name: `acceptance:${check.name}`,
+        command,
+        skipped: false,
+        result,
+      });
+    }
   }
 
   const ran = steps.some((step) => !step.skipped);

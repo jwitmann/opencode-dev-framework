@@ -525,3 +525,81 @@ describe("runGate deleted files (ghost entries)", () => {
     expect(calls.map((c) => c.command)).toEqual([["golangci-lint", "run", "alive.go"]]);
   });
 });
+
+describe("runGate substitution ghost races (file vanishes mid-run)", () => {
+  const BASE = {
+    profile: "standard",
+    commands: { test: "npm test" },
+  } as const;
+
+  function deletingRun(dir: string, victim: string, match: string): RunCommand {
+    return (async (command: string[], _options?: RunCommandOptions) => {
+      if (command[0] === match) rmSync(join(dir, victim), { force: true });
+      return { stdout: "", stderr: "gone", exitCode: 1, timedOut: false };
+    }) as RunCommand;
+  }
+
+  it("skips the test step when a substituted file vanishes mid-run", async () => {
+    const dir = makeTempDir("a.ts");
+    const config = resolve({
+      ...BASE,
+      commands: { test_changed: "vitest related {files}" },
+      gate: { scope: "changed" },
+    });
+    const run = deletingRun(dir, "a.ts", "vitest");
+
+    const report = await runGate(run, config, ["a.ts"], { cwd: dir });
+
+    expect(report.ok).toBe(true);
+    const step = report.steps.find((s) => s.name === "test");
+    expect(step?.skipped).toBe(true);
+    expect(step?.reason).toContain("mid-run");
+  });
+
+  it("keeps a genuine test failure when substituted files still exist", async () => {
+    const dir = makeTempDir("a.ts");
+    const config = resolve({
+      ...BASE,
+      commands: { test_changed: "vitest related {files}" },
+      gate: { scope: "changed" },
+    });
+    const { run } = stubRun(() => ({ exitCode: 1 }));
+
+    const report = await runGate(run, config, ["a.ts"], { cwd: dir });
+
+    expect(report.ok).toBe(false);
+    expect(report.failedSteps.map((s) => s.name)).toEqual(["test"]);
+  });
+
+  it("skips an acceptance check when a substituted file vanishes mid-run", async () => {
+    const dir = makeTempDir("contract.json");
+    const config = resolve({
+      profile: "standard",
+      commands: {},
+      gate: { acceptance: [{ name: "contract", command: "verify-contract {files}" }] },
+    });
+    const run = deletingRun(dir, "contract.json", "verify-contract");
+
+    const report = await runGate(run, config, ["contract.json"], { cwd: dir });
+
+    expect(report.ok).toBe(true);
+    const step = report.steps.find((s) => s.name === "acceptance:contract");
+    expect(step?.skipped).toBe(true);
+    expect(step?.reason).toContain("mid-run");
+  });
+
+  it("keeps a genuine acceptance failure when substituted files still exist", async () => {
+    const dir = makeTempDir("contract.json");
+    const config = resolve({
+      profile: "standard",
+      commands: {},
+      gate: { acceptance: [{ name: "contract", command: "verify-contract {files}" }] },
+    });
+    const { run } = stubRun(() => ({ exitCode: 1 }));
+
+    const report = await runGate(run, config, ["contract.json"], { cwd: dir });
+
+    expect(report.ok).toBe(false);
+    expect(report.failedSteps.map((s) => s.name)).toEqual(["acceptance:contract"]);
+  });
+});
