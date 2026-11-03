@@ -63,7 +63,9 @@ export default Plugin.define({
               run: () => {
                 void ctx.ui.dialog.alert({
                   title: "dev-framework commands",
-                  message: renderHelp(),
+                  // The dialog title already carries the heading; drop the
+                  // duplicated first line from the shared text renderer.
+                  message: renderHelp().split("\n").slice(2).join("\n"),
                 });
               },
             },
@@ -112,7 +114,9 @@ export default Plugin.define({
                 const snapshot = await readRuntimeStatus(dir);
                 const shown = ctx.ui.dialog.alert({
                   title: "dev-framework runtime",
-                  message: renderRuntimeStatus(snapshot),
+                  // The dialog title already carries the heading; drop the
+                  // duplicated first line from the shared text renderer.
+                  message: renderRuntimeStatus(snapshot).split("\n").slice(2).join("\n"),
                 });
                 ctx.ui.dialog.set({ size: "large", centered: true });
                 await shown;
