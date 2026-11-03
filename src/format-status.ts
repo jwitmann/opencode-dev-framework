@@ -182,7 +182,9 @@ export function renderStatus(config: ResolvedConfig, state?: HookState | null): 
  * never as a negative claim about the hook.
  */
 export function renderRuntimeStatus(snapshot: RuntimeStatus | null): string {
-  const lines: string[] = ["dev-framework runtime", ""];
+  // No heading line: the only caller (the TUI dialog) already shows the
+  // title as dialog chrome — a body heading would render twice.
+  const lines: string[] = [];
   if (snapshot === null) {
     lines.push("No runtime snapshot reported yet — open a session in this");
     lines.push("project so the server plugin can record hook state.");
