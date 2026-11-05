@@ -47,8 +47,10 @@ the adapter, which silently weakened post-flight enforcement to advisory.
 - `/df-status` shows the active enforcement mode via `stopHookSupported`
   (flips the first time core actually dispatches `session.stopping`).
 
-**Tracking:** watch opencode PR #44712. When a release dispatches
-`session.stopping`, the plugin upgrades automatically with no config change.
+**Tracking:** V1 PR #44712 is superseded — watch the V2 issue
+[#60461](https://github.com/anomalyco/opencode/issues/60461) (carries
+`#16626`, implemented by PR #54487). When a release dispatches
+`experimental.stopping`, the plugin upgrades automatically with no config change.
 
 ## V2 migration (0.2.0) — `@opencode/plugin` ^2
 
@@ -1772,6 +1774,34 @@ unreadable-file observations that shaped this design.
 Instant unblock for the reporter: open a fresh session (tracker is
 in-memory per session — ghosts die with it). 340 tests green,
 format/lint/md/typecheck/build clean.
+
+## Upstream watchlist — all four verified open (2026-11-05)
+
+- `stopping` ([#60461](https://github.com/anomalyco/opencode/issues/60461),
+  own V2 request 2026-10-30, carries over #16626 + PR #54487) — real
+  pre-stop veto (`shouldContinue` vote, runner-owned budget of 2
+  continuations/turn) replaces the idle→synthetic continuation hack.
+  Bot-acknowledged, open, unassigned.
+- Settled-continuity
+  ([#61884](https://github.com/anomalyco/opencode/issues/61884), mv2sa,
+  opened today) — durable execution lineage for plugins (stable
+  execution ID, `continuous | broken | unknown`); would replace the
+  in-memory `lastIdleHandled` dedup. Bot cross-links #60461.
+- Background-declare
+  ([#60860](https://github.com/anomalyco/opencode/issues/60860),
+  ivopogace, 2026-10-31, from opencode-courier) — plugin entries in
+  `SessionIdle.background` so `/goal` waits instead of stall-pausing;
+  built-in idle hooks run before package plugins, so unworkable
+  without core help. Cross-links #60461.
+- Ralph loop
+  ([#61293](https://github.com/anomalyco/opencode/issues/61293), Gutem,
+  2026-11-02) — official `ralph-loop` plugin proposal on
+  `experimental.idle`, no core changes; steal `--completion-promise`
+  / per-goal `--max-iterations` thinking only. Cross-links #60461
+  and #60860.
+
+No code change until something upstream merges. `04-hook-mapping.md`
+stays as-is until then.
 
 ## References
 
