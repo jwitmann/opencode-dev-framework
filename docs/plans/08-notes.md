@@ -1795,10 +1795,10 @@ format/lint/md/typecheck/build clean.
   without core help. Cross-links #60461.
 - Ralph loop
   ([#61293](https://github.com/anomalyco/opencode/issues/61293), Gutem,
-  2026-11-02) — official `ralph-loop` plugin proposal on
-  `experimental.idle`, no core changes; steal `--completion-promise`
-  / per-goal `--max-iterations` thinking only. Cross-links #60461
-  and #60860.
+  2026-11-02) — evaluated, no action: `--max-iterations` duplicates
+  `gate.max_blocks` + stuck stand-down, and `--completion-promise`
+  (text marker) is weaker than the `/df-goal` tool-result contract.
+  Different lane if it ships; not a dependency.
 
 No code change until something upstream merges. `04-hook-mapping.md`
 stays as-is until then.

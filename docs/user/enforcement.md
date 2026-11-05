@@ -66,8 +66,10 @@ Three real runs against disposable fixtures show the loop end to end:
   the hook skips. The user can always close the session — treat the gate as
   the strongest available enforcement, not an unbreakable lock. A pre-terminal
   vote hook is proposed upstream
-  ([`anomalyco/opencode#54487`](https://github.com/anomalyco/opencode/pull/54487),
-  open). The **pre-flight** gate, by contrast, is a genuine hard block on
+  ([`anomalyco/opencode#60461`](https://github.com/anomalyco/opencode/issues/60461),
+  implemented by PR
+  [`anomalyco/opencode#54487`](https://github.com/anomalyco/opencode/pull/54487),
+  both open). The **pre-flight** gate, by contrast, is a genuine hard block on
   every build: it denies edit tools before the edit lands. The design
   assumes both halves: a core-owned goal lifecycle (have it — native
   `/goal`) and a pre-stop veto (proposed) — the plugin's verification
