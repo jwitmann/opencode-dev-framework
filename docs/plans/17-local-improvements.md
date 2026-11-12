@@ -1,12 +1,13 @@
 # Plan 17 — Local-only improvements (no upstream PR)
 
-Status: proposal, not scheduled — except §1 (session duty roster),
-§2 (config-weakening detection), and §3 (review substance), all
-implemented 2026-11-12 (`src/roster.ts` + `src/weakening.ts` +
+Status: closed out 2026-11-12. §1 (session duty roster),
+§2 (config-weakening detection), and §3 (review substance)
+implemented (`src/roster.ts` + `src/weakening.ts` +
 `src/review.ts`, wired in `src/index.ts` / `src/harness.ts`,
 tests in `tests/roster.test.ts` / `tests/weakening.test.ts` /
-`tests/review.test.ts`). Nothing else here is approved
-to implement.
+`tests/review.test.ts`). §4 dropped as low-value; §5/§6 declined
+on dogfood evidence (see §§). Revisit triggers live with the
+declined items; nothing else is approved to implement.
 
 Re-grounded 2026-11-12: the first draft ranked these from memory
 under mixed framings. This version follows a code re-read
@@ -164,10 +165,18 @@ improvements that are unconditionally good; prefer revealing
 Shape: thread `env` through `RunCommandOptions` (`spawn`
 already supports it; it is just never passed). Uniform scope —
 gate steps, acceptance checks, the `git status` probe, per-edit
-lint — one behavior, no special cases. Audit half only; no
-sanitized PATH, no escape hatch (see above).
+lint — one behavior, no special cases.
 
-## 6. Verdict visibility (investigation-first, not yet a build task)
+Declined 2026-11-12: the audit half too — not useful. Dogfood
+review (finnomena/animeRSS/tvmRSS configs + 174k-message DB):
+every gate binary resolves to exactly one sane location (D2b's
+`~/bin/false` is gone, `~/bin` holds only `browse`), and
+resolved paths would tax every verdict line to diagnose an
+unobserved class. Without a ledger (§6, also declined) the paths
+are homeless anyway. Revisit trigger: a second real shadowing
+incident diagnosed via `which` + log (two-strike rule).
+
+## 6. Verdict visibility — DECLINED (audited, not useful)
 
 Problem: `actOnVerdict` (`src/index.ts`) returns null on
 stand-down — after `max_blocks` or no-progress stand-down, the
@@ -215,6 +224,18 @@ journal (JSONL) tailed by `/df-status`. Resolved binary paths
 (§5A) ride as one ledger field under either — homeless without
 it. No decision taken; §5/§6 value unproven pending user call.
 
+Declined 2026-11-12: not useful. Dogfood shows zero live blocks,
+zero stand-downs, zero review-missing, zero `/df-verify` runs
+across 174k messages in the three projects — the harm class is
+unobserved, and nobody reaches for the pull-only backstop that
+already exists. Known limitations, not build triggers: advisory
+failures are transcript-invisible by construction (pass+note
+returns null), and no framework log file is configured
+(`OPENCODE_DEV_FRAMEWORK_LOG_FILE` unset), so the "complete
+record" lives only in opencode's own logs. Revisit trigger: a
+second real stand-down-then-false-"done" incident (two-strike
+rule).
+
 ## Explicitly out of scope for this goal
 
 - **Dangerous-command expansion → safety track.** Preventing
@@ -234,25 +255,27 @@ it. No decision taken; §5/§6 value unproven pending user call.
   path first — if log-only, scope the feedback gap before
   proposing anything.
 
-## Open questions
+## Open questions (all resolved — kept for history)
 
-- Roster content: exact fields and length cap (steps? commands
-  verbatim? protected paths? budget?).
-- Review thresholds: length floor and template-detection rules.
-- PATH denylist composition per OS; audit in the report vs the
-  debug log.
-- Verdict audit outcome (see 6).
+- Roster content: exact fields and length cap — resolved by §1
+  as shipped.
+- Review thresholds: length floor and template-detection rules —
+  resolved by §3 as shipped (200 chars / 30 words).
+- PATH denylist composition; audit in the report vs the debug
+  log — moot, §5 declined.
+- Verdict audit outcome (see 6) — done, §6 declined.
 
-## Ranking (proposer's take, not a decision)
+## Ranking (final)
 
-Roster, then config-weakening, then review, then slimmed PATH,
-then verdict visibility (after its investigation). Shell
-attribution dropped (see §4); danger sets and format keys were
-already off this list — different tracks, different
+Roster, config-weakening, and review shipped. Shell attribution
+dropped (see §4); slimmed PATH and verdict visibility declined
+on dogfood evidence (see §§5–6). Danger sets and format keys
+were already off this list — different tracks, different
 justifications.
 
-## Next steps (not scheduled)
+## Next steps
 
-Pick at most one or two to flesh out into an implementation-ready
-plan. Full validation per `AGENTS.md` applies to any of them
+Plan 17 is closed out: §1–§3 shipped; §4 dropped; §5–§6
+declined with revisit triggers. No further items scheduled.
+Full validation per `AGENTS.md` applies to any future work
 (`format:check`, `lint`, `lint:md`, `typecheck`, `test`, `build`).
