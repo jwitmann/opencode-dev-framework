@@ -50,7 +50,9 @@ gate:
   block_on_failure: true
   # standard/strict default: sessions that changed files must produce a
   # peer-review artifact (.opencode/opencode-dev-framework/review.md)
-  # before the completion gate passes.
+  # before the completion gate passes. Substance is enforced, not just
+  # existence: at least 200 chars / 30 words, no template markers or
+  # unfilled checklists — a "looks good" checkbox fails the gate.
   require_review: true
 
   # Optional: named project-specific acceptance checks. Run sequentially

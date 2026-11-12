@@ -43,7 +43,9 @@ Cover these five sections, in your project's terms:
 3. **Fresh review every task.** Rewrite `review.md` per task (a file left
    from a previous task never counts); evidence standard (a test failing
    without the change, passing with it); which reviewer agents to use at
-   which depth; blocking findings resolved or explicitly waived.
+   which depth; blocking findings resolved or explicitly waived. It must
+   also clear the gate's substance floors documented under
+   `require_review` in `configuration.md`.
 4. **Scope discipline.** Implement the written plan verbatim; park unrelated
    findings in one line each under a dated heading; report them or state
    none were parked. Commit locally, never push.

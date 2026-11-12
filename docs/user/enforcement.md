@@ -20,6 +20,7 @@ How the plugin enforces on OpenCode `v2` (idle hook landed via
 | Protected paths + dangerous commands | `tool.execute.before` deny/throw (load-bearing: the pipeline runs before-hooks first) | `permission.evaluate` native layer (deny) as defense-in-depth — it only ever sees calls the primary already passed; matters if core ever reorders the pipeline | **Hard block** via the primary deny; the native layer is belt-and-braces, never a weakening (it only denies or abstains). |
 | Per-edit lint | `tool.execute.after` track + lint | `filesystem.changed` event (this release) | Report-only: the edit already landed, so failures log loudly but never throw. |
 | Completion gate | `session.hook("experimental.idle")` (+ `idle` alias) → `session.synthetic` (same execution) | `event.subscribe` idle net for the boundaries the hook skips (deduped; synthetic-first, `prompt` fallback) | **Async, bounded** by `gate.max_blocks`. `/df-status` shows `Continuation (idle): active` once the hook has completed an evaluation, else the event-subscribe fallback. `execute.before` stays the only true hard wall. |
+| Session duty roster | `context` hook injection at session start | — | **Legibility only, never blocks**: a checklist of the duties above (steps, scope, review, block budget) so the agent sees the whole contract upfront. `off` produces no roster. |
 
 ## Flow
 
@@ -48,6 +49,17 @@ flowchart TD
 
 npmjs.com does not render mermaid, so the README carries this same flow
 as a plain-text diagram — update both together.
+
+## Mid-session weakening
+
+The gate snapshots the enforceable contract at session start (profile,
+blocking flags, review/lint requirements) and diffs the live config at
+every evaluation. Turning duties down mid-session — a profile downgrade,
+disabling a gate step, dropping `require_review` — yields a `"weakened"`
+verdict that blocks like any other failure, and a weakened contract never
+replays a cached pass. The snapshot is never re-baselined, including
+across profile switches, so a downgrade reads as the weakening it is.
+Command-text edits are deliberately excluded from the diff.
 
 ## Worked sessions
 

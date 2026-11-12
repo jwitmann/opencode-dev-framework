@@ -68,7 +68,8 @@ Requires OpenCode `v2.x` — tested on `v2.0.26` and `v2.2.0`. On
 - **Per-edit lint.** Runs your linter on each edited file and reports loudly.
 - **Completion gate.** At the would-go-idle boundary, runs typecheck, tests,
   acceptance checks, and (optionally) lint on changed files — plus a required
-  peer-review artifact in `standard`/`strict`. Failures steer the session
+  substantive peer-review artifact in `standard`/`strict` (length floors, no
+  template checkboxes). Failures steer the session
   back with the failure summary, bounded by `gate.max_blocks` (fewer when
   the failure repeats with no new edits — the gate stands down early on
   zero progress).
