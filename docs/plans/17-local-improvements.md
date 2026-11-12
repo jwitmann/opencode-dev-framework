@@ -1,8 +1,10 @@
 # Plan 17 — Local-only improvements (no upstream PR)
 
-Status: proposal, not scheduled — except §1 (session duty roster),
-implemented 2026-11-12 (`src/roster.ts`, wired in `src/index.ts`,
-tests in `tests/roster.test.ts`). Nothing else here is approved
+Status: proposal, not scheduled — except §1 (session duty roster)
+and §2 (config-weakening detection), both implemented 2026-11-12
+(`src/roster.ts` + `src/weakening.ts`, wired in `src/index.ts` /
+`src/harness.ts`, tests in `tests/roster.test.ts` /
+`tests/weakening.test.ts`). Nothing else here is approved
 to implement.
 
 Re-grounded 2026-11-12: the first draft ranked these from memory
@@ -72,6 +74,22 @@ diff in `reloadConfigIfChanged`, surface in the gate summary.
 `warn` in advisory, `deny` in standard/strict — no new axis.
 Detection over prevention is deliberate: hard-denying config
 edits would break legitimate agent-driven flows like `df init`.
+
+Implemented 2026-11-12: `snapshotEnforceable` / `diffWeakening`
+in `src/weakening.ts` (boolean flags, `require_review`,
+`max_blocks` lowered, removed gate commands while their step
+still runs, removed acceptance names, reduced preflight count,
+scope narrowing that would skip tests; profile downgrade
+collapses to one line; command *modifications* deliberately
+unflagged). `HookState.initialEnforceable` snapshotted at setup
+and never re-baselined (covers `set_profile` too); the diff runs
+at evaluation time in `inspectCompletion`/`evaluateCompletion`
+(`src/harness.ts`, `baseline` opt-in so manual `/df-verify`
+still evaluates the live contract as-is), ahead of the pass-cache
+lookup so a weakened contract never replays a cached pass. New
+`"weakened"` verdict reason: blocks with its own continuation
+wording in standard/strict, warns-and-passes in advisory. Stuck
+stand-down tracks a `weakened:<lines>` signature.
 
 ## 3. Review substance (beyond existence)
 

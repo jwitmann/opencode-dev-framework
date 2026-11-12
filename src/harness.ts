@@ -25,6 +25,7 @@ import type { RunCommand } from "./host.js";
 import type { LintLimiter } from "./lint.js";
 import type { LogFn } from "./logger.js";
 import type { ResolvedConfig } from "./types.js";
+import { diffWeakening, type EnforceableSnapshot } from "./weakening.js";
 
 /** Project-relative path of the peer-review artifact the agent must produce. */
 export const REVIEW_ARTIFACT_REL = ".opencode/opencode-dev-framework/review.md";
@@ -140,13 +141,18 @@ export type CompletionVerdict =
   | { decision: "pass"; changedFiles: string[]; note?: string }
   | {
       decision: "blocked";
-      reason: "gate" | "review";
+      reason: "gate" | "review" | "weakened";
       summary: string;
       blockCount: number;
       maxBlocks: number;
       changedFiles: string[];
     }
-  | { decision: "standdown"; reason: "gate" | "review"; summary: string; changedFiles: string[] };
+  | {
+      decision: "standdown";
+      reason: "gate" | "review" | "weakened";
+      summary: string;
+      changedFiles: string[];
+    };
 
 export interface CompletionDeps {
   run: RunCommand;
@@ -162,6 +168,13 @@ export interface CompletionDeps {
   lintLimiter?: LintLimiter;
   /** Session pass cache; skips redundant gate suites across idle boundaries. */
   passCache?: PassCache;
+  /**
+   * Session-start enforceable snapshot (plan 17 §2). When present, a
+   * mid-session duty reduction blocks in standard/strict (reason
+   * `"weakened"`) and warns in advisory. Absent (e.g. manual
+   * `/df-verify`), the live contract evaluates as-is.
+   */
+  baseline?: EnforceableSnapshot;
 }
 
 function reviewMissingMessage(changedFiles: string[]): string {
@@ -206,6 +219,14 @@ export interface InspectionDeps {
    * never are, so loud reporting is preserved.
    */
   passCache?: PassCache;
+  /**
+   * Session-start enforceable snapshot (plan 17 §2). When present, a
+   * mid-session duty reduction fails the inspection (`ok: false`) with
+   * the reductions listed in `weakenings` and leading the summary.
+   * Absent (e.g. manual `/df-verify`), the live contract evaluates
+   * as-is.
+   */
+  baseline?: EnforceableSnapshot;
 }
 
 /**
@@ -272,10 +293,10 @@ async function passCacheKey(
 }
 
 /**
- * Raw completion report. `ok` is the unadjudicated outcome (gate passed and
- * review satisfied); profiles, block counting, and stand-down are applied by
- * `evaluateCompletion`, and `verifyGate` reports `ok` verbatim as its
- * PASS/FAIL verdict.
+ * Raw completion report. `ok` is the unadjudicated outcome (gate passed,
+ * review satisfied, and contract unweakened); profiles, block counting,
+ * and stand-down are applied by `evaluateCompletion`, and `verifyGate`
+ * reports `ok` verbatim as its PASS/FAIL verdict.
  */
 export interface CompletionInspection {
   changedFiles: string[];
@@ -285,10 +306,21 @@ export interface CompletionInspection {
   reviewMissing: boolean;
   /** True when the gate short-circuited on `skip_unchanged` with no files. */
   skipped: boolean;
-  /** Raw outcome: gate ok AND review satisfied. No profile/policy applied. */
+  /** Mid-session duty reductions vs the session-start snapshot (empty when intact). */
+  weakenings: string[];
+  /** Raw outcome: gate ok AND review satisfied AND contract unweakened. No profile/policy applied. */
   ok: boolean;
   /** Human- and transcript-readable summary (gate detail or review notice). */
   summary: string;
+}
+
+/** Lead section for a weakened-contract summary; the live gate detail follows. */
+export function weakeningSection(weakenings: string[]): string {
+  const lines = weakenings.map((w) => `  - ${w}`);
+  return (
+    `opencode-dev-framework completion contract was weakened mid-session ` +
+    `(duties were reduced after the session started):\n${lines.join("\n")}`
+  );
 }
 
 /**
@@ -314,6 +346,7 @@ export async function inspectCompletion(deps: InspectionDeps): Promise<Completio
     reviewState: "present",
     reviewMissing: false,
     skipped: false,
+    weakenings: [],
     ok: true,
     summary: "completion gate disabled (profile off or no gate section)",
   };
@@ -336,6 +369,14 @@ export async function inspectCompletion(deps: InspectionDeps): Promise<Completio
 
   const reviewRequired = config.gate.require_review && changedFiles.length > 0;
 
+  // Mid-session duty reduction vs the session-start snapshot. Computed
+  // before the pass-cache lookup: the fingerprint does not cover the
+  // profile, so a weakened contract must never replay a cached pass.
+  // Only evaluated when the gate actually runs — a skipped gate (no
+  // changed files) has no duties to escape.
+  const weakenings = deps.baseline !== undefined ? diffWeakening(deps.baseline, config) : [];
+  const weakened = weakenings.length > 0;
+
   // Fingerprint the tree the gate is about to validate, once. A hit replays
   // the cached pass; a clean run stores this same pre-run key. Storing the
   // pre-run (not post-run) state matters: an edit landing mid-gate-run
@@ -356,7 +397,8 @@ export async function inspectCompletion(deps: InspectionDeps): Promise<Completio
     cachedKey !== undefined &&
     cachedKey !== null &&
     cachedSummary !== undefined &&
-    cachedSummary !== null
+    cachedSummary !== null &&
+    !weakened
   ) {
     if (fingerprint !== null && fingerprint === cachedKey) {
       return {
@@ -366,6 +408,7 @@ export async function inspectCompletion(deps: InspectionDeps): Promise<Completio
         reviewState: "present",
         reviewMissing: false,
         skipped: false,
+        weakenings,
         ok: true,
         summary: cachedSummary,
       };
@@ -383,23 +426,24 @@ export async function inspectCompletion(deps: InspectionDeps): Promise<Completio
     : "present";
   const reviewMissing = reviewRequired && reviewState !== "present";
 
-  const ok = !gateFailed && !reviewMissing;
-  const summary = gateFailed
+  const ok = !gateFailed && !reviewMissing && !weakened;
+  const baseSummary = gateFailed
     ? summarizeGate(report)
     : reviewMissing
       ? reviewMissingMessage(changedFiles)
       : report.ran
         ? `completion gate passed\n${summarizeGate(report)}`
         : `completion gate passed (${report.reason ?? "nothing to run"})`;
+  const summary = weakened ? `${weakeningSection(weakenings)}\n\n${baseSummary}` : baseSummary;
   if (deps.passCache !== undefined) {
-    if (!gateFailed && !reviewMissing && report.ran && fingerprint !== null) {
+    if (!gateFailed && !reviewMissing && !weakened && report.ran && fingerprint !== null) {
       // Genuinely clean pass that actually ran — store the pre-run
-      // fingerprint for the next idle. Advisory problems (gateFailed) and
-      // missing reviews never store; vacuous passes (nothing ran) neither
-      // store nor clear.
+      // fingerprint for the next idle. Advisory problems (gateFailed),
+      // missing reviews, and weakened contracts never store; vacuous
+      // passes (nothing ran) neither store nor clear.
       deps.passCache.key = fingerprint;
       deps.passCache.summary = summary;
-    } else if (gateFailed || reviewMissing) {
+    } else if (gateFailed || reviewMissing || weakened) {
       deps.passCache.key = null;
       deps.passCache.summary = null;
     }
@@ -410,6 +454,7 @@ export async function inspectCompletion(deps: InspectionDeps): Promise<Completio
     reviewRequired,
     reviewState,
     reviewMissing,
+    weakenings,
     skipped: false,
     ok,
     summary,
@@ -436,12 +481,14 @@ export async function evaluateCompletion(deps: CompletionDeps): Promise<Completi
     trackerFiles: tracker.getChangedFiles(),
     lintLimiter: deps.lintLimiter,
     passCache: deps.passCache,
+    baseline: deps.baseline,
   });
   const { changedFiles, report } = inspection;
   const gateFailed = report.ran && !report.ok;
   const reviewMissing = inspection.reviewMissing;
+  const weakened = inspection.weakenings.length > 0;
 
-  if (!gateFailed && !reviewMissing) {
+  if (!gateFailed && !reviewMissing && !weakened) {
     tracker.clearChangedFiles();
     await blockCounts.clear(sessionID);
     await stuckSnapshots.clear(sessionID);
@@ -454,7 +501,8 @@ export async function evaluateCompletion(deps: CompletionDeps): Promise<Completi
     };
   }
 
-  // Advisory: report loudly, never block.
+  // Advisory: report loudly, never block. A weakened contract in advisory
+  // lands here too — visible in the log and the pass note, never a block.
   if (!config.gate.block_on_failure) {
     const summary = inspection.summary;
     await deps.log("error", `completion gate (advisory — not blocking) saw problems:\n${summary}`);
@@ -465,7 +513,13 @@ export async function evaluateCompletion(deps: CompletionDeps): Promise<Completi
     };
   }
 
-  const reason: "gate" | "review" = gateFailed ? "gate" : "review";
+  // A weakened contract outranks the live gate outcome: the evidence was
+  // gathered against moved goalposts, so the verdict names that first.
+  const reason: "gate" | "review" | "weakened" = weakened
+    ? "weakened"
+    : gateFailed
+      ? "gate"
+      : "review";
   const summary = inspection.summary;
   const maxBlocks = config.gate.max_blocks ?? 3;
 
@@ -474,12 +528,14 @@ export async function evaluateCompletion(deps: CompletionDeps): Promise<Completi
   // zero information, so stop spending the budget on them. One
   // investigate-then-fix cycle is tolerated (a single repeat still
   // blocks); the third identical evaluation stands down.
-  const signature = gateFailed
-    ? `gate:${report.failedSteps
-        .map((s) => s.name)
-        .sort()
-        .join(",")}`
-    : "review";
+  const signature = weakened
+    ? `weakened:${[...inspection.weakenings].sort().join("|")}`
+    : gateFailed
+      ? `gate:${report.failedSteps
+          .map((s) => s.name)
+          .sort()
+          .join(",")}`
+      : "review";
   const files = [...changedFiles].sort();
   const previous = await stuckSnapshots.get(sessionID);
   const noProgress =

@@ -58,6 +58,7 @@ import { constitutionPresent, loadConstitution } from "./rules.js";
 import { findRosterIndex, renderDutyRoster, rosterPresent } from "./roster.js";
 import { writeRuntimeStatus, type IdleHookVia } from "./runtime-status.js";
 import type { ResolvedConfig } from "./types.js";
+import { snapshotEnforceable, type EnforceableSnapshot } from "./weakening.js";
 
 // ---------------------------------------------------------------------------
 // Internal state — single plugin instance per location.directory.
@@ -69,6 +70,13 @@ import type { ResolvedConfig } from "./types.js";
 export interface HookState {
   directory: string;
   config: ResolvedConfig;
+  /**
+   * Session-start enforceable snapshot (plan 17 §2). Compared against the
+   * live config at every gate evaluation so mid-session duty reductions
+   * surface in the verdict. Never re-baselined — including across
+   * `set_profile` — so a profile downgrade reads as the weakening it is.
+   */
+  initialEnforceable: EnforceableSnapshot;
   log: LogFn;
   run: RunCommand;
   tracker: ChangedFileTracker;
@@ -195,7 +203,9 @@ function continuationMessage(verdict: Extract<CompletionVerdict, { decision: "bl
   const why =
     verdict.reason === "review"
       ? "the peer-review requirement is unmet"
-      : "the repo's checks are failing";
+      : verdict.reason === "weakened"
+        ? "the completion contract was weakened mid-session"
+        : "the repo's checks are failing";
   return (
     `opencode-dev-framework completion gate blocked you from finishing because ${why} ` +
     `(block ${verdict.blockCount}/${verdict.maxBlocks}).\n\n${verdict.summary}\n\n` +
@@ -269,6 +279,7 @@ function runCompletion(state: HookState, sessionID: string): Promise<CompletionV
     stuckSnapshots: state.stuckSnapshots,
     lintLimiter: state.lintLimiter,
     passCache: state.passCache,
+    baseline: state.initialEnforceable,
     log: (level, message, extra) => safeLog(state, level, message, extra),
   });
 }
@@ -388,6 +399,7 @@ const plugin = Plugin.define({
     const state: HookState = {
       directory,
       config,
+      initialEnforceable: snapshotEnforceable(config),
       log,
       run: runCommand,
       tracker,
