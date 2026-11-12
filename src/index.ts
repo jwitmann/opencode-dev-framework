@@ -1073,6 +1073,14 @@ const plugin = Plugin.define({
                   const { constitution: newConstitution } = await lc2(newConfig, state.directory);
                   state.config = newConfig;
                   state.constitution = newConstitution;
+                  for (const name of [".opencode-dev-framework.yml", ".dev-framework.yml"]) {
+                    try {
+                      state.configMtime = (await stat(join(state.directory, name))).mtimeMs;
+                      break;
+                    } catch {
+                      // continue to fallback name
+                    }
+                  }
                 },
                 deliver: async (text, delivery) => {
                   await ctx.session.prompt({
