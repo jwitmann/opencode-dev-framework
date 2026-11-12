@@ -17,6 +17,17 @@ afterEach(async () => {
   await rm(dir, { recursive: true, force: true });
 });
 
+/**
+ * Substantive review body (plan 17 §3): over both floors with no
+ * template markers. Checkbox bodies like "reviewed" now fail.
+ */
+const REVIEW_BODY =
+  "Scope: src/a.ts changed to fix the completion gate test fixture. " +
+  "Findings: style-enforcer reported no violations on the changed file; " +
+  "test-grounder confirmed the new test fails without the change and passes with it; " +
+  "code-reviewer found no correctness defects; pattern-guardian confirmed no new abstractions. " +
+  "Resolution: all findings addressed and the gate suite is green.";
+
 describe("changeProfile helper", () => {
   it("edits the profile key in the config file", async () => {
     await writeFile(
@@ -69,7 +80,7 @@ describe("verifyGate helper", () => {
 
   it("returns a PASS verdict with the stable first line when green and reviewed", async () => {
     await mkdir(join(dir, ".opencode", "opencode-dev-framework"), { recursive: true });
-    await writeFile(join(dir, ".opencode", "opencode-dev-framework", "review.md"), "reviewed");
+    await writeFile(join(dir, ".opencode", "opencode-dev-framework", "review.md"), REVIEW_BODY);
     const config = resolveConfig(
       { profile: "standard", commands: { typecheck: "echo ok" }, gate: { run_tests: false } },
       join(dir, ".opencode-dev-framework.yml"),
@@ -95,7 +106,7 @@ describe("verifyGate helper", () => {
 
   it("returns FAIL when a command fails even though review exists", async () => {
     await mkdir(join(dir, ".opencode", "opencode-dev-framework"), { recursive: true });
-    await writeFile(join(dir, ".opencode", "opencode-dev-framework", "review.md"), "reviewed");
+    await writeFile(join(dir, ".opencode", "opencode-dev-framework", "review.md"), REVIEW_BODY);
     const config = resolveConfig(
       { profile: "standard", commands: { typecheck: "exit 1" }, gate: { run_tests: false } },
       join(dir, ".opencode-dev-framework.yml"),

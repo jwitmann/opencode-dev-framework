@@ -1,10 +1,11 @@
 # Plan 17 — Local-only improvements (no upstream PR)
 
-Status: proposal, not scheduled — except §1 (session duty roster)
-and §2 (config-weakening detection), both implemented 2026-11-12
-(`src/roster.ts` + `src/weakening.ts`, wired in `src/index.ts` /
-`src/harness.ts`, tests in `tests/roster.test.ts` /
-`tests/weakening.test.ts`). Nothing else here is approved
+Status: proposal, not scheduled — except §1 (session duty roster),
+§2 (config-weakening detection), and §3 (review substance), all
+implemented 2026-11-12 (`src/roster.ts` + `src/weakening.ts` +
+`src/review.ts`, wired in `src/index.ts` / `src/harness.ts`,
+tests in `tests/roster.test.ts` / `tests/weakening.test.ts` /
+`tests/review.test.ts`). Nothing else here is approved
 to implement.
 
 Re-grounded 2026-11-12: the first draft ranked these from memory
@@ -105,6 +106,19 @@ Shape: non-empty plus minimum meaningful length plus rejection
 of template-only content, with new reason strings. Thresholds
 stay constants in code with tests, not user config — "what counts
 as a review" is a framework contract.
+
+Implemented 2026-11-12: `assessReviewContent` in `src/review.ts`
+(`REVIEW_MIN_CHARS` 200 / `REVIEW_MIN_WORDS` 30 floors, universal
+placeholder markers with word boundaries plus unfilled-checklist
+detection; deliberate padding out of scope). `readReviewState`
+in `src/harness.ts` grades the artifact (`missing` | `empty` |
+`thin` | `template` | `present`); only `present` satisfies the
+duty. Thin/template block with their own summaries in
+standard/strict, warn-and-pass in advisory. Messages are
+constitution-agnostic (no `40-delegation` citation — the
+constitution can be superseded, so the gate text stands alone).
+Stuck stand-down tracks `review:<state>`, so partial progress
+resets the streak.
 
 ## 4. Shell-edit attribution for the changed-file tracker
 

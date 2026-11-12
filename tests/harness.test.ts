@@ -24,6 +24,18 @@ function resolve(raw: Config) {
   return resolveConfig(raw, "/project/.opencode-dev-framework.yml");
 }
 
+/**
+ * Substantive review body (plan 17 §3): over both floors
+ * (`REVIEW_MIN_CHARS` / `REVIEW_MIN_WORDS`) with no template
+ * markers. Short bodies like "done" now correctly fail.
+ */
+const REVIEW_BODY =
+  "Scope: src/a.ts changed to fix the completion gate test fixture. " +
+  "Findings: style-enforcer reported no violations on the changed file; " +
+  "test-grounder confirmed the new test fails without the change and passes with it; " +
+  "code-reviewer found no correctness defects; pattern-guardian confirmed no new abstractions. " +
+  "Resolution: all findings addressed and the gate suite is green.";
+
 interface RunCall {
   command: string[];
   options?: RunCommandOptions;
@@ -172,7 +184,7 @@ describe("evaluateCompletion", () => {
     await rm(dir, { recursive: true, force: true });
   });
 
-  const writeArtifact = async (rel: string, content = "done") => {
+  const writeArtifact = async (rel: string, content = REVIEW_BODY) => {
     await mkdir(join(dir, ".opencode", "opencode-dev-framework"), { recursive: true });
     await writeFile(join(dir, rel), content);
   };
@@ -500,7 +512,7 @@ describe("inspectCompletion (side-effect-free inspection)", () => {
     await rm(dir, { recursive: true, force: true });
   });
 
-  const writeArtifact = async (rel: string, content = "done") => {
+  const writeArtifact = async (rel: string, content = REVIEW_BODY) => {
     await mkdir(join(dir, ".opencode", "opencode-dev-framework"), { recursive: true });
     await writeFile(join(dir, rel), content);
   };
@@ -822,7 +834,7 @@ describe("passCache", () => {
     const deps = { run, config, directory: dir, trackerFiles: ["a.ts"], passCache };
 
     await mkdir(join(dir, ".opencode/opencode-dev-framework"), { recursive: true });
-    await writeFile(join(dir, REVIEW_ARTIFACT_REL), "reviewed\n");
+    await writeFile(join(dir, REVIEW_ARTIFACT_REL), `${REVIEW_BODY}\n`);
 
     expect((await inspectCompletion(deps)).ok).toBe(true);
     expect(nonGitCalls(calls)).toHaveLength(1);

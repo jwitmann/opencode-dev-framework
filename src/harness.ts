@@ -24,6 +24,12 @@ import { runGate, summarizeGate, type ChangedFileTracker, type GateReport } from
 import type { RunCommand } from "./host.js";
 import type { LintLimiter } from "./lint.js";
 import type { LogFn } from "./logger.js";
+import {
+  assessReviewContent,
+  templateReviewMessage,
+  thinReviewMessage,
+  type ReviewState,
+} from "./review.js";
 import type { ResolvedConfig } from "./types.js";
 import { diffWeakening, type EnforceableSnapshot } from "./weakening.js";
 
@@ -55,6 +61,22 @@ export async function artifactState(directory: string, relPath: string): Promise
   } catch {
     return "missing";
   }
+}
+
+/**
+ * Grade the peer-review artifact including substance (plan 17 §3).
+ * Never throws — unreadable files count as missing. Thin or
+ * template content names the duty-escape on the record instead of
+ * passing a checkbox note.
+ */
+export async function readReviewState(directory: string): Promise<ReviewState> {
+  let content: string;
+  try {
+    content = await readFile(join(directory, REVIEW_ARTIFACT_REL), "utf8");
+  } catch {
+    return "missing";
+  }
+  return assessReviewContent(content);
 }
 
 /**
@@ -302,7 +324,8 @@ export interface CompletionInspection {
   changedFiles: string[];
   report: GateReport;
   reviewRequired: boolean;
-  reviewState: ArtifactState;
+  /** Substance-graded review state (plan 17 §3): only `present` satisfies the duty. */
+  reviewState: ReviewState;
   reviewMissing: boolean;
   /** True when the gate short-circuited on `skip_unchanged` with no files. */
   skipped: boolean;
@@ -421,19 +444,21 @@ export async function inspectCompletion(deps: InspectionDeps): Promise<Completio
   });
   const gateFailed = report.ran && !report.ok;
 
-  const reviewState = reviewRequired
-    ? await artifactState(directory, REVIEW_ARTIFACT_REL)
-    : "present";
+  const reviewState: ReviewState = reviewRequired ? await readReviewState(directory) : "present";
   const reviewMissing = reviewRequired && reviewState !== "present";
 
   const ok = !gateFailed && !reviewMissing && !weakened;
   const baseSummary = gateFailed
     ? summarizeGate(report)
-    : reviewMissing
-      ? reviewMissingMessage(changedFiles)
-      : report.ran
-        ? `completion gate passed\n${summarizeGate(report)}`
-        : `completion gate passed (${report.reason ?? "nothing to run"})`;
+    : reviewState === "thin"
+      ? thinReviewMessage(changedFiles)
+      : reviewState === "template"
+        ? templateReviewMessage(changedFiles)
+        : reviewMissing
+          ? reviewMissingMessage(changedFiles)
+          : report.ran
+            ? `completion gate passed\n${summarizeGate(report)}`
+            : `completion gate passed (${report.reason ?? "nothing to run"})`;
   const summary = weakened ? `${weakeningSection(weakenings)}\n\n${baseSummary}` : baseSummary;
   if (deps.passCache !== undefined) {
     if (!gateFailed && !reviewMissing && !weakened && report.ran && fingerprint !== null) {
@@ -535,7 +560,7 @@ export async function evaluateCompletion(deps: CompletionDeps): Promise<Completi
           .map((s) => s.name)
           .sort()
           .join(",")}`
-      : "review";
+      : `review:${inspection.reviewState}`;
   const files = [...changedFiles].sort();
   const previous = await stuckSnapshots.get(sessionID);
   const noProgress =

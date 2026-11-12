@@ -15,6 +15,17 @@ function resolve(raw: Config) {
   return resolveConfig(raw, "/project/.opencode-dev-framework.yml");
 }
 
+/**
+ * Substantive review body (plan 17 §3): over both floors with no
+ * template markers. Checkbox bodies like "reviewed" now fail.
+ */
+const REVIEW_BODY =
+  "Scope: src/a.ts changed to fix the completion gate test fixture. " +
+  "Findings: style-enforcer reported no violations on the changed file; " +
+  "test-grounder confirmed the new test fails without the change and passes with it; " +
+  "code-reviewer found no correctness defects; pattern-guardian confirmed no new abstractions. " +
+  "Resolution: all findings addressed and the gate suite is green.";
+
 describe("snapshotEnforceable / diffWeakening", () => {
   const FULL = {
     profile: "standard",
@@ -194,7 +205,7 @@ describe("weakening at the gate", () => {
 
   it("fails inspection with the reductions leading the summary", async () => {
     await mkdir(join(dir, ".opencode", "opencode-dev-framework"), { recursive: true });
-    await writeFile(join(dir, REVIEW_ARTIFACT_REL), "reviewed");
+    await writeFile(join(dir, REVIEW_ARTIFACT_REL), REVIEW_BODY);
     const { deps } = makeEval(green, {
       profile: "standard",
       commands: { typecheck: "true", test: "true" },
@@ -216,7 +227,7 @@ describe("weakening at the gate", () => {
 
   it("blocks in standard with reason weakened even when the live gate is green", async () => {
     await mkdir(join(dir, ".opencode", "opencode-dev-framework"), { recursive: true });
-    await writeFile(join(dir, REVIEW_ARTIFACT_REL), "reviewed");
+    await writeFile(join(dir, REVIEW_ARTIFACT_REL), REVIEW_BODY);
     const { deps } = makeEval(green, {
       profile: "standard",
       commands: { typecheck: "true", test: "true" },
@@ -232,7 +243,7 @@ describe("weakening at the gate", () => {
 
   it("warns and passes in advisory without blocking", async () => {
     await mkdir(join(dir, ".opencode", "opencode-dev-framework"), { recursive: true });
-    await writeFile(join(dir, REVIEW_ARTIFACT_REL), "reviewed");
+    await writeFile(join(dir, REVIEW_ARTIFACT_REL), REVIEW_BODY);
     // Baseline is standard (green); live is advisory — the profile
     // downgrade collapses to a single line.
     const { deps, entries } = makeEval(green, {
@@ -250,7 +261,7 @@ describe("weakening at the gate", () => {
 
   it("passes without a baseline (manual verify evaluates the live contract as-is)", async () => {
     await mkdir(join(dir, ".opencode", "opencode-dev-framework"), { recursive: true });
-    await writeFile(join(dir, REVIEW_ARTIFACT_REL), "reviewed");
+    await writeFile(join(dir, REVIEW_ARTIFACT_REL), REVIEW_BODY);
     const { deps } = makeEval(
       green,
       {
