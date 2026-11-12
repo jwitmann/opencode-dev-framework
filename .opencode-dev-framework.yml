@@ -1,0 +1,23 @@
+# Self-hosting: the framework gates itself with the same matrix AGENTS.md
+# demands. Peer review is enforced: the idle gate requires a substantive
+# review.md covering the changed files (200 chars / 30 words floors, no
+# template markers — see docs/plans/17-local-improvements.md §3).
+# Reversibility: deleting this file returns to off (§2 flags mid-session
+# removal as weakening — itself a useful self-test).
+profile: standard
+
+commands:
+  typecheck: "npm run typecheck"
+  test: "npm run test"
+  lint:
+    ".ts": "npx biome lint {file}"
+    ".tsx": "npx biome lint {file}"
+
+gate:
+  require_review: true
+  skip_unchanged: true
+  scope: all
+
+exclude:
+  - "dist/**"
+  - "node_modules/**"
