@@ -6,6 +6,16 @@ Generated from conventional commits (`scripts/changelog.sh`).
 Single source: CI publishes each version's section as the GitHub
 release notes, so this file and the release page never diverge.
 
+## [v1.7.0] - 2026-11-12
+
+### Features
+
+- /df-init server command for one-step per-project setup ([`83f98dd`](https://github.com/jwitmann/opencode-dev-framework/commit/83f98dd47caf55561bddd1a57d6cbfa381c443c5))
+
+### Documentation
+
+- skill brief section covers all setup entry points ([`2cb7639`](https://github.com/jwitmann/opencode-dev-framework/commit/2cb7639aeed81765bd7d9fe698d528aa6067cb72))
+
 ## [v1.6.0] - 2026-11-12
 
 ### Features
