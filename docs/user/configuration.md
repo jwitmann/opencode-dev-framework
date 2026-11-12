@@ -47,6 +47,8 @@ gate:
   # before the completion gate passes. Substance is enforced, not just
   # existence: at least 200 chars / 30 words, no template markers or
   # unfilled checklists — a "looks good" checkbox fails the gate.
+  # Freshness is enforced too: the review must name every file the
+  # session changed, or it fails as stale.
   require_review: true
 
   # Optional: named project-specific acceptance checks. Run sequentially
