@@ -55,6 +55,7 @@ import {
 import { createLogger, type LogFn, type LogLevel } from "./logger.js";
 import { checkToolCall, extractFilePath, FILE_TOOLS, toPermissionGuard } from "./protect.js";
 import { constitutionPresent, loadConstitution } from "./rules.js";
+import { findRosterIndex, renderDutyRoster, rosterPresent } from "./roster.js";
 import { writeRuntimeStatus, type IdleHookVia } from "./runtime-status.js";
 import type { ResolvedConfig } from "./types.js";
 
@@ -449,15 +450,29 @@ const plugin = Plugin.define({
         await reloadConfigIfChanged(state);
         if (state.config.profile === "off") return;
         const constitution = state.constitution;
-        if (!constitution) return;
-        // V2 system is Array<SystemPart> {type:"text", text:string}
-        const already = constitutionPresent(event.system, constitution);
-        if (already) return;
-        event.system.push({
-          type: "text",
-          text: constitution,
-        });
-        await safeLog(state, "info", "constitution injected into system prompt");
+        if (constitution) {
+          // V2 system is Array<SystemPart> {type:"text", text:string}
+          const already = constitutionPresent(event.system, constitution);
+          if (!already) {
+            event.system.push({
+              type: "text",
+              text: constitution,
+            });
+            await safeLog(state, "info", "constitution injected into system prompt");
+          }
+        }
+        const roster = renderDutyRoster(state.config);
+        if (roster) {
+          if (!rosterPresent(event.system, roster)) {
+            const at = findRosterIndex(event.system);
+            if (at >= 0) {
+              (event.system[at] as { text: string }).text = roster;
+            } else {
+              event.system.push({ type: "text", text: roster });
+            }
+            await safeLog(state, "debug", "duty roster injected into system prompt");
+          }
+        }
       }),
     );
 
