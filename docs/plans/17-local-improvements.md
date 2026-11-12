@@ -120,7 +120,7 @@ constitution can be superseded, so the gate text stands alone).
 Stuck stand-down tracks `review:<state>`, so partial progress
 resets the streak.
 
-## 4. Shell-edit attribution for the changed-file tracker
+## 4. Shell-edit attribution for the changed-file tracker — DROPPED
 
 Problem: the tracker is fed by file-tool hooks, so shell-spawned
 writes (`echo x > file`, `cat <<EOF > file`, `tee`) bypass it.
@@ -128,13 +128,15 @@ writes (`echo x > file`, `cat <<EOF > file`, `tee`) bypass it.
 projects have the hole wide open and `skip_unchanged` can skip a
 session that did real work.
 
-Value: the gate sees everything the session changed, however it
-was changed.
-
-Shape: parse the unambiguous core (`>`, `>>`, `tee`, heredoc
-`<<`) out of `bash`/`shell` command strings into tracker adds,
-plus optional user `shell_track_patterns` for project-specific
-generators. Report-only, never deny; `off` preserves today.
+Dropped 2026-11-12: git backfill already closes the hole in git
+repos (nearly all projects), leaving only rare non-git projects —
+while shell parsing (quoting, variables, redirects, `tee -a`,
+generators that never name outputs) is disproportionate machinery
+with false positives both ways. A visibility-only note was
+considered and rejected: advisory text gets ignored exactly when
+it matters. If the non-git gap ever bites, the compliance-proof
+shape is distrusting tracker-only emptiness (never `skip` without
+git backing), not parsing shell — no decision taken on that.
 
 ## 5. Slimmed PATH/env (audit first, sanitization second)
 
@@ -203,10 +205,11 @@ remaining duties), not a rewrite.
 
 ## Ranking (proposer's take, not a decision)
 
-Roster, then config-weakening, then review, then shell
-attribution, then slimmed PATH, then verdict visibility (after
-its investigation). Danger sets and format keys are off this
-list — different tracks, different justifications.
+Roster, then config-weakening, then review, then slimmed PATH,
+then verdict visibility (after its investigation). Shell
+attribution dropped (see §4); danger sets and format keys were
+already off this list — different tracks, different
+justifications.
 
 ## Next steps (not scheduled)
 
