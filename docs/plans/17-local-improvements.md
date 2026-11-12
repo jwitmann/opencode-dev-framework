@@ -184,6 +184,37 @@ prose (`summarizeGate` is already one line per step), so any
 message change here is an increment (resolved paths, explicit
 remaining duties), not a rewrite.
 
+Audit 2026-11-12 — per-surface inventory (outcome = last verdict):
+
+- Transcript: blocked evaluations feed back the full
+  `continuationMessage` (reason + summary + block n/3). Pass and
+  stand-down feed back nothing (`actOnVerdict` returns null).
+  After stand-down the transcript holds the earlier blocks but
+  nothing at the point of a later "done" contradicts it.
+- Log file: every blocked/stand-down evaluation logged at error
+  with the full summary. Complete record — but the user must know
+  `OPENCODE_DEV_FRAMEWORK_LOG_FILE` and go dig.
+- `/df-status` (TUI): `renderConfigStatus` only — config, no live
+  verdict, no history. Shows duties, never outcomes.
+- `dev_framework_status` tool: config + continuation level +
+  tracked files + block counts this session. Counts without
+  reasons: "2/3" tells the user something failed, not what.
+- `runtime-status.json`: hook mechanics only (version, idleHook
+  via, continuation state). No verdict.
+- `/df-verify`: on-demand full verdict — the existing
+  user-surfaced backstop, but pull-only: it answers "is done true?"
+  only when the user thinks to ask.
+Finding: the gap is real but narrow — no plugin-written,
+user-surfaced record of the *last verdict* persists where the
+user looks. Frequency of the actual harm (stand-down then false
+"done") is unknown; no telemetry. Cheapest covers, if built:
+
+(1) last-verdict line in existing status surfaces (in-memory +
+`runtime-status.json`, no new files); (2) append-only verdict
+journal (JSONL) tailed by `/df-status`. Resolved binary paths
+(§5A) ride as one ledger field under either — homeless without
+it. No decision taken; §5/§6 value unproven pending user call.
+
 ## Explicitly out of scope for this goal
 
 - **Dangerous-command expansion → safety track.** Preventing
