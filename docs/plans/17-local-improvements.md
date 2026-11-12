@@ -232,7 +232,10 @@ already exists. Known limitations, not build triggers: advisory
 failures are transcript-invisible by construction (pass+note
 returns null), and no framework log file is configured
 (`OPENCODE_DEV_FRAMEWORK_LOG_FILE` unset), so the "complete
-record" lives only in opencode's own logs. Revisit trigger: a
+record" lives only in opencode's own logs. (Fixed after
+close-out: `resolveDefaultLogFile` in `src/logger.ts` gives every
+run a user-level default log — see troubleshooting docs.)
+Revisit trigger: a
 second real stand-down-then-false-"done" incident (two-strike
 rule).
 

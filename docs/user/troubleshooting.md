@@ -79,6 +79,20 @@ that was a bug in older versions, not your tree.
 
 ## Still stuck
 
+Every gate evaluation is logged as JSON lines: `OPENCODE_DEV_FRAMEWORK_LOG_FILE`
+overrides the location, otherwise the default is
+`~/.local/share/opencode-dev-framework/opencode-dev-framework.log`
+(`$XDG_DATA_HOME` when set; `~/Library/Logs` on macOS;
+`%LOCALAPPDATA%` on Windows). Grep it for verdicts:
+
+```bash
+grep -o '"reason":"[a-z]*"' ~/.local/share/opencode-dev-framework/opencode-dev-framework.log \
+  | sort | uniq -c
+```
+
+The file rotates at 5 MB with one backup (`.log.1`), so worst case
+is 10 MB — history depth is thousands of evaluations.
+
 Run a private server with the plugin trace on and read the log:
 
 ```bash
