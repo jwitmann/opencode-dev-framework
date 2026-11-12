@@ -1775,7 +1775,7 @@ Instant unblock for the reporter: open a fresh session (tracker is
 in-memory per session — ghosts die with it). 340 tests green,
 format/lint/md/typecheck/build clean.
 
-## Upstream watchlist — all four verified open (2026-11-05)
+## Upstream watchlist — all five verified open (2026-11-06)
 
 - `stopping` ([#60461](https://github.com/anomalyco/opencode/issues/60461),
   own V2 request 2026-10-30, carries over #16626 + PR #54487) — real
@@ -1799,6 +1799,13 @@ format/lint/md/typecheck/build clean.
   `gate.max_blocks` + stuck stand-down, and `--completion-promise`
   (text marker) is weaker than the `/df-goal` tool-result contract.
   Different lane if it ships; not a dependency.
+- Interrupt-cancel
+  ([#62050](https://github.com/anomalyco/opencode/issues/62050), andrei-hasna,
+  2026-11-05) — opt-in `synthetic({ scope: "execution" })` so an admitted
+  idle/stopping continuation is cancelled when the user stops the session
+  before promote (plus `AbortSignal` for promise hooks). Directly covers the
+  gate's admitted-but-not-promoted race; adopt the opt-in when it lands.
+  Bot cross-links #60461.
 
 No code change until something upstream merges. `04-hook-mapping.md`
 stays as-is until then.
