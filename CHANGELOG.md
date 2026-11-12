@@ -6,6 +6,16 @@ Generated from conventional commits (`scripts/changelog.sh`).
 Single source: CI publishes each version's section as the GitHub
 release notes, so this file and the release page never diverge.
 
+## [v1.8.0] - 2026-11-12
+
+### Features
+
+- gate fails substantive reviews that ignore the session's changed files ([`960bcf3`](https://github.com/jwitmann/opencode-dev-framework/commit/960bcf31c6459fc89d705ca2bd2a6861ce238681))
+
+### Documentation
+
+- readme readability (quickstart, commands table, limitations bullets) ([`c72790d`](https://github.com/jwitmann/opencode-dev-framework/commit/c72790d6e1a4e8d92775a3addc155c3caa23c0ef))
+
 ## [v1.7.0] - 2026-11-12
 
 ### Features
