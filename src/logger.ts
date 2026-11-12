@@ -4,7 +4,7 @@
 
 import { appendFile, mkdir, rename, rm, stat } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, isAbsolute, join } from "node:path";
 
 export type LogLevel = "debug" | "info" | "warn" | "error";
 
@@ -55,14 +55,23 @@ export function resolveDefaultLogFile(input: LogPathInput = {}): string | null {
   const platform = input.platform ?? process.platform;
   const env = input.env ?? process.env;
   const home = input.home !== undefined ? input.home : safeHomedir();
-  if (platform === "win32" && env.LOCALAPPDATA) {
-    return join(env.LOCALAPPDATA, LOG_DIR_NAME, LOG_FILE_NAME);
+  if (platform === "win32") {
+    if (env.LOCALAPPDATA) {
+      return join(env.LOCALAPPDATA, LOG_DIR_NAME, LOG_FILE_NAME);
+    }
+    // No LOCALAPPDATA: fall through to tmp, not a Unix-style home path.
+    const winTmp = input.tmp ?? safeTmpdir();
+    return winTmp ? join(winTmp, LOG_DIR_NAME, LOG_FILE_NAME) : null;
   }
   if (platform === "darwin" && home) {
     return join(home, "Library", "Logs", LOG_FILE_NAME);
   }
   if (home) {
-    const base = env.XDG_DATA_HOME ?? join(home, ".local", "share");
+    // Empty counts as unset and relative as invalid (XDG basedir spec);
+    // either would otherwise land the log relative to CWD — possibly
+    // inside the repo, where it would poison the change tracker.
+    const xdg = env.XDG_DATA_HOME;
+    const base = xdg && isAbsolute(xdg) ? xdg : join(home, ".local", "share");
     return join(base, LOG_DIR_NAME, LOG_FILE_NAME);
   }
   const tmp = input.tmp ?? safeTmpdir();
@@ -129,9 +138,11 @@ export async function rotateLogFile(filePath: string, maxBytes: number): Promise
 export function createLogger(
   client?: V1Client | { app: { log: (...args: unknown[]) => Promise<unknown> } },
 ): LogFn {
-  // Explicit override wins; otherwise a user-level default so the
-  // "loud" record exists without configuration. Resolved once: the
-  // path cannot change under a running server.
+  // Explicit override wins (empty string disables file logging:
+  // the falsy filePath below skips all writes); otherwise a
+  // user-level default so the "loud" record exists without
+  // configuration. Resolved once: the path cannot change under
+  // a running server.
   const filePath =
     process.env.OPENCODE_DEV_FRAMEWORK_LOG_FILE ?? resolveDefaultLogFile() ?? undefined;
   return async (level, message, extra) => {

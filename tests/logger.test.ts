@@ -1,10 +1,11 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createLogger,
   LOG_SERVICE,
+  MAX_LOG_BYTES,
   resolveDefaultLogFile,
   rotateLogFile,
 } from "../src/logger";
@@ -30,8 +31,23 @@ function stubClient(implementation?: () => Promise<void>) {
 describe("createLogger", () => {
   const stderrSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
 
-  afterEach(() => {
+  // Sandbox the env override so these tests never touch the real
+  // user-level default log (createLogger falls back to it when the
+  // variable is unset).
+  let previousLogFile: string | undefined;
+  let sandboxDir: string;
+
+  beforeEach(async () => {
+    previousLogFile = process.env.OPENCODE_DEV_FRAMEWORK_LOG_FILE;
+    sandboxDir = await mkdtemp(join(tmpdir(), "odf-log-env-"));
+    process.env.OPENCODE_DEV_FRAMEWORK_LOG_FILE = join(sandboxDir, "sandbox.log");
+  });
+
+  afterEach(async () => {
     stderrSpy.mockClear();
+    if (previousLogFile === undefined) delete process.env.OPENCODE_DEV_FRAMEWORK_LOG_FILE;
+    else process.env.OPENCODE_DEV_FRAMEWORK_LOG_FILE = previousLogFile;
+    await rm(sandboxDir, { recursive: true, force: true });
   });
 
   it("forwards level, message and extra to client.app.log", async () => {
@@ -98,8 +114,25 @@ describe("resolveDefaultLogFile", () => {
     ).toBe(join("/data", "opencode-dev-framework", "opencode-dev-framework.log"));
   });
 
-  it("falls back to ~/.local/share when XDG is unset", () => {
+  it("falls back to ~/.local/share when XDG is unset or empty", () => {
     expect(resolveDefaultLogFile({ platform: "linux", env: {}, home: "/home/u" })).toBe(
+      join("/home/u", ".local", "share", "opencode-dev-framework", "opencode-dev-framework.log"),
+    );
+    expect(
+      resolveDefaultLogFile({ platform: "linux", env: { XDG_DATA_HOME: "" }, home: "/home/u" }),
+    ).toBe(
+      join("/home/u", ".local", "share", "opencode-dev-framework", "opencode-dev-framework.log"),
+    );
+  });
+
+  it("ignores a relative XDG data dir (would land relative to CWD)", () => {
+    expect(
+      resolveDefaultLogFile({
+        platform: "linux",
+        env: { XDG_DATA_HOME: "rel/dir" },
+        home: "/home/u",
+      }),
+    ).toBe(
       join("/home/u", ".local", "share", "opencode-dev-framework", "opencode-dev-framework.log"),
     );
   });
@@ -156,7 +189,6 @@ describe("createLogger file output", () => {
   it("rotates over-cap files keeping one backup, leaves the rest alone", async () => {
     const dir = await mkdtemp(join(tmpdir(), "odf-log-"));
     try {
-      const { writeFile } = await import("node:fs/promises");
       const big = join(dir, "big.log");
       await writeFile(big, "x".repeat(100));
       await rotateLogFile(big, 10);
@@ -169,6 +201,26 @@ describe("createLogger file output", () => {
       expect(await readFile(small, "utf8")).toBe("tiny");
 
       await expect(rotateLogFile(join(dir, "absent.log"), 10)).resolves.toBeUndefined();
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("rotates through the wired log() path, not just direct calls", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "odf-log-"));
+    try {
+      const file = join(dir, "wired.log");
+      await writeFile(file, "x".repeat(MAX_LOG_BYTES + 1));
+      const previous = process.env.OPENCODE_DEV_FRAMEWORK_LOG_FILE;
+      process.env.OPENCODE_DEV_FRAMEWORK_LOG_FILE = file;
+      try {
+        await createLogger()("error", "after rotation");
+      } finally {
+        if (previous === undefined) delete process.env.OPENCODE_DEV_FRAMEWORK_LOG_FILE;
+        else process.env.OPENCODE_DEV_FRAMEWORK_LOG_FILE = previous;
+      }
+      expect(await readFile(`${file}.1`, "utf8")).toBe("x".repeat(MAX_LOG_BYTES + 1));
+      expect(await readFile(file, "utf8")).toContain("after rotation");
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
