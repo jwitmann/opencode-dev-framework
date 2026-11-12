@@ -26,10 +26,14 @@ import type { LintLimiter } from "./lint.js";
 import type { LogFn } from "./logger.js";
 import {
   assessReviewContent,
+  findUncoveredFiles,
+  normalizeReviewPath,
+  staleReviewMessage,
   templateReviewMessage,
   thinReviewMessage,
   type ReviewState,
 } from "./review.js";
+import { RUNTIME_STATUS_DIR, RUNTIME_STATUS_FILE } from "./runtime-status.js";
 import type { ResolvedConfig } from "./types.js";
 import { diffWeakening, type EnforceableSnapshot } from "./weakening.js";
 
@@ -64,19 +68,56 @@ export async function artifactState(directory: string, relPath: string): Promise
 }
 
 /**
- * Grade the peer-review artifact including substance (plan 17 §3).
- * Never throws — unreadable files count as missing. Thin or
- * template content names the duty-escape on the record instead of
- * passing a checkbox note.
+ * Grade the peer-review artifact including substance (plan 17 §3) and
+ * freshness (plan 18): a substantive review of the wrong task reports
+ * `stale` unless it names every file this session changed. Never throws
+ * — unreadable files count as missing. Thin or template content names the
+ * duty-escape on the record instead of passing a checkbox note.
  */
-export async function readReviewState(directory: string): Promise<ReviewState> {
+export async function readReviewState(
+  directory: string,
+  changedFiles: string[] = [],
+): Promise<ReviewState> {
   let content: string;
   try {
     content = await readFile(join(directory, REVIEW_ARTIFACT_REL), "utf8");
   } catch {
     return "missing";
   }
-  return assessReviewContent(content);
+  const substance = assessReviewContent(content);
+  if (substance !== "present") return substance;
+  return findUncoveredFiles(content, coverableChangedFiles(directory, changedFiles)).length > 0
+    ? "stale"
+    : "present";
+}
+
+/**
+ * Files the freshness check covers: everything the session changed except
+ * the plugin's own bookkeeping, which the agent did not author — the
+ * review artifact itself (always tracked once written; self-reference
+ * would be absurd) and the runtime snapshot (plugin-written every
+ * continuation; surfaces via git where `.opencode/` is not ignored).
+ */
+export function coverableChangedFiles(directory: string, changedFiles: string[]): string[] {
+  const owned = new Set([REVIEW_ARTIFACT_REL, `${RUNTIME_STATUS_DIR}/${RUNTIME_STATUS_FILE}`]);
+  return changedFiles.map((f) => normalizeReviewPath(f, directory)).filter((f) => !owned.has(f));
+}
+
+/**
+ * Uncovered files for the stale-review message. Empty when the artifact is
+ * unreadable — that path already reports `missing`, never `stale`.
+ */
+export async function uncoveredReviewFiles(
+  directory: string,
+  changedFiles: string[],
+): Promise<string[]> {
+  let content: string;
+  try {
+    content = await readFile(join(directory, REVIEW_ARTIFACT_REL), "utf8");
+  } catch {
+    return [];
+  }
+  return findUncoveredFiles(content, coverableChangedFiles(directory, changedFiles));
 }
 
 /**
@@ -324,7 +365,7 @@ export interface CompletionInspection {
   changedFiles: string[];
   report: GateReport;
   reviewRequired: boolean;
-  /** Substance-graded review state (plan 17 §3): only `present` satisfies the duty. */
+  /** Substance- and freshness-graded review state (plans 17 §3, 18): only `present` satisfies the duty. */
   reviewState: ReviewState;
   reviewMissing: boolean;
   /** True when the gate short-circuited on `skip_unchanged` with no files. */
@@ -444,7 +485,9 @@ export async function inspectCompletion(deps: InspectionDeps): Promise<Completio
   });
   const gateFailed = report.ran && !report.ok;
 
-  const reviewState: ReviewState = reviewRequired ? await readReviewState(directory) : "present";
+  const reviewState: ReviewState = reviewRequired
+    ? await readReviewState(directory, changedFiles)
+    : "present";
   const reviewMissing = reviewRequired && reviewState !== "present";
 
   const ok = !gateFailed && !reviewMissing && !weakened;
@@ -454,11 +497,13 @@ export async function inspectCompletion(deps: InspectionDeps): Promise<Completio
       ? thinReviewMessage(changedFiles)
       : reviewState === "template"
         ? templateReviewMessage(changedFiles)
-        : reviewMissing
-          ? reviewMissingMessage(changedFiles)
-          : report.ran
-            ? `completion gate passed\n${summarizeGate(report)}`
-            : `completion gate passed (${report.reason ?? "nothing to run"})`;
+        : reviewState === "stale"
+          ? staleReviewMessage(changedFiles, await uncoveredReviewFiles(directory, changedFiles))
+          : reviewMissing
+            ? reviewMissingMessage(changedFiles)
+            : report.ran
+              ? `completion gate passed\n${summarizeGate(report)}`
+              : `completion gate passed (${report.reason ?? "nothing to run"})`;
   const summary = weakened ? `${weakeningSection(weakenings)}\n\n${baseSummary}` : baseSummary;
   if (deps.passCache !== undefined) {
     if (!gateFailed && !reviewMissing && !weakened && report.ran && fingerprint !== null) {

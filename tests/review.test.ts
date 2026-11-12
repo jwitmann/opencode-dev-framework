@@ -10,8 +10,11 @@ import type { CommandResult, RunCommand } from "../src/host";
 import type { LogFn, LogLevel } from "../src/logger";
 import {
   assessReviewContent,
+  findUncoveredFiles,
+  normalizeReviewPath,
   REVIEW_MIN_CHARS,
   REVIEW_MIN_WORDS,
+  staleReviewMessage,
   templateReviewMessage,
   thinReviewMessage,
 } from "../src/review";
@@ -85,6 +88,54 @@ describe("assessReviewContent", () => {
     // superseded constitution may not contain.
     expect(thinReviewMessage(["src/a.ts"])).not.toContain("40-delegation");
     expect(templateReviewMessage(["src/a.ts"])).not.toContain("40-delegation");
+  });
+});
+
+describe("findUncoveredFiles", () => {
+  it("covers files named by relative path", () => {
+    expect(
+      findUncoveredFiles("Scope: changed src/a.ts and src/b.ts.", ["src/a.ts", "src/b.ts"]),
+    ).toEqual([]);
+  });
+
+  it("covers files named by absolute path", () => {
+    expect(findUncoveredFiles("Scope: changed /project/src/a.ts.", ["src/a.ts"])).toEqual([]);
+  });
+
+  it("reports files the review never mentions", () => {
+    expect(findUncoveredFiles(REVIEW_BODY, ["src/a.ts", "src/b.ts"])).toEqual(["src/b.ts"]);
+  });
+
+  it("does not let b-a.ts cover a.ts", () => {
+    expect(findUncoveredFiles("Scope: changed src/b-a.ts.", ["src/a.ts"])).toEqual(["src/a.ts"]);
+  });
+
+  it("does not let a.tsx cover a.ts", () => {
+    expect(findUncoveredFiles("Scope: changed src/a.tsx.", ["src/a.ts"])).toEqual(["src/a.ts"]);
+  });
+
+  it("matches case-sensitively like the filesystem", () => {
+    expect(findUncoveredFiles("Scope: changed src/A.ts.", ["src/a.ts"])).toEqual(["src/a.ts"]);
+  });
+
+  it("pins the stale message contract", () => {
+    const message = staleReviewMessage(["src/a.ts", "src/b.ts"], ["src/b.ts"]);
+    expect(message).toContain("stale");
+    expect(message).toContain("src/b.ts");
+    expect(message).toContain("naming every file");
+    expect(message).not.toContain("40-delegation");
+  });
+});
+
+describe("normalizeReviewPath", () => {
+  it("relativizes absolute paths under the directory", () => {
+    expect(normalizeReviewPath("/project/src/a.ts", "/project")).toBe("src/a.ts");
+  });
+
+  it("leaves repo-relative and outside paths alone, normalizing separators", () => {
+    expect(normalizeReviewPath("src\\a.ts", "/project")).toBe("src/a.ts");
+    expect(normalizeReviewPath("src/a.ts", "/project")).toBe("src/a.ts");
+    expect(normalizeReviewPath("/elsewhere/a.ts", "/project")).toBe("/elsewhere/a.ts");
   });
 });
 
@@ -175,6 +226,83 @@ describe("review substance at the gate", () => {
     await writeReview(REVIEW_BODY);
     const { deps } = makeDeps(GREEN);
     expect((await evaluateCompletion(deps)).decision).toBe("pass");
+  });
+
+  it("blocks a substantive review of the wrong task as stale", async () => {
+    await writeReview(REVIEW_BODY);
+    const { deps } = makeDeps(GREEN);
+    deps.tracker.add("src/b.ts");
+    const verdict = await evaluateCompletion(deps);
+    expect(verdict.decision).toBe("blocked");
+    if (verdict.decision === "blocked") {
+      expect(verdict.reason).toBe("review");
+      expect(verdict.summary).toContain("stale");
+      expect(verdict.summary).toContain("src/b.ts");
+    }
+    const inspection = await inspectCompletion({
+      run: deps.run,
+      config: deps.config,
+      directory: deps.directory,
+      trackerFiles: ["src/a.ts", "src/b.ts"],
+    });
+    expect(inspection.reviewState).toBe("stale");
+  });
+
+  it("passes when the review names every changed file", async () => {
+    await writeReview(
+      `${REVIEW_BODY} Also covered: src/b.ts was a one-line import fix, reviewed alongside.`,
+    );
+    const { deps } = makeDeps(GREEN);
+    deps.tracker.add("src/b.ts");
+    expect((await evaluateCompletion(deps)).decision).toBe("pass");
+  });
+
+  it("accepts absolute paths in the review for relative changed files", async () => {
+    await writeReview(REVIEW_BODY.replaceAll("src/a.ts", `${dir}/src/a.ts`));
+    const { deps } = makeDeps(GREEN);
+    expect((await evaluateCompletion(deps)).decision).toBe("pass");
+  });
+
+  it("does not demand the review mention itself", async () => {
+    await writeReview(REVIEW_BODY);
+    const { deps } = makeDeps(GREEN);
+    deps.tracker.add(REVIEW_ARTIFACT_REL);
+    expect((await evaluateCompletion(deps)).decision).toBe("pass");
+  });
+
+  it("does not demand the review mention the plugin runtime snapshot", async () => {
+    await writeReview(REVIEW_BODY);
+    const { deps } = makeDeps(GREEN);
+    deps.tracker.add(".opencode/opencode-dev-framework/runtime-status.json");
+    expect((await evaluateCompletion(deps)).decision).toBe("pass");
+  });
+
+  it("warns and passes on stale reviews in advisory", async () => {
+    await writeReview(REVIEW_BODY);
+    const { deps, entries } = makeDeps({ ...GREEN, profile: "advisory" });
+    deps.tracker.add("src/b.ts");
+    const verdict = await evaluateCompletion(deps);
+    expect(verdict.decision).toBe("pass");
+    if (verdict.decision === "pass") {
+      expect(verdict.note).toContain("stale");
+    }
+    expect(entries.some((e) => e.level === "error" && e.message.includes("advisory"))).toBe(true);
+  });
+
+  it("tracks stale and thin as distinct stuck signatures", async () => {
+    await writeReview("looks good");
+    const first = makeDeps(GREEN);
+    expect((await evaluateCompletion(first.deps)).decision).toBe("blocked");
+    expect((await first.deps.stuckSnapshots.get("s1"))?.repeats).toBe(0);
+    // Same changed files, but the review graduates from thin to
+    // substantive-yet-wrong-task: still blocked, but a different signature,
+    // so the no-progress streak resets instead of counting a repeat.
+    await writeReview(REVIEW_BODY.replaceAll("src/a.ts", "src/z.ts"));
+    const second = makeDeps(GREEN);
+    second.deps.blockCounts = first.deps.blockCounts;
+    second.deps.stuckSnapshots = first.deps.stuckSnapshots;
+    expect((await evaluateCompletion(second.deps)).decision).toBe("blocked");
+    expect((await second.deps.stuckSnapshots.get("s1"))?.repeats).toBe(0);
   });
 
   it("warns and passes on thin reviews in advisory", async () => {

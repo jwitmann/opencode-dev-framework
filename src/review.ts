@@ -14,6 +14,11 @@
  * it only puts checkboxing on the record for honest-but-eager
  * agents.
  *
+ * Freshness (plan 18) sits beside substance: a substantive review of
+ * the *wrong task* fails as `stale` unless it names every file this
+ * session changed. Same out-of-scope line — deliberate misnaming
+ * (naming files without reviewing them) is sabotage, not eagerness.
+ *
  * The artifact path literal mirrors `REVIEW_ARTIFACT_REL` in
  * `harness.ts` (kept inline to avoid a module cycle; both are
  * pinned by tests).
@@ -46,7 +51,7 @@ const TEMPLATE_PATTERNS = [
 ];
 
 /** Review artifact state with substance gradations. */
-export type ReviewState = "missing" | "empty" | "thin" | "template" | "present";
+export type ReviewState = "missing" | "empty" | "thin" | "template" | "stale" | "present";
 
 /**
  * Assess already-read review content. Pure. Order matters: empty,
@@ -95,6 +100,56 @@ export function templateReviewMessage(changedFiles: string[]): string {
     `done. This session changed files:\n${files}\n\n` +
     `Rewrite ${REVIEW_REL} fresh for THIS session's changes — scope, findings, ` +
     `and resolutions, with every placeholder replaced by real findings.\n\n` +
+    reviewCadenceReminder()
+  );
+}
+
+/**
+ * Escape a literal for embedding in a RegExp.
+ */
+function escapeRegExp(literal: string): string {
+  return literal.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/**
+ * Normalize a changed-file entry to the repo-relative `/`-separated form
+ * reviews are matched against. Tracker and git entries already arrive
+ * repo-relative; absolute entries under the project still match by
+ * relativizing, and separators normalize so Windows-style paths match.
+ */
+export function normalizeReviewPath(file: string, directory: string): string {
+  let rel = file;
+  if (
+    rel.startsWith(directory) &&
+    (rel[directory.length] === "/" || rel[directory.length] === "\\")
+  ) {
+    rel = rel.slice(directory.length + 1);
+  }
+  return rel.replace(/\\/g, "/");
+}
+
+/**
+ * Changed files the review text does not cover (plan 18). A file counts as
+ * covered when the review names it — relative or absolute (absolute paths
+ * contain the relative form). Boundary-guarded so `b-a.ts` does not cover
+ * `a.ts` and `a.tsx` does not cover `a.ts`. Pure.
+ */
+export function findUncoveredFiles(content: string, files: string[]): string[] {
+  return files.filter((file) => {
+    const pattern = new RegExp(`(?<![\\w-])${escapeRegExp(file)}(?![\\w-])`);
+    return !pattern.test(content);
+  });
+}
+
+export function staleReviewMessage(changedFiles: string[], uncovered: string[]): string {
+  const files = changedFiles.map((f) => `  - ${f}`).join("\n");
+  const missing = uncovered.map((f) => `  - ${f}`).join("\n");
+  return (
+    `opencode-dev-framework completion gate — the peer-review artifact is substantive ` +
+    `but stale: it does not cover this session's changes. Not mentioned:\n${missing}\n\n` +
+    `This session changed files:\n${files}\n\n` +
+    `Rewrite ${REVIEW_REL} fresh for THIS session's changes — scope, findings, ` +
+    `and resolutions, naming every file above.\n\n` +
     reviewCadenceReminder()
   );
 }
