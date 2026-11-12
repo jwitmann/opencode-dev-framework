@@ -6,6 +6,35 @@ Generated from conventional commits (`scripts/changelog.sh`).
 Single source: CI publishes each version's section as the GitHub
 release notes, so this file and the release page never diverge.
 
+## [v1.6.0] - 2026-11-12
+
+### Features
+
+- session duty roster injected beside constitution at session start ([`22d5bef`](https://github.com/jwitmann/opencode-dev-framework/commit/22d5bef064e9005a812b649f125c5653e39df217))
+- config-weakening detection surfaces mid-session duty reduction at the gate ([`e007c38`](https://github.com/jwitmann/opencode-dev-framework/commit/e007c3899423c394d12722f051a27fdfed69598c))
+- review substance floor blocks checkbox peer-reviews at the gate ([`1bea171`](https://github.com/jwitmann/opencode-dev-framework/commit/1bea171cda125bf1d98d8df1de00adbe766fa0fb))
+- default user-level log file so the loud record exists unconfigured ([`ddd4b83`](https://github.com/jwitmann/opencode-dev-framework/commit/ddd4b832e89542e4d5d6341b7e1edfbbeeef383b))
+
+### Fixes
+
+- changelog backfill writes newest-first ([`805b639`](https://github.com/jwitmann/opencode-dev-framework/commit/805b6395b90a02142be753d4e57194ad033f2038))
+- address peer-review findings on default log file ([`7306764`](https://github.com/jwitmann/opencode-dev-framework/commit/73067641c631f079fdecd602f8002235fcf77ccb))
+
+### Documentation
+
+- upstream watchlist (stopping, settled-continuity, background, ralph) ([`2042847`](https://github.com/jwitmann/opencode-dev-framework/commit/2042847f89ea27def0f43914e93d028da8def0c6))
+- limitations point at V2 stopping issue #60461; ralph verdict closed ([`6ad0161`](https://github.com/jwitmann/opencode-dev-framework/commit/6ad0161347460509bf6536b3e56b381eab695963))
+- upstream watchlist adds interrupt-cancel synthetic scope opt-in ([`0c82b9e`](https://github.com/jwitmann/opencode-dev-framework/commit/0c82b9e3fefb8cba8387eac352807e042dd3c407))
+- drop shell-edit attribution (§4) as low-value ([`4bf94ab`](https://github.com/jwitmann/opencode-dev-framework/commit/4bf94abe2a619a42969b70ce8feef43f6045aeb9))
+- drop PATH sanitization half of §5, keep audit ([`f50d3f0`](https://github.com/jwitmann/opencode-dev-framework/commit/f50d3f0c84d9b935bce74eb747c0f40139fd74fd))
+- record §6 verdict-visibility audit findings ([`4c9b7ae`](https://github.com/jwitmann/opencode-dev-framework/commit/4c9b7aef316e659d4bbe88f386fd1d12fa365280))
+- close out plan 17, decline §§5-6 on dogfood evidence ([`d8b5300`](https://github.com/jwitmann/opencode-dev-framework/commit/d8b530088aab20b9bc9f5ff61390a2e166227685))
+- cover review substance, weakening verdict, and duty roster in user docs ([`b7e9fa3`](https://github.com/jwitmann/opencode-dev-framework/commit/b7e9fa3ab369de7425e2b9e3d72303fd034c750f))
+
+### Other
+
+- self-host standard profile with peer-review enforcement ([`1720c4d`](https://github.com/jwitmann/opencode-dev-framework/commit/1720c4d577414b899eaa5b92f8037ffd5d277a89))
+
 ## [v1.5.1] - 2026-11-03
 
 ### Features
