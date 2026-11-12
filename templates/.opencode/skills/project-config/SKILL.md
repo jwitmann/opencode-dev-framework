@@ -20,9 +20,10 @@ detection alone. Also when the existing config smells wrong — gate
 passing vacuously, commands that don't match CI, a red tree nobody can
 explain.
 
-## Wizard brief (when `df init --wizard` ran first)
+## Wizard brief (when setup ran first)
 
-The brief hands you machine-generated hints: detected language, guessed
+`/df-init`, `dev_framework_init` (with `wizard: true`), or `df init --wizard`
+hand you machine-generated hints before this skill runs: detected language, guessed
 commands with trial-run results, Makefile target names, the shared
 enforceability verdict, and at most 3 open questions. Treat it as a
 starting brief, not findings:
