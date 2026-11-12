@@ -152,11 +152,20 @@ permissive default sanitized `PATH` (denylist, per-OS
 composition, unknown platforms inherit + warn) and the small
 standard preload-variable strip as hygiene, not armor.
 
+Dropped 2026-11-12: the sanitization half only. A mechanism that
+needs an escape hatch (`DF_ALLOW_UNSAFE_PATH=1`) is fighting
+legitimate use — version-manager shims *are* shadowing-by-design,
+`LD_PRELOAD` can be load-bearing, and sanitizing hides the very
+evidence diagnosis needs. Audit subsumes its value: a weird path
+on the record diagnoses itself. Standing rule: ship only
+improvements that are unconditionally good; prefer revealing
+(audit) over hiding (sanitization).
+
 Shape: thread `env` through `RunCommandOptions` (`spawn`
 already supports it; it is just never passed). Uniform scope —
 gate steps, acceptance checks, the `git status` probe, per-edit
-lint — one behavior, no special cases. Escape hatch
-(`DF_ALLOW_UNSAFE_PATH=1`), logged loudly when active.
+lint — one behavior, no special cases. Audit half only; no
+sanitized PATH, no escape hatch (see above).
 
 ## 6. Verdict visibility (investigation-first, not yet a build task)
 
