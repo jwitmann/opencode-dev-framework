@@ -1,26 +1,20 @@
 # Configuration
 
-Create `.opencode-dev-framework.yml` in your project root. Three paths:
+Create `.opencode-dev-framework.yml` in your project root. Two paths:
 
-- **Fast:** `df init` (see the [Quickstart](../README.md#quickstart))
+- **Conversational (default):** run `/df-init` in the project. It scaffolds
+  the templates, writes a detected config, trial-runs it, and hands the
+  wizard brief to the agent — which reads your Makefile, CI, and
+  CONTRIBUTING, maps the real verification commands (wrappers like
+  `make check`, never reconstructed bare tools), asks at most 3 genuinely
+  user-only questions, and ends at a config + `hardening.md` diff for your
+  review. Never merge unreviewed.
+- **Scripted:** `df init` from a shell (see the [Quickstart](../README.md#quickstart))
   auto-detects your language and writes a matching config — then adjust
   it. `init` also trial-runs the detected test/typecheck once and
   reports PASS/FAIL per command, so guesses arrive verified or flagged.
-- **Thorough:** ask the agent to configure the project. The
-  `project-config` skill (shipped with `init`) reads your Makefile, CI
-  workflows, and CONTRIBUTING, maps the real verification commands
-  (wrappers like `make check`, never reconstructed bare tools), places
-  non-unit checks in `gate.acceptance`, and drafts `hardening.md` — then
-  presents the full diff for your review. Never merge unreviewed.
-- **Wizard (agent-led handoff):** `df init --wizard` (or the
-  `dev_framework_init` tool with `wizard: true`) scaffolds, trial-runs,
-  and prints a brief — detection, trial results, Makefile target names,
-  the enforceability verdict, at most 3 open questions — then hands the
-  `project-config` skill a filled brief. The LLM session is the
-  presenter: it resolves what it can, asks at most 3 genuinely
-  user-only questions, and ends at a review diff. Budget ~5 minutes,
-  zero interrogation mid-run; imperfections assumed, manual always
-  possible.
+  Same scaffold, no conversation; conflicts need `--overwrite-existing` or
+  `--skip-existing`.
 
 Trust model for the agentic path: the agent proposes, the shared
 enforceability bar checks the draft (blocking profile plus at least one

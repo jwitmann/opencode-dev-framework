@@ -12,6 +12,9 @@
  * - ctx.tool.transform(...) -> custom tools
  * - ctx.command.transform(...) -> server-side `/df-goal` verified-goal
  *   wrapper (thin adapter delegating to native `/goal`; see src/goal.ts)
+ * - ctx.command.transform(...) -> server-side `/df-init` project setup
+ *   (deterministic scaffold in code, handoff back via session.prompt;
+ *   see src/init.ts)
  *
  * Gate enforcement: no synchronous pre-stop veto. On `experimental.idle`
  * (same execution) we run the gate and if it fails inside budget we admit
@@ -813,7 +816,7 @@ const plugin = Plugin.define({
         editor.add({
           name: "dev_framework_init",
           description:
-            "Scaffold opencode-dev-framework project files (agents, skills, commands, default config) into the current project. Missing files are created; existing files are skipped unless overwrite is true. With wizard:true, appends a wizard brief (detection, trial-run, Makefile targets, open questions) — follow the project-config skill to resolve it and present the config for review.",
+            "Scaffold opencode-dev-framework project files (agents, skills, commands, default config) into the current project. Missing files are created; existing files are skipped unless overwrite is true. With wizard:true, appends a wizard brief (detection, trial-run, Makefile targets, open questions) when the scaffold changed anything, or a status note when already configured — follow the project-config skill to resolve it and present the config for review.",
           input: {
             type: "object",
             properties: {
@@ -834,57 +837,14 @@ const plugin = Plugin.define({
             additionalProperties: false,
           },
           async execute(input: unknown) {
-            const {
-              buildWizardBrief,
-              formatBriefSkipped,
-              formatTrialRun,
-              formatWizardBrief,
-              installTemplates,
-              trialRunDetectedCommands,
-              writeDetectedConfig,
-            } = await import("./installer.js");
+            const { runInitScaffold, scaffoldReportLines } = await import("./init.js");
             const args = input as { directory?: string; overwrite?: boolean; wizard?: boolean };
             const targetDir = args.directory ?? directory;
-            const result = await installTemplates(targetDir, {
-              overwriteExisting: args.overwrite ?? false,
-              skipExisting: !(args.overwrite ?? false),
+            const scaffold = await runInitScaffold(targetDir, state.run, {
+              wizard: args.wizard,
+              overwrite: args.overwrite,
             });
-            const configResult = await writeDetectedConfig(targetDir, {
-              overwriteExisting: args.overwrite ?? false,
-              skipExisting: !(args.overwrite ?? false),
-            });
-            const lines = [
-              `Installed opencode-dev-framework templates into ${targetDir}.`,
-              `Created: ${result.created.length} file(s)`,
-              `Overwritten: ${result.overwritten.length} file(s)`,
-              `Skipped: ${result.skipped.length} file(s)`,
-              `Config: ${configResult.action}`,
-            ];
-            if (result.created.length > 0)
-              lines.push("", "Created files:", ...result.created.map((f) => `- ${f}`));
-            if (result.overwritten.length > 0)
-              lines.push("", "Overwritten files:", ...result.overwritten.map((f) => `- ${f}`));
-            if (args.wizard === true) {
-              try {
-                const brief = await buildWizardBrief(targetDir, state.run);
-                lines.push("", ...formatWizardBrief(brief));
-              } catch (error) {
-                lines.push("", formatBriefSkipped(error));
-              }
-            } else if (configResult.action === "created" || configResult.action === "overwritten") {
-              try {
-                const { detectProject } = await import("./detect.js");
-                const { commands } = detectProject(targetDir);
-                const trial = await trialRunDetectedCommands(targetDir, commands, state.run);
-                lines.push("", ...formatTrialRun(trial));
-              } catch (error) {
-                lines.push(
-                  "",
-                  `Trial-run: skipped (${error instanceof Error ? error.message : String(error)}) — verify commands manually`,
-                );
-              }
-            }
-            return { content: lines.join("\n") };
+            return { content: scaffoldReportLines(scaffold, targetDir).join("\n") };
           },
         });
 
@@ -1064,6 +1024,76 @@ const plugin = Plugin.define({
         state,
         "warn",
         "could not register df-goal command; verified goals unavailable",
+        {
+          error: String(err),
+        },
+      );
+    }
+
+    // 3c) Per-project setup — server-side `/df-init` through
+    // `ctx.command.transform` (same shape as `/df-goal`). Runs the
+    // deterministic half in code (scaffold templates, detected config,
+    // trial-run, wizard brief) and submits the handoff back through
+    // `session.prompt` with the invocation delivery, so the agent does
+    // the judgment half (resolve the brief, draft config + hardening,
+    // present the diff). Unconditional registration: a project with no
+    // config file yet is exactly where init runs.
+    try {
+      trackRegistration(
+        await ctx.command.transform((editor) => {
+          editor.add({
+            name: "df-init",
+            description:
+              "Set up opencode-dev-framework for the current project: scaffold templates, write the detected config, trial-run it, and hand the brief to the agent. Safe to re-run; reports status when already configured.",
+            execute: async (invocation) => {
+              if (activeState !== state) {
+                throw new Error(
+                  "Cannot start project setup: the plugin session state changed " +
+                    "(teardown or reload raced the command); retry /df-init.",
+                );
+              }
+              const { runInitCommand } = await import("./init.js");
+              await runInitCommand({
+                directory: state.directory,
+                run: state.run,
+                delivery: invocation.delivery,
+                checkAlive: () => {
+                  if (activeState !== state) {
+                    throw new Error(
+                      "Project setup was superseded mid-scaffold (teardown or reload raced the command); " +
+                        "retry /df-init — a re-run reports status without touching anything.",
+                    );
+                  }
+                },
+                reload: async () => {
+                  const { clearConfigCache: ccc, loadConfig: lc } = await import("./config.js");
+                  const { loadConstitution: lc2 } = await import("./rules.js");
+                  ccc();
+                  const newConfig = lc(state.directory);
+                  const { constitution: newConstitution } = await lc2(newConfig, state.directory);
+                  state.config = newConfig;
+                  state.constitution = newConstitution;
+                },
+                deliver: async (text, delivery) => {
+                  await ctx.session.prompt({
+                    sessionID: invocation.sessionID,
+                    text,
+                    delivery,
+                  } as never);
+                },
+                note: async (level, message, extra) => {
+                  await safeLog(state, level, message, extra);
+                },
+              });
+            },
+          });
+        }),
+      );
+    } catch (err) {
+      await safeLog(
+        state,
+        "warn",
+        "could not register df-init command; project setup unavailable",
         {
           error: String(err),
         },

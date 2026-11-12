@@ -18,38 +18,30 @@ reimplemented as an OpenCode-native plugin.
 Five minutes from zero to your first gated session:
 
 ```bash
-npm install opencode-dev-framework
+opencode plugin add opencode-dev-framework
 ```
 
-```json
-// opencode.jsonc
-{
-  "plugins": ["opencode-dev-framework"]
-}
+Then in any project, run `/df-init` — it scaffolds the templates, writes a
+detected config, trial-runs it, and walks you through the rest, ending at a
+config + `hardening.md` diff for your review:
+
+```text
+/df-init
 ```
 
-```bash
-npx df init --wizard
-```
+Two ways in, same gate out — pick by how much attention you want to spend:
 
-Three ways in, same gate out — pick by how much attention you want to spend:
+- **Conversational (default).** `/df-init` hands your session agent a brief:
+  what was detected, what passed, Makefile targets worth mapping to
+  wrappers, at most 3 open questions. The agent resolves what it can, asks
+  only genuinely user-only questions, and ends with a config + hardening
+  draft for your review. Budget ~5 minutes, review-only at the end;
+  imperfections assumed, manual always possible.
+- **Scripted.** `npx df init` from a shell: same scaffold, detect, and
+  trial-run, no conversation. For CI, dotfiles, and non-interactive runs;
+  conflicts need `--overwrite-existing` or `--skip-existing`.
 
-- **Wizard (recommended).** `--wizard` scaffolds, trial-runs the detected
-  commands, and hands your session agent a brief: what was detected, what
-  passed, Makefile targets worth mapping to wrappers, at most 3 open
-  questions. The agent resolves what it can, asks only genuinely
-  user-only questions, and ends with a config + hardening draft for your
-  review. Budget ~5 minutes, review-only at the end; imperfections
-  assumed, manual always possible.
-- **Fast.** `df init` alone: scaffold + trial-run with PASS/FAIL per
-  command. Good guesses arrive verified, bad ones arrive flagged — but
-  mapping wrappers (e.g. `make check`) is on you.
-- **Thorough.** Ask the agent to follow the `project-config` skill from
-  scratch: reads your Makefile, CI, and CONTRIBUTING, maps the real
-  verification commands, drafts `hardening.md`, presents the diff.
-
-Then start a session in your project and ask
-the agent for a small edit. You will see the plugin working: the edit is
+Then ask the agent for a small edit. You will see the plugin working: the edit is
 checked against guardrails before it lands, your linter runs on the edited
 file, and when the session goes idle the completion gate runs your
 typecheck/tests. `/df-status` shows the live state at any time. Start with
