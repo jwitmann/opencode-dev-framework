@@ -11,7 +11,7 @@ An [OpenCode](https://opencode.ai) plugin that enforces project-specific
 quality gates during AI coding sessions — and verifies whole tasks, not just
 edits, through `/df-goal`. Inspired by
 [anticomputer/dev-framework](https://github.com/anticomputer/dev-framework),
-reimplemented as an OpenCode-native plugin.
+reimplemented for OpenCode (the original supports Copilot, Claude, and Codex).
 
 ## Quickstart
 
@@ -21,35 +21,34 @@ Five minutes from zero to your first gated session:
 opencode plugin add opencode-dev-framework
 ```
 
-Then in any project, run `/df-init` — it scaffolds the templates, writes a
-detected config, trial-runs it, and walks you through the rest, ending at a
-config + `hardening.md` diff for your review:
+In any project, run:
 
 ```text
 /df-init
 ```
 
-Two ways in, same gate out — pick by how much attention you want to spend:
+It scaffolds the templates, writes a detected config, trial-runs it, and
+hands your session agent a brief — what was detected, what passed, Makefile
+targets worth mapping to wrappers, at most 3 open questions. The agent
+resolves what it can, asks only genuinely user-only questions, and ends with
+a config + `hardening.md` draft for your review. Budget ~5 minutes,
+review-only at the end; imperfections assumed, manual always possible.
 
-- **Conversational (default).** `/df-init` hands your session agent a brief:
-  what was detected, what passed, Makefile targets worth mapping to
-  wrappers, at most 3 open questions. The agent resolves what it can, asks
-  only genuinely user-only questions, and ends with a config + hardening
-  draft for your review. Budget ~5 minutes, review-only at the end;
-  imperfections assumed, manual always possible.
-- **Scripted.** `npx df init` from a shell: same scaffold, detect, and
-  trial-run, no conversation. For CI, dotfiles, and non-interactive runs;
-  conflicts need `--overwrite-existing` or `--skip-existing`.
+Prefer a shell? Same thing non-interactively — for CI, dotfiles, and
+scripted runs:
 
-Then ask the agent for a small edit. You will see the plugin working: the edit is
-checked against guardrails before it lands, your linter runs on the edited
-file, and when the session goes idle the completion gate runs your
+```bash
+npx df init
+```
+
+Conflicts need `--overwrite-existing` or `--skip-existing` — everything
+else is under `npx df init --help`.
+
+Then ask the agent for a small edit. You will see the plugin working: the
+edit is checked against guardrails before it lands, your linter runs on the
+edited file, and when the session goes idle the completion gate runs your
 typecheck/tests. `/df-status` shows the live state at any time. Start with
 `profile: advisory` if you want to observe before enforcing.
-
-Requires OpenCode `v2.x` — tested on `v2.0.26` and `v2.2.0`. On
-`v1.18.18–1.18.31` use the `v1` branch (`plugin` key). Stuck? See
-[`docs/user/troubleshooting.md`](docs/user/troubleshooting.md).
 
 ## What it does
 
@@ -155,22 +154,27 @@ How each layer is enforced, and what it honestly cannot do:
 | `/df-help` | Instant modal: lists the dev-framework commands. |
 | `/df-profile` | Instant modal picker (or `/df-profile <name>`): switches profile now, written to config. |
 | `/df-verify` | Runs the verification suite manually; pass/fail summary in a modal. |
+| `/df-init` | Server-side command: scaffolds templates, writes the detected config, trial-runs it, hands the brief to the agent. |
 | `/df-goal <objective>` | Server-side command: starts a **verified** native goal (requires native `/goal`, a blocking profile, and at least one real check). |
 
-The first five are TUI commands — they open instantly and never feed the
-LLM. Full reference:
+The TUI commands open instantly and never feed the LLM; `/df-init` and
+`/df-goal` are server-side and drive the session. Full reference:
 [`docs/user/commands.md`](docs/user/commands.md).
 
 ## Limitations (short version)
 
-The completion gate **steers, it does not veto**: it continues the turn via a
-synthetic message at the idle boundary (bounded by `gate.max_blocks` — fewer
-when the failure repeats with no new edits), and you
-can always close the session. A genuine pre-stop veto is proposed upstream
-([`anomalyco/opencode#54487`](https://github.com/anomalyco/opencode/pull/54487),
-open) — if it lands, the gate vetoes there instead of continuing. The
-**pre-flight** gate is the one genuine hard block today. Guardrails add to OpenCode permissions, never replace them. Formatters
-and linters are yours — the plugin runs them, it does not reimplement them.
+- The completion gate **steers, it does not veto**: it continues the turn
+  via a synthetic message at the idle boundary — bounded by
+  `gate.max_blocks` (fewer when the failure repeats with no new edits) —
+  and you can always close the session.
+- A genuine pre-stop veto is proposed upstream
+  ([`anomalyco/opencode#54487`](https://github.com/anomalyco/opencode/pull/54487),
+  open) — if it lands, the gate vetoes there instead of continuing.
+- The **pre-flight** gate is the one genuine hard block today.
+- Guardrails add to OpenCode permissions, never replace them.
+- Formatters and linters are yours — the plugin runs them, it does not
+  reimplement them.
+
 Full story: [`docs/user/enforcement.md`](docs/user/enforcement.md).
 
 ## Troubleshooting
