@@ -155,10 +155,11 @@ How each layer is enforced, and what it honestly cannot do:
 | `/df-profile` | Instant modal picker (or `/df-profile <name>`): switches profile now, written to config. |
 | `/df-verify` | Runs the verification suite manually; pass/fail summary in a modal. |
 | `/df-init` | Server-side command: scaffolds templates, writes the detected config, trial-runs it, hands the brief to the agent. |
+| `/df-update` | Server-side command: diffs installed templates against shipped, refresh/add each with user approval (detection only, never writes). |
 | `/df-goal <objective>` | Server-side command: starts a **verified** native goal (requires native `/goal`, a blocking profile, and at least one real check). |
 
-The TUI commands open instantly and never feed the LLM; `/df-init` and
-`/df-goal` are server-side and drive the session. Full reference:
+The TUI commands open instantly and never feed the LLM; `/df-init`,
+`/df-update`, and `/df-goal` are server-side and drive the session. Full reference:
 [`docs/user/commands.md`](docs/user/commands.md).
 
 ## Limitations (short version)

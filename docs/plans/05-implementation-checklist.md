@@ -542,6 +542,50 @@ Dogfood the fork's V2 pre-terminal hook (upstream PR
   Should-fix fixed + tested, rest fixed-or-justified in `08-notes.md`);
   committed on a framework-repo branch (`feat/experimental-stopping-dogfood`).
 
+## Phase 35 — Template updates `/df-update` (plan 19, DONE 2026-11-12)
+
+- [x] 35.1 `src/update.ts`: `checkTemplateUpdates` (classify via
+  `statusTemplates` — reuse, no new comparison), `composeUpdatePrompt`
+  (empty-tree redirect to `/df-init`, current status, drift + approval
+  rules with the yml exclusion), `runUpdateCommand` (liveness guard,
+  delivery passthrough, recoverable delivery-failure error — same shape
+  as `runInitCommand`, minus the config reload templates don't need).
+- [x] 35.2 Server-side `/df-update` registration beside `/df-init`
+  (defensive try/catch + race guard); help line in `renderHelp`;
+  `docs/user/commands.md` entry. README commands table row added at
+  release time (deviation from the plan's "README untouched" — a new
+  command needs discoverability).
+- [x] 35.3 Tests `tests/update.test.ts` (classification current/refresh/
+  add/empty, prompt approval rules + yml exclusion, command core);
+  animeRSS-incident reuse fix (`61b9772`: orchestrator scoping + reuse
+  rules in the peer-review skill, fail-before proven by stash);
+  peer-review pass before done; full suite green; commit locally,
+  never push.
+
+## Phase 34 — Review freshness (plan 18, DONE 2026-11-12)
+
+- [x] 34.1 `src/review.ts`: `stale` ReviewState + `findUncoveredFiles`
+  (boundary-guarded, case-sensitive, no config knobs) + plugin
+  bookkeeping exclusions (review artifact, runtime snapshot).
+- [x] 34.2 `src/harness.ts`: freshness in `readReviewState`,
+  `coverableChangedFiles`, stale summary branch; freshness clauses in
+  `configuration.md` and `hardening.md`.
+- [x] 34.3 Tests (16 in `tests/review.test.ts`, 425 total at the time);
+  peer-review pass before done; commit locally, never push.
+
+## Phase 33 — Local-only improvements (plan 17, DONE 2026-11-12)
+
+- [x] 33.1 Session duty roster (`src/roster.ts`, `renderDutyRoster` on the
+  `context` hook); config-weakening detection (`src/weakening.ts`,
+  `"weakened"` verdict); review substance floors (`src/review.ts`,
+  200 chars / 30 words, template rejection). §4 dropped, §5 sanitization
+  dropped / audit declined, §6 declined — revisit triggers in plan 17.
+- [x] 33.2 Log default + rotation (`resolveDefaultLogFile`, 5MB + 1 backup)
+  with troubleshooting docs; user docs for roster/weakening/substance.
+- [x] 33.3 Tests (`tests/roster.test.ts` / `tests/weakening.test.ts` /
+  `tests/review.test.ts`); peer-review pass before done; commit locally,
+  never push.
+
 ## Phase 32 — Agent-led init wizard (plan 16, IN PROGRESS)
 
 - [x] 32.1 `buildWizardBrief` / `formatWizardBrief` / `listMakefileTargets`
