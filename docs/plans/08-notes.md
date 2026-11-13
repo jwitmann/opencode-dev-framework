@@ -1810,6 +1810,31 @@ format/lint/md/typecheck/build clean.
 No code change until something upstream merges. `04-hook-mapping.md`
 stays as-is until then.
 
+## npm update hint — deferred (2026-11-13)
+
+Proposal: at startup, best-effort short-timeout `npm view
+opencode-dev-framework version`, compare against our own
+`package.json`, cache the answer ~24h, surface one line only when an
+update exists (same self-clearing pattern as drift notices).
+
+Deferred, not rejected. All current deployments are local-path
+installs, where the registry version is noise by definition — ahead
+of, behind, or beside npm at any moment. A path-loaded plugin
+phoning home about npm is machinery guarding nobody. The check would
+need install-mode detection (loaded from inside `node_modules` →
+check, otherwise skip) to avoid nagging local users, plus fail-silent
+fast behavior for sandboxed/CI/offline setups, npm-binary presence,
+a semver comparator with no new deps, and a permanent startup-path
+maintenance surface. A phone-home with no opt-out also strains the
+standing rule against bypassable mechanisms. The cheap version
+already exists: `/df-runtime` shows the running version, so the human
+comparison is one command when curiosity strikes.
+
+Revisit trigger: the first external/registry user, a stale-version
+issue from a stranger, or the day a deployment installs from the
+registry instead of the path. Until then, local installs skip npm
+checks entirely.
+
 ## References
 
 - OpenCode plugin docs: <https://opencode.ai/docs/plugins>
