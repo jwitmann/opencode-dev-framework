@@ -1835,6 +1835,31 @@ issue from a stranger, or the day a deployment installs from the
 registry instead of the path. Until then, local installs skip npm
 checks entirely.
 
+## Specialist subagents inherit session duties (2026-11-13)
+
+AnimeRSS session showed a style-enforcer subagent running checks AND
+writing `review.md` — one day after the orchestrator-scoping note
+("never consolidate, fix, or re-run") was deployed everywhere. The note
+failed because it never said "never write files", while the session
+duties injected on the `context` hook ("review: write review.md") fire
+for every session *including subagent sessions*. The subagent followed
+the clearer instruction. Fixed with one explicit line (only the
+orchestrator writes the artifact; a specialist's report text is its
+entire output, overriding the session duty). Standing lesson: a role
+restriction must name the forbidden act (writing files), not just the
+forbidden workflow (consolidate/fix/re-run) — and any duty injected
+into "every session" is inherited by specialists unless scoped out.
+
+## Stale serve backend shadows fresh dist (2026-11-13)
+
+Plugin code runs in the shared `opencode serve --service` process, not
+the TUI. Restarting the client (`opencode -c`) reuses the old server,
+so a rebuilt `dist/` sits unread and new hook behavior (the startup
+mention) never fires. TUI restarts are invisible to hook state, which
+also lives server-side. After a plugin upgrade, restart the serve
+backend — then new and continued sessions both pick up the new code
+(in-memory seen-sets reset, so mentions re-arm).
+
 ## References
 
 - OpenCode plugin docs: <https://opencode.ai/docs/plugins>

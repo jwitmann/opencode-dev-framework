@@ -542,6 +542,20 @@ Dogfood the fork's V2 pre-terminal hook (upstream PR
   Should-fix fixed + tested, rest fixed-or-justified in `08-notes.md`);
   committed on a framework-repo branch (`feat/experimental-stopping-dogfood`).
 
+## Phase 37 — Specialist file-write prohibition (plan 19 follow-up, DONE 2026-11-13)
+
+- [x] 37.1 AnimeRSS session (2026-11-13) showed a style-enforcer subagent
+  gathering evidence AND writing `review.md` despite the Phase 35
+  orchestrator-scoping note — the note forbade consolidate/fix/re-run
+  but never said "never write files", while session duties inject
+  "write review.md" into every session including subagents. Fix: one
+  explicit line in `templates/.opencode/skills/peer-review/SKILL.md`
+  (only the orchestrator writes the artifact; a specialist's report
+  text is its entire output, overriding the session duty). `08-notes.md`
+  records the full episode (duties-injection root cause).
+- [x] 37.2 Validation green; commit locally, never push. Deployments pick
+  it up via `/df-update` (drift) or pristine `cp` + `diff` verify.
+
 ## Phase 36 — Startup drift mention (plan 20, DONE 2026-11-13)
 
 - [x] 36.1 Restores the cut half of the original ask (check + mention at
