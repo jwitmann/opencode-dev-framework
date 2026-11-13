@@ -15,6 +15,8 @@
  * - ctx.command.transform(...) -> server-side `/df-init` project setup
  *   (deterministic scaffold in code, handoff back via session.prompt;
  *   see src/init.ts)
+ * - ctx.command.transform(...) -> server-side `/df-update` template drift
+ *   check (detection only, handoff back via session.prompt; see src/update.ts)
  *
  * Gate enforcement: no synchronous pre-stop veto. On `experimental.idle`
  * (same execution) we run the gate and if it fails inside budget we admit
@@ -1102,6 +1104,61 @@ const plugin = Plugin.define({
         state,
         "warn",
         "could not register df-init command; project setup unavailable",
+        {
+          error: String(err),
+        },
+      );
+    }
+
+    // 3d) Template refresh — server-side `/df-update` through
+    // `ctx.command.transform` (same shape as `/df-init`). Detects drift
+    // between the deployed templates and the shipped set, then hands the
+    // lists back through `session.prompt` with the invocation delivery, so
+    // the agent diffs, presents per file, and applies only what the user
+    // approves. Detection only — the command never writes.
+    try {
+      trackRegistration(
+        await ctx.command.transform((editor) => {
+          editor.add({
+            name: "df-update",
+            description:
+              "Check the project's installed templates against the shipped set and hand the drift to the agent: refresh differing files, add missing ones, each with user approval. Detection only, never writes.",
+            execute: async (invocation) => {
+              if (activeState !== state) {
+                throw new Error(
+                  "Cannot check for updates: the plugin session state changed " +
+                    "(teardown or reload raced the command); retry /df-update.",
+                );
+              }
+              const { runUpdateCommand } = await import("./update.js");
+              await runUpdateCommand({
+                directory: state.directory,
+                delivery: invocation.delivery,
+                checkAlive: () => {
+                  if (activeState !== state) {
+                    throw new Error(
+                      "Update check was superseded mid-run (teardown or reload raced the command); " +
+                        "retry /df-update — it only reads, never writes.",
+                    );
+                  }
+                },
+                deliver: async (text, delivery) => {
+                  await ctx.session.prompt({
+                    sessionID: invocation.sessionID,
+                    text,
+                    delivery,
+                  } as never);
+                },
+              });
+            },
+          });
+        }),
+      );
+    } catch (err) {
+      await safeLog(
+        state,
+        "warn",
+        "could not register df-update command; template updates unavailable",
         {
           error: String(err),
         },

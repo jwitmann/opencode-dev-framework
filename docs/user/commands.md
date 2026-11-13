@@ -33,6 +33,14 @@ change the profile itself); `dev_framework_init` accepts `wizard: true` to
 append the same brief to its result when the scaffold changed anything (a
 status note when already configured) for the session agent.
 
+`/df-update` is the same shape (server-side command, deterministic check in
+code, handoff back via `session.prompt`): it diffs the installed templates
+against the shipped set and hands the drift to the agent — refresh differing
+files, add missing ones (absence usually means a partial install), each with
+user approval. Detection only, never writes; the user config is not in the
+template set, so it cannot be touched. On a tree with nothing installed it
+says to run `/df-init` instead.
+
 `/df-goal <objective>` is a **server-side command** instead (registered by the
 server plugin, not the TUI): it starts a **verified** native goal. The plugin
 appends a short verification contract to your objective verbatim and delegates

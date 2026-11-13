@@ -122,6 +122,9 @@ export function renderHelp(): string {
   lines.push("/df-verify    Run the completion gate manually");
   lines.push("/df-goal      Start a verified native goal (verification contract + native /goal)");
   lines.push("/df-init      Set up this project (scaffold, detected config, trial-run, brief)");
+  lines.push(
+    "/df-update    Check installed templates against shipped (refresh/add, approved per file)",
+  );
   lines.push("/df-help      Show this message");
   lines.push("/df-runtime   Show plugin version and live hook/gate runtime state");
   return lines.join("\n");
