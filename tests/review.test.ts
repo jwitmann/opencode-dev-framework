@@ -84,6 +84,14 @@ describe("assessReviewContent", () => {
     expect(thinReviewMessage(["src/a.ts"])).toContain(`${REVIEW_MIN_CHARS}`);
     expect(thinReviewMessage(["src/a.ts"])).toContain("has no substance");
     expect(templateReviewMessage(["src/a.ts"])).toContain("placeholders");
+    for (const message of [
+      thinReviewMessage(["src/a.ts"]),
+      templateReviewMessage(["src/a.ts"]),
+      staleReviewMessage(["src/a.ts"], ["src/a.ts"]),
+    ]) {
+      expect(message).toContain("reuse that report");
+      expect(message).toContain("only re-run what your fixes invalidate");
+    }
     // Constitution-agnostic: no citation of bundled rule text that a
     // superseded constitution may not contain.
     expect(thinReviewMessage(["src/a.ts"])).not.toContain("40-delegation");
@@ -314,6 +322,18 @@ describe("review substance at the gate", () => {
       expect(verdict.note).toContain("has no substance");
     }
     expect(entries.some((e) => e.level === "error" && e.message.includes("advisory"))).toBe(true);
+  });
+
+  it("tells the lead to reuse fresh reports when the review is missing", async () => {
+    const { deps } = makeDeps(GREEN);
+    const inspection = await inspectCompletion({
+      run: deps.run,
+      config: deps.config,
+      directory: deps.directory,
+      trackerFiles: ["src/a.ts"],
+    });
+    expect(inspection.reviewState).toBe("missing");
+    expect(inspection.summary).toContain("reuse that report");
   });
 
   it("tracks thin and missing as distinct stuck signatures", async () => {

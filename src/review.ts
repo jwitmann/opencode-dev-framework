@@ -68,7 +68,7 @@ export function assessReviewContent(content: string): Exclude<ReviewState, "miss
   return "present";
 }
 
-/** Guidance appended to thin/template summaries: what to write. */
+/** Guidance appended to thin/template/stale summaries: what to write. */
 function reviewCadenceReminder(): string {
   return (
     `Before declaring done you must run the project's peer-review cadence: ` +
@@ -76,6 +76,8 @@ function reviewCadenceReminder(): string {
     `fail without the change, commands that actually pass), and code-reviewer / pattern-guardian ` +
     `for correctness and drift. Resolve every blocking finding, then write a summary of the ` +
     `review findings and their resolution to ${REVIEW_REL}.\n\n` +
+    `Do not re-run a specialist whose scope has not changed since its last report — ` +
+    `reuse that report and only re-run what your fixes invalidate.\n\n` +
     `Investigation-only reviewers: do not ask them to edit product code.`
   );
 }

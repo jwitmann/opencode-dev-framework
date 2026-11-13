@@ -20,6 +20,10 @@ whenever the user asks for a review of the current changes.
 
 ## Steps
 
+These steps are the orchestrator's. If you are running as one of the
+specialist subagents below, do only your assigned step and report back —
+never consolidate, fix, or re-run anything.
+
  1. **Scope the change.** Determine exactly what changed:
 
     ```bash
@@ -39,6 +43,9 @@ whenever the user asks for a review of the current changes.
     - **code-reviewer** — general correctness: bugs, logic errors, security,
       resource/concurrency issues. High bar, high signal only.
 
+    On a repeat pass, run only the specialists whose scope changed since
+    their last report — reuse fresh reports instead of running them again.
+
     If the `code-reviewer` agent is not installed in this project (or cannot be
     invoked in the current environment), perform that correctness pass yourself
     inline: read the diff in full, and for each changed file check for logic
@@ -52,8 +59,9 @@ whenever the user asks for a review of the current changes.
     now, or state precisely why it does not apply. Do not produce a report of
     issues you then leave unaddressed.
 
- 5. **Confirm.** Re-run the relevant specialist if you made non-trivial fixes,
-    until no blocking items remain.
+ 5. **Confirm.** Re-run only the specialist relevant to what you fixed,
+    until no blocking items remain. Never restart the full set when a
+    single area changed — reuse the fresh reports.
 
 ## Output
 
