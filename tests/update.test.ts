@@ -3,7 +3,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { installTemplates, listTemplateFiles } from "../src/installer";
-import { checkTemplateUpdates, composeUpdatePrompt, runUpdateCommand } from "../src/update";
+import {
+  checkTemplateUpdates,
+  composeUpdatePrompt,
+  driftMentionLine,
+  runUpdateCommand,
+} from "../src/update";
 
 let dir: string;
 
@@ -103,6 +108,30 @@ describe("composeUpdatePrompt", () => {
     expect(text).toContain("run diff yourself");
     expect(text).toContain(".opencode-dev-framework.yml");
     expect(text).toContain("Never touch");
+  });
+});
+
+describe("driftMentionLine", () => {
+  it("names refresh/add counts and /df-update on drift", async () => {
+    const first = await installFirstOnly();
+    await writeFile(join(dir, first), "customized", "utf8");
+    const drift = await checkTemplateUpdates(dir);
+    const line = driftMentionLine(drift);
+    expect(line).not.toBeNull();
+    expect(line as string).toContain("/df-update");
+    expect(line as string).toContain("1 to refresh");
+    expect(line as string).toContain("to add");
+  });
+
+  it("returns null when current", async () => {
+    await installAll();
+    const drift = await checkTemplateUpdates(dir);
+    expect(driftMentionLine(drift)).toBeNull();
+  });
+
+  it("returns null on an empty tree", async () => {
+    const drift = await checkTemplateUpdates(dir);
+    expect(driftMentionLine(drift)).toBeNull();
   });
 });
 

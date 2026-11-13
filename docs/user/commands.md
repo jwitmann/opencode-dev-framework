@@ -39,7 +39,9 @@ against the shipped set and hands the drift to the agent — refresh differing
 files, add missing ones (absence usually means a partial install), each with
 user approval. Detection only, never writes; the user config is not in the
 template set, so it cannot be touched. On a tree with nothing installed it
-says to run `/df-init` instead.
+says to run `/df-init` instead. At session startup the plugin mentions
+drift (if any) with a one-line `/df-update` pointer — current and empty
+trees stay silent.
 
 `/df-goal <objective>` is a **server-side command** instead (registered by the
 server plugin, not the TUI): it starts a **verified** native goal. The plugin

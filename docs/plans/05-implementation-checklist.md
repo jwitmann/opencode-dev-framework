@@ -542,6 +542,23 @@ Dogfood the fork's V2 pre-terminal hook (upstream PR
   Should-fix fixed + tested, rest fixed-or-justified in `08-notes.md`);
   committed on a framework-repo branch (`feat/experimental-stopping-dogfood`).
 
+## Phase 36 — Startup drift mention (plan 20, DONE 2026-11-13)
+
+- [x] 36.1 Restores the cut half of the original ask (check + mention at
+  session startup; plan 19 shipped only the command). Check at first
+  `context`-hook sighting per session — plugin `setup()` has no session
+  to mention into. Pure `driftMentionLine` in `src/update.ts` (null
+  unless installed-but-drifted; empty trees stay silent, no `/df-init`
+  nag invented). Seen-set in `src/registry.ts` (in-memory, so opencode
+  restart/reload re-arms; forgotten on `session.deleted` + reset).
+  Best-effort: never throws into prompt assembly, never writes.
+- [x] 36.2 Tests: `driftMentionLine` unit (counts, null-when-current,
+  null-when-empty) + handler-level `tests/startup-mention.test.ts`
+  (mention once on drift, per-session repeat, silent when current or
+  empty; unique session IDs + `resetRegistry` per convention).
+- [x] 36.3 Docs: plan 20, one `commands.md` line, this checklist entry.
+  Peer-review pass before done; commit locally, never push.
+
 ## Phase 35 — Template updates `/df-update` (plan 19, DONE 2026-11-12)
 
 - [x] 35.1 `src/update.ts`: `checkTemplateUpdates` (classify via

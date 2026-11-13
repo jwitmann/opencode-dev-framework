@@ -108,9 +108,22 @@ export function getDirectoryForSession(sessionID: string): string | null {
   return sessionToDirectory.get(sessionID) ?? null;
 }
 
+/** Session IDs already given their startup mention. In-memory like the
+ * directory map, so an opencode restart/reload naturally re-arms it. */
+const sessionStartSeen = new Set<string>();
+
 /** Forget a session's directory mapping (called on `session.deleted`). */
 export function clearSessionDirectory(sessionID: string): void {
   sessionToDirectory.delete(sessionID);
+  sessionStartSeen.delete(sessionID);
+}
+
+export function hasSeenSessionStart(sessionID: string): boolean {
+  return sessionStartSeen.has(sessionID);
+}
+
+export function markSessionStartSeen(sessionID: string): void {
+  sessionStartSeen.add(sessionID);
 }
 
 /** Reset all in-memory registries. Intended for test cleanup between
@@ -118,6 +131,7 @@ export function clearSessionDirectory(sessionID: string): void {
  *  `getStateForSession` into the next test. */
 export function resetRegistry(): void {
   sessionToDirectory.clear();
+  sessionStartSeen.clear();
   hookRegistry.clear();
   activeDirectory = null;
 }

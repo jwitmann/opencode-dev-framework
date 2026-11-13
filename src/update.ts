@@ -81,6 +81,29 @@ export function composeUpdatePrompt(drift: TemplateDrift, directory: string): st
   return lines.join("\n");
 }
 
+/**
+ * One-line startup mention for template drift, or null when there is
+ * nothing to say. Installed-but-current and empty trees stay silent: the
+ * mention covers drift only (an empty tree is `/df-init` territory, and
+ * the command itself already redirects there — no new nag is invented).
+ */
+export function driftMentionLine(drift: TemplateDrift): string | null {
+  if (drift.empty || (drift.refresh.length === 0 && drift.add.length === 0)) {
+    return null;
+  }
+  const parts: string[] = [];
+  if (drift.refresh.length > 0) {
+    parts.push(`${drift.refresh.length} to refresh`);
+  }
+  if (drift.add.length > 0) {
+    parts.push(`${drift.add.length} to add`);
+  }
+  return (
+    `opencode-dev-framework templates have drifted (${parts.join(", ")}). ` +
+    "Run /df-update to review each file with approval."
+  );
+}
+
 export interface UpdateCommandDeps {
   directory: string;
   delivery: unknown;

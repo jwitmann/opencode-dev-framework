@@ -60,9 +60,11 @@ import {
 import { createLogger, type LogFn, type LogLevel } from "./logger.js";
 import { checkToolCall, extractFilePath, FILE_TOOLS, toPermissionGuard } from "./protect.js";
 import { constitutionPresent, loadConstitution } from "./rules.js";
+import { clearSessionDirectory, hasSeenSessionStart, markSessionStartSeen } from "./registry.js";
 import { findRosterIndex, renderDutyRoster, rosterPresent } from "./roster.js";
 import { writeRuntimeStatus, type IdleHookVia } from "./runtime-status.js";
 import type { ResolvedConfig } from "./types.js";
+import { checkTemplateUpdates, driftMentionLine } from "./update.js";
 import { snapshotEnforceable, type EnforceableSnapshot } from "./weakening.js";
 
 // ---------------------------------------------------------------------------
@@ -488,6 +490,26 @@ const plugin = Plugin.define({
               event.system.push({ type: "text", text: roster });
             }
             await safeLog(state, "debug", "duty roster injected into system prompt");
+          }
+        }
+        // 1a) Startup template-drift mention — once per session, best-effort.
+        // First `context` sighting of a sessionID is session startup (plugin
+        // `setup()` has no session to mention into). Drifted installs get one
+        // line pointing at `/df-update`; current and empty trees stay silent.
+        // Never throws into prompt assembly; never writes.
+        const startupID = getEventSessionID(event);
+        if (startupID !== undefined && !hasSeenSessionStart(startupID)) {
+          markSessionStartSeen(startupID);
+          try {
+            const line = driftMentionLine(await checkTemplateUpdates(state.directory));
+            if (line !== null) {
+              event.system.push({ type: "text", text: line });
+              await safeLog(state, "debug", "template drift mentioned at session startup");
+            }
+          } catch (error) {
+            await safeLog(state, "debug", "startup drift check failed silently", {
+              error: String(error),
+            });
           }
         }
       }),
@@ -1186,12 +1208,14 @@ const plugin = Plugin.define({
 
           if (isSessionDeletedEvent(type)) {
             // session.deleted: cleanup block counts + stuck snapshots
-            // (memory + storage) and the idle dedup stamp for the session.
+            // (memory + storage), the idle dedup stamp, and the startup
+            // registries (directory mapping + drift-mention seen-set).
             const sid = getEventSessionID(event);
             if (sid) {
               await state.blocks.clear(sid);
               await state.stuckSnapshots.clear(sid);
               state.lastIdleHandled.delete(sid);
+              clearSessionDirectory(sid);
             }
             continue;
           }
