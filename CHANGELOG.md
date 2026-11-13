@@ -6,6 +6,20 @@ Generated from conventional commits (`scripts/changelog.sh`).
 Single source: CI publishes each version's section as the GitHub
 release notes, so this file and the release page never diverge.
 
+## [v1.9.1] - 2026-11-13
+
+### Features
+
+- startup template-drift mention once per session ([`c37c94a`](https://github.com/jwitmann/opencode-dev-framework/commit/c37c94ab3e15e1be1198805e03fa9cbfd2369318))
+
+### Fixes
+
+- specialists never write files; report text is the entire output ([`bf55dac`](https://github.com/jwitmann/opencode-dev-framework/commit/bf55dac904d66925d8103ce8602ef09ce8651830))
+
+### Documentation
+
+- track skill-line fix, startup mention, and this week's findings ([`863c629`](https://github.com/jwitmann/opencode-dev-framework/commit/863c629e14647e86f038f947921734d1015d0492))
+
 ## [v1.9.0] - 2026-11-13
 
 ### Features
