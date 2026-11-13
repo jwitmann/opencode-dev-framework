@@ -6,6 +6,19 @@ Generated from conventional commits (`scripts/changelog.sh`).
 Single source: CI publishes each version's section as the GitHub
 release notes, so this file and the release page never diverge.
 
+## [v1.9.0] - 2026-11-13
+
+### Features
+
+- reuse fresh specialist reports instead of re-running the full cadence ([`61b9772`](https://github.com/jwitmann/opencode-dev-framework/commit/61b9772fe11bc3ebf46bfb1b664290b5d7edf880))
+- /df-update brings deployed templates current with per-file approval ([`3587887`](https://github.com/jwitmann/opencode-dev-framework/commit/358788770a2a34563f945e68e0c2216fda338e47))
+
+### Documentation
+
+- configuration documents review freshness alongside substance ([`2eb1cb7`](https://github.com/jwitmann/opencode-dev-framework/commit/2eb1cb7f526a2969604ddd8c22ef724f5e32e634))
+- record deferred npm update hint in 08-notes ([`067b373`](https://github.com/jwitmann/opencode-dev-framework/commit/067b37339fdaef915989e902a682ad53acf68234))
+- README covers /df-update; checklist tracks phases 33-35 ([`59d9206`](https://github.com/jwitmann/opencode-dev-framework/commit/59d9206f29867b3760020d558c07f87d2cb71f02))
+
 ## [v1.8.0] - 2026-11-12
 
 ### Features
