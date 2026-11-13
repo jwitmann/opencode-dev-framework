@@ -22,7 +22,10 @@ whenever the user asks for a review of the current changes.
 
 These steps are the orchestrator's. If you are running as one of the
 specialist subagents below, do only your assigned step and report back —
-never consolidate, fix, or re-run anything.
+never consolidate, fix, or re-run anything. Only the orchestrator writes
+the review artifact: as a specialist you never write files, your report
+text is your entire output. This overrides any session duty telling you
+to write the review file.
 
  1. **Scope the change.** Determine exactly what changed:
 
