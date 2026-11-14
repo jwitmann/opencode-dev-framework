@@ -542,6 +542,22 @@ Dogfood the fork's V2 pre-terminal hook (upstream PR
   Should-fix fixed + tested, rest fixed-or-justified in `08-notes.md`);
   committed on a framework-repo branch (`feat/experimental-stopping-dogfood`).
 
+## Phase 40 — Child sessions never touch the parent review artifact (plan 23 phase 1, DONE 2026-11-14)
+
+- [x] 40.1 Production logs proved the gate fired inside reviewer subagent
+  sessions (blocks 1–2/3) and ordered them to write `review.md`, which the
+  code-reviewer obeyed over its investigation-only role (edits +
+  commit `85808cb`, content-correct, procedurally wrong). Fix is the
+  castrated phase 1: gate skips `parentID != null` on both levers (debug
+  log, no verdict/prompt/stamp); `execute.before` + `permission.evaluate`
+  deny child writes to the artifact (warn-in-advisory); artifact targeting
+  only, so ordinary edits pay zero lookups; lookup failures degrade to
+  today's behavior. Single file, shared tracker, no other changes.
+- [x] 40.2 `resolveIsChildSession` (cached, fail-closed) in `src/registry.ts`,
+  `isReviewArtifact` in `src/harness.ts`, four wiring sites in
+  `src/index.ts`; 12 new handler-level + unit tests; full suite green;
+  peer-review pass before done; commit locally, never push.
+
 ## Phase 39 — Template state in `/df-runtime` (plan 22, DONE 2026-11-14)
 
 - [x] 39.1 Plan-21 silent no-ops leave no transcript trace, so the visible

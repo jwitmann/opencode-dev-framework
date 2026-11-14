@@ -18,7 +18,7 @@
  */
 
 import { readFile, stat } from "node:fs/promises";
-import { join } from "node:path";
+import { isAbsolute, join, relative } from "node:path";
 import type { BlockStore, StuckSnapshotStore } from "./block-store.js";
 import { runGate, summarizeGate, type ChangedFileTracker, type GateReport } from "./gate.js";
 import type { RunCommand } from "./host.js";
@@ -39,6 +39,21 @@ import { diffWeakening, type EnforceableSnapshot } from "./weakening.js";
 
 /** Project-relative path of the peer-review artifact the agent must produce. */
 export const REVIEW_ARTIFACT_REL = ".opencode/opencode-dev-framework/review.md";
+
+/**
+ * True when a tool-call target is the review artifact. Normalizes like the
+ * guardrail path matcher (absolute paths resolve against the project
+ * directory, leading `./` is stripped) and matches the exact artifact only —
+ * never a prefix or a similarly-named file.
+ */
+export function isReviewArtifact(filePath: string, directory?: string): boolean {
+  let candidate = filePath;
+  if (directory !== undefined && isAbsolute(filePath)) {
+    candidate = relative(directory, filePath);
+  }
+  candidate = candidate.replace(/^\.\//, "");
+  return candidate === REVIEW_ARTIFACT_REL;
+}
 
 /** Project-relative path of the pre-flight artifact the agent must produce. */
 export const PREFLIGHT_ARTIFACT_REL = ".opencode/opencode-dev-framework/preflight.md";

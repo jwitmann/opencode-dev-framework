@@ -100,6 +100,47 @@ export function updateHookState(directory: string, updates: Partial<HookState>):
  * session ID can still find their state. */
 const sessionToDirectory = new Map<string, string>();
 
+/**
+ * Child-session verdicts: sessionID → true when the session has a parent
+ * (i.e. it is a subagent and never owns review duty). Populated lazily via
+ * `resolveIsChildSession` and cleared with everything else in
+ * `resetRegistry`. Memory-only like the directory map.
+ */
+const childSessionCache = new Map<string, boolean>();
+
+/** Structural parent link returned by the host session lookup. */
+export interface SessionParentInfo {
+  parentID?: string | null | undefined;
+}
+
+/**
+ * True when the session is a child (subagent): its host record carries a
+ * parentID. Results are cached per sessionID. Fails closed to `false`
+ * (top-level): a missing getter (older core), an empty sessionID, or a
+ * lookup throw preserves the pre-guard behavior exactly — the session is
+ * gated and may write, as before. Never throws.
+ */
+export async function resolveIsChildSession(
+  sessionID: string,
+  getSession?: (id: string) => Promise<SessionParentInfo | null | undefined>,
+): Promise<boolean> {
+  if (sessionID === "") return false;
+  const cached = childSessionCache.get(sessionID);
+  if (cached !== undefined) return cached;
+  let isChild = false;
+  if (getSession !== undefined) {
+    try {
+      const info = await getSession(sessionID);
+      const parent = info?.parentID;
+      isChild = typeof parent === "string" && parent !== "";
+    } catch {
+      isChild = false;
+    }
+  }
+  childSessionCache.set(sessionID, isChild);
+  return isChild;
+}
+
 export function setSessionDirectory(sessionID: string, directory: string): void {
   sessionToDirectory.set(sessionID, directory);
 }
@@ -132,6 +173,7 @@ export function markSessionStartSeen(sessionID: string): void {
 export function resetRegistry(): void {
   sessionToDirectory.clear();
   sessionStartSeen.clear();
+  childSessionCache.clear();
   hookRegistry.clear();
   activeDirectory = null;
 }

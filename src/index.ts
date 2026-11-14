@@ -43,8 +43,10 @@ import {
   artifactState,
   createPassCache,
   evaluateCompletion,
+  isReviewArtifact,
   PREFLIGHT_ARTIFACT_REL,
   preflightBlockReason,
+  REVIEW_ARTIFACT_REL,
   type CompletionVerdict,
   type PassCache,
 } from "./harness.js";
@@ -60,7 +62,12 @@ import {
 import { createLogger, type LogFn, type LogLevel } from "./logger.js";
 import { checkToolCall, extractFilePath, FILE_TOOLS, toPermissionGuard } from "./protect.js";
 import { constitutionPresent, loadConstitution } from "./rules.js";
-import { clearSessionDirectory, hasSeenSessionStart, markSessionStartSeen } from "./registry.js";
+import {
+  clearSessionDirectory,
+  hasSeenSessionStart,
+  markSessionStartSeen,
+  resolveIsChildSession,
+} from "./registry.js";
 import { findRosterIndex, renderDutyRoster, rosterPresent } from "./roster.js";
 import { writeRuntimeStatus, type IdleHookVia, type TemplateState } from "./runtime-status.js";
 import type { ResolvedConfig } from "./types.js";
@@ -292,6 +299,22 @@ function runCompletion(state: HookState, sessionID: string): Promise<CompletionV
 }
 
 /**
+ * Build the host session lookup for child detection, defensively: older
+ * cores (and stub contexts in tests) may not expose `session.get`, in
+ * which case every session reads as top-level and behavior is unchanged.
+ * The lookup is cached per sessionID inside `resolveIsChildSession`, so the
+ * steady state pays one call per session lifetime.
+ */
+function childSessionGetter(
+  ctx: Context,
+): ((id: string) => Promise<{ parentID?: string | null }>) | undefined {
+  const get = (ctx.session as unknown as { get?: unknown }).get;
+  if (typeof get !== "function") return undefined;
+  const bound = get as (input: { sessionID: string }) => Promise<{ parentID?: string | null }>;
+  return (id: string) => bound({ sessionID: id });
+}
+
+/**
  * Record a completed idle-hook evaluation for the dedup map. Stamp ONLY on
  * the completed-evaluation paths (pass, blocked-admitted, standdown);
  * throw/early-return paths must not stamp so the subscriber net retries.
@@ -441,6 +464,10 @@ const plugin = Plugin.define({
       lastIdleHandled: new Map<string, number>(),
     };
     activeState = state;
+    // Child-session detection for the review-duty guard (plan 23 phase 1):
+    // one cached host lookup per session lifetime; undefined on older
+    // cores, where every session reads as top-level (behavior unchanged).
+    const sessionGetter = childSessionGetter(ctx);
 
     // Surface a broken storage backend early (best-effort, never thrown).
     // With the stop-level hydration gone there is no setup-time storage
@@ -583,6 +610,16 @@ const plugin = Plugin.define({
             ((event as { sessionID: string }).sessionID as string)) ||
           getEventSessionID(event);
         if (!sessionID) return;
+        // Child sessions owe no review duty (plan 23 phase 1): the review
+        // artifact belongs to the top-level session, so a child idling on
+        // a dirty tree must never be blocked or told to write it. Skip
+        // before any gate work; both levers share this predicate.
+        if (await resolveIsChildSession(sessionID, sessionGetter)) {
+          await safeLog(state, "debug", "completion gate skipped: child session owes no review duty", {
+            sessionID,
+          });
+          return;
+        }
         await reloadConfigIfChanged(state);
         if (state.config.profile === "off") return;
         if (!state.config.gate) {
@@ -733,6 +770,27 @@ const plugin = Plugin.define({
           }
           const verdict = toPermissionGuard(state.config, action, event.resources, state.directory);
           if (verdict === null) {
+            // Child sessions never write the parent's review artifact
+            // (plan 23 phase 1, defense-in-depth behind execute.before).
+            // Consulted only for artifact targets; everything else keeps
+            // the existing abstain behavior.
+            if (action === "edit" && target !== undefined && isReviewArtifact(target, state.directory)) {
+              const childID = typeof event.sessionID === "string" ? event.sessionID : "";
+              if (await resolveIsChildSession(childID, sessionGetter)) {
+                const reason =
+                  `child sessions never write ${REVIEW_ARTIFACT_REL}: the review duty belongs ` +
+                  `to the top-level session — report back as text and let the orchestrator ` +
+                  `write the artifact`;
+                if (state.config.profile === "advisory") {
+                  await safeLog(state, "debug", reason, { ...baseExtra });
+                  return;
+                }
+                event.effect = "deny";
+                event.message = reason;
+                await safeLog(state, "error", reason, { ...baseExtra });
+                return;
+              }
+            }
             await safeLog(
               state,
               "debug",
@@ -789,6 +847,31 @@ const plugin = Plugin.define({
         const toolName = event.tool;
         const input = event.input;
         const sessionID = event.sessionID;
+
+        // Child sessions never write the parent's review artifact (plan 23
+        // phase 1). Checked only for artifact targets so ordinary edits pay
+        // zero lookup cost and behave exactly as before.
+        const editTarget = extractFilePath(input);
+        if (
+          editTarget !== undefined &&
+          FILE_TOOLS.has(toolName) &&
+          isReviewArtifact(editTarget, state.directory)
+        ) {
+          const childID = typeof sessionID === "string" ? sessionID : "";
+          if (await resolveIsChildSession(childID, sessionGetter)) {
+            const reason =
+              `child sessions never write ${REVIEW_ARTIFACT_REL}: the review duty belongs ` +
+              `to the top-level session — report back as text and let the orchestrator ` +
+              `write the artifact`;
+            const extra = { tool: toolName, sessionID };
+            if (state.config.profile === "advisory") {
+              await safeLog(state, "warn", reason, extra);
+            } else {
+              await safeLog(state, "error", reason, extra);
+              throw new Error(`[opencode-dev-framework] ${reason}`);
+            }
+          }
+        }
 
         // Pre-flight harness: when `preflight:` tasks are configured, file
         // edits are denied (standard/strict) until the pre-flight artifact
@@ -1294,6 +1377,17 @@ const plugin = Plugin.define({
             }
             const sessionID = getEventSessionID(event);
             if (!sessionID) continue;
+            // Same child-session skip as the hook lever above: no duty, no
+            // verdict, no re-prompt — the parent answers for the tree.
+            if (await resolveIsChildSession(sessionID, sessionGetter)) {
+              await safeLog(
+                state,
+                "debug",
+                "completion gate skipped: child session owes no review duty",
+                { sessionID },
+              );
+              continue;
+            }
             // The §1b hook completed an evaluation for this boundary — one
             // boundary, one gate run. (Deliberately not stamped here: only
             // the hook stamps, so a hook that never fires can never be
