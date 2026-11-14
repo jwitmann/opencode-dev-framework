@@ -8,6 +8,7 @@ import plugin from "../src/index";
 import {
   clearSessionDirectory,
   resetRegistry,
+  resolveChildSession,
   resolveIsChildSession,
   resolveSessionDepth,
 } from "../src/registry";
@@ -53,10 +54,13 @@ describe("resolveIsChildSession", () => {
   });
 
   it("caches the verdict per session", async () => {
-    const getSession = vi.fn(async (_id: string) => ({ parentID: "ses_parent" }));
+    const getSession = vi.fn(async (id: string) => ({
+      parentID: id === "ses_cached" ? "ses_parent" : null,
+    }));
     await resolveIsChildSession("ses_cached", getSession);
     await resolveIsChildSession("ses_cached", getSession);
-    expect(getSession).toHaveBeenCalledTimes(1);
+    // One walk (child + parent), then a cache hit.
+    expect(getSession).toHaveBeenCalledTimes(2);
   });
 
   it("does not cache lookup failures or unknown sessions (never sticky fail-open)", async () => {
@@ -73,17 +77,28 @@ describe("resolveIsChildSession", () => {
   });
 
   it("evicts the cached verdict when the session is deleted", async () => {
-    const child = vi.fn(async (_id: string) => ({ parentID: "ses_parent" }));
+    const child = vi.fn(async (id: string) => ({
+      parentID: id === "ses_gone" ? "ses_parent" : null,
+    }));
     await expect(resolveIsChildSession("ses_gone", child)).resolves.toBe(true);
     clearSessionDirectory("ses_gone");
     const top = vi.fn(async (_id: string) => ({ parentID: null }));
     await expect(resolveIsChildSession("ses_gone", top)).resolves.toBe(false);
-    expect(child).toHaveBeenCalledTimes(1);
+    // Single walk before eviction (child + terminating parent lookup).
+    expect(child).toHaveBeenCalledTimes(2);
     expect(top).toHaveBeenCalledTimes(1);
   });
 });
 
 describe("resolveSessionDepth", () => {
+  beforeEach(() => {
+    resetRegistry();
+  });
+
+  afterEach(() => {
+    resetRegistry();
+  });
+
   function chain(parents: Record<string, string | null>) {
     return vi.fn(async (id: string) => ({ parentID: parents[id] ?? null }));
   }
@@ -117,6 +132,62 @@ describe("resolveSessionDepth", () => {
   it("terminates on a parent cycle instead of looping", async () => {
     const getSession = chain({ ses_a: "ses_b", ses_b: "ses_a" });
     await expect(resolveSessionDepth("ses_a", getSession)).resolves.toBe(1);
+  });
+});
+
+describe("resolveChildSession", () => {
+  beforeEach(() => {
+    resetRegistry();
+  });
+
+  afterEach(() => {
+    resetRegistry();
+  });
+
+  it("resolves verdict and depth in a single walk (no double-fetch)", async () => {
+    const getSession = vi.fn(async (id: string) => ({
+      parentID: { ses_a: "ses_b", ses_b: "ses_top", ses_top: null }[id] ?? null,
+    }));
+    await expect(resolveChildSession("ses_a", getSession)).resolves.toEqual({
+      isChild: true,
+      depth: 2,
+    });
+    // One walk: ses_a → ses_b → ses_top. The second call is a cache hit.
+    expect(getSession).toHaveBeenCalledTimes(3);
+    await expect(resolveChildSession("ses_a", getSession)).resolves.toEqual({
+      isChild: true,
+      depth: 2,
+    });
+    expect(getSession).toHaveBeenCalledTimes(3);
+  });
+
+  it("keeps the duty verdict when deeper ancestry fails, without caching", async () => {
+    const getSession = vi.fn(async (id: string) => {
+      if (id === "ses_mid") throw new Error("transient");
+      return { parentID: "ses_mid" as string | null };
+    });
+    await expect(resolveChildSession("ses_a", getSession)).resolves.toEqual({
+      isChild: true,
+      depth: null,
+    });
+    await expect(resolveChildSession("ses_a", getSession)).resolves.toEqual({
+      isChild: true,
+      depth: null,
+    });
+    expect(getSession).toHaveBeenCalledTimes(4);
+  });
+
+  it("never caches an unknown first hop", async () => {
+    const unknown = vi.fn(async (_id: string) => null);
+    await expect(resolveChildSession("ses_ghost", unknown)).resolves.toEqual({
+      isChild: false,
+      depth: null,
+    });
+    await expect(resolveChildSession("ses_ghost", unknown)).resolves.toEqual({
+      isChild: false,
+      depth: null,
+    });
+    expect(unknown).toHaveBeenCalledTimes(2);
   });
 });
 
@@ -306,9 +377,10 @@ describe("child sessions never touch the parent review artifact", () => {
         } as never),
       ).resolves.toBeUndefined();
       // Unrelated child edits never consult the parent lookup (zero hot-path impact).
-      // The two artifact checks cost 4 lookups: child boolean + 2-hop depth
-      // walk for the tripwire log line, plus the top-level boolean.
-      expect(h.sessionGet).toHaveBeenCalledTimes(4);
+      // Artifact checks cost one cached walk each: the child boolean + 2-hop
+      // depth walk share a single resolution (2 lookups), plus the
+      // top-level boolean (1 lookup).
+      expect(h.sessionGet).toHaveBeenCalledTimes(3);
     } finally {
       if (typeof h.dispose === "function") await h.dispose();
     }

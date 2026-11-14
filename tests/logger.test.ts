@@ -101,6 +101,38 @@ describe("createLogger", () => {
     const log = createLogger(client);
     await expect(log("error", "gate failed")).resolves.toBeUndefined();
   });
+
+  describe("OPENCODE_DEV_FRAMEWORK_LOG_LEVEL", () => {
+    let previousLevel: string | undefined;
+
+    beforeEach(() => {
+      previousLevel = process.env.OPENCODE_DEV_FRAMEWORK_LOG_LEVEL;
+    });
+
+    afterEach(() => {
+      if (previousLevel === undefined) delete process.env.OPENCODE_DEV_FRAMEWORK_LOG_LEVEL;
+      else process.env.OPENCODE_DEV_FRAMEWORK_LOG_LEVEL = previousLevel;
+    });
+
+    it("drops below-minimum levels everywhere (client, stderr, file)", async () => {
+      process.env.OPENCODE_DEV_FRAMEWORK_LOG_LEVEL = "warn";
+      const { client, calls } = stubClient();
+      const log = createLogger(client);
+      await log("debug", "quiet");
+      await log("info", "also quiet");
+      await log("warn", "loud");
+      await log("error", "louder");
+      expect(calls.map((c) => c.level)).toEqual(["warn", "error"]);
+      expect(stderrSpy.mock.calls.join("\n")).not.toContain("quiet");
+    });
+
+    it("treats unknown values as debug (current behavior)", async () => {
+      process.env.OPENCODE_DEV_FRAMEWORK_LOG_LEVEL = "verbose";
+      const { client, calls } = stubClient();
+      await createLogger(client)("debug", "still here");
+      expect(calls).toHaveLength(1);
+    });
+  });
 });
 
 describe("resolveDefaultLogFile", () => {

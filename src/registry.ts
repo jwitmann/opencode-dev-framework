@@ -101,84 +101,109 @@ export function updateHookState(directory: string, updates: Partial<HookState>):
 const sessionToDirectory = new Map<string, string>();
 
 /**
- * Child-session verdicts: sessionID → true when the session has a parent
- * (i.e. it is a subagent and never owns review duty). Populated lazily via
- * `resolveIsChildSession` and cleared with everything else in
- * `resetRegistry`. Memory-only like the directory map.
+ * Child-session resolution: one cached host walk per session lifetime.
+ * `isChild` powers the plan-23 duty skip; `depth` is the plan-24 tripwire
+ * (null = unknown). Resolved together so child-gated branches never pay
+ * for the same lookup twice. Populated lazily and cleared with everything
+ * else in `clearSessionDirectory`/`resetRegistry`. Memory-only like the
+ * directory map.
  */
-const childSessionCache = new Map<string, boolean>();
+const childSessionCache = new Map<string, ChildSessionResolution>();
 
 /** Structural parent link returned by the host session lookup. */
 export interface SessionParentInfo {
   parentID?: string | null | undefined;
 }
 
+/** Outcome of one ancestry walk: duty verdict plus best-effort depth. */
+export interface ChildSessionResolution {
+  isChild: boolean;
+  depth: number | null;
+}
+
 /**
- * True when the session is a child (subagent): its host record carries a
- * parentID. Results are cached per sessionID. Fails closed to `false`
- * (top-level): a missing getter (older core), an empty sessionID, or a
- * lookup throw preserves the pre-guard behavior exactly — the session is
- * gated and may write, as before. Never throws.
+ * Walk the `parentID` chain once, returning the duty verdict and the
+ * depth together (depth 0 = top-level, null = unknown). Only a confirmed
+ * not-found/deleted hop ends the walk as dead; any lookup failure
+ * abandons it as unknown rather than guessing. Fails closed to
+ * `{ isChild: false, depth: null }` (top-level): a missing getter (older
+ * core), an empty sessionID, or a lookup throw preserves the pre-guard
+ * behavior exactly. Results cache per sessionID, but only fully-resolved
+ * walks: a throw or a nullish info (unknown to the host) returns
+ * top-level WITHOUT caching, so one transient failure can never
+ * permanently pin a session. Never throws. A pathological parent cycle
+ * terminates via the visited set (the core API cannot currently produce
+ * one: no `parentID` mutation, unknown parents rejected at creation).
+ */
+export async function resolveChildSession(
+  sessionID: string,
+  getSession?: (id: string) => Promise<SessionParentInfo | null | undefined>,
+): Promise<ChildSessionResolution> {
+  if (sessionID === "") return { isChild: false, depth: null };
+  const cached = childSessionCache.get(sessionID);
+  if (cached !== undefined) return cached;
+  const fallback: ChildSessionResolution = { isChild: false, depth: null };
+  if (getSession === undefined) return fallback;
+  try {
+    // An unknown first hop (nullish info) returns top-level WITHOUT
+    // caching, so one transient failure can never permanently pin a
+    // child as top-level (which would re-enable the original bug).
+    const first = await getSession(sessionID);
+    if (first === null || first === undefined) return fallback;
+    const seen = new Set<string>([sessionID]);
+    let current = sessionID;
+    let parent = first.parentID;
+    let depth = 0;
+    let isChild = false;
+    while (typeof parent === "string" && parent !== "" && !seen.has(parent)) {
+      seen.add(parent);
+      isChild = true;
+      depth++;
+      current = parent;
+      try {
+        parent = (await getSession(current))?.parentID;
+      } catch {
+        // Writer is live (first hop resolved) but deeper ancestry is
+        // unknown: keep the duty verdict, abandon the depth, and do NOT
+        // cache — the next call re-walks instead of pinning unknown.
+        return { isChild: true, depth: null };
+      }
+    }
+    // Fully-resolved walks cache (top-level `{false, 0}` too: parentage
+    // is immutable and deletion evicts via `clearSessionDirectory`).
+    const resolved: ChildSessionResolution = { isChild, depth };
+    childSessionCache.set(sessionID, resolved);
+    return resolved;
+  } catch {
+    return fallback;
+  }
+}
+
+/**
+ * True when the session is a child (subagent): it shares the
+ * `resolveChildSession` cache, so pairing this with a depth read costs
+ * nothing extra. Same fail-closed contract as the combined resolver.
  */
 export async function resolveIsChildSession(
   sessionID: string,
   getSession?: (id: string) => Promise<SessionParentInfo | null | undefined>,
 ): Promise<boolean> {
-  if (sessionID === "") return false;
-  const cached = childSessionCache.get(sessionID);
-  if (cached !== undefined) return cached;
-  let isChild = false;
-  if (getSession === undefined) return false;
-  try {
-    const info = await getSession(sessionID);
-    // Cache only successful lookups that actually resolved a session:
-    // a throw or a nullish info (unknown to the host) returns top-level
-    // WITHOUT caching, so one transient failure can never permanently pin
-    // a child as top-level (which would re-enable the original bug).
-    if (info !== null && info !== undefined) {
-      const parent = info.parentID;
-      isChild = typeof parent === "string" && parent !== "";
-      childSessionCache.set(sessionID, isChild);
-    }
-    return isChild;
-  } catch {
-    return false;
-  }
+  return (await resolveChildSession(sessionID, getSession)).isChild;
 }
 
 /**
  * Best-effort session-tree depth for the plan-24 tripwire: the number of
  * `parentID` hops from the session to its top-level root (0 = top-level).
- * Logged on child-gated decisions so the first real nesting shows up in
- * the log instead of passing silently. Uncapped by policy — the visited
- * set only guards against a pathological cycle, which the core API cannot
- * currently produce (no `parentID` mutation; creation with an unknown
- * parent is rejected). Never throws and never caches: an empty sessionID
- * or missing getter yields null (unknown), any lookup failure abandons
- * the walk and yields null rather than a misleading partial count, and
- * the call sites are rare (idle boundaries, artifact writes) so
- * freshness beats memoization.
+ * Shares the `resolveChildSession` walk and cache, so pairing a duty
+ * check with a depth read costs nothing extra. Same fail-closed contract:
+ * empty sessionID, missing getter, or any lookup failure yields null
+ * (unknown) rather than a misleading partial count. Never throws.
  */
 export async function resolveSessionDepth(
   sessionID: string,
   getSession?: (id: string) => Promise<SessionParentInfo | null | undefined>,
 ): Promise<number | null> {
-  if (sessionID === "" || getSession === undefined) return null;
-  const seen = new Set<string>([sessionID]);
-  let depth = 0;
-  let current = sessionID;
-  try {
-    while (true) {
-      const parent = (await getSession(current))?.parentID;
-      if (typeof parent !== "string" || parent === "" || seen.has(parent)) break;
-      seen.add(parent);
-      depth++;
-      current = parent;
-    }
-    return depth;
-  } catch {
-    return null;
-  }
+  return (await resolveChildSession(sessionID, getSession)).depth;
 }
 
 export function setSessionDirectory(sessionID: string, directory: string): void {

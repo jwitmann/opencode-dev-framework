@@ -107,5 +107,9 @@ Run a private server with the plugin trace on and read the log:
 OPENCODE_DEV_FRAMEWORK_LOG_FILE=/tmp/odf.log opencode run --standalone --print-logs
 ```
 
+`OPENCODE_DEV_FRAMEWORK_LOG_LEVEL` (default `debug`) sets the minimum
+level that reaches stderr and the file — raise it to `warn` to silence
+routine `info`/`debug` lines. Unknown values fall back to `debug`.
+
 Plugin code runs in the `opencode serve` backend, not in your terminal
 process — a variable exported only in the TUI shell never reaches it.

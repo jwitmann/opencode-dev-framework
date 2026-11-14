@@ -8,6 +8,21 @@ import { dirname, isAbsolute, join } from "node:path";
 
 export type LogLevel = "debug" | "info" | "warn" | "error";
 
+/** Severity order for the `OPENCODE_DEV_FRAMEWORK_LOG_LEVEL` gate below. */
+const LOG_SEVERITIES: Record<LogLevel, number> = { debug: 0, info: 1, warn: 2, error: 3 };
+
+/**
+ * Minimum level that reaches stderr/file, from
+ * `OPENCODE_DEV_FRAMEWORK_LOG_LEVEL` (default `debug` = current behavior:
+ * everything is emitted). Unknown values fall back to `debug`.
+ * Defense-in-depth so one chatty future call site cannot spam the log —
+ * today every site is disciplined, so the default changes nothing.
+ */
+function resolveMinLevel(env: NodeJS.ProcessEnv = process.env): LogLevel {
+  const raw = env.OPENCODE_DEV_FRAMEWORK_LOG_LEVEL?.toLowerCase();
+  return raw === "info" || raw === "warn" || raw === "error" ? raw : "debug";
+}
+
 export const LOG_SERVICE = "opencode-dev-framework";
 
 /** Leaf directory/file for the default user-level log. */
@@ -94,6 +109,14 @@ function safeTmpdir(): string | null {
   }
 }
 
+/**
+ * Directories already created by `appendLogFile` this process: the log
+ * path is fixed, so `mkdir -p` on every line is pure syscall overhead.
+ * Best-effort like everything else here — a failed `mkdir` simply never
+ * lands in the set and is retried next write.
+ */
+const createdDirs = new Set<string>();
+
 /** Best-effort file write: creates the parent dir, rotates past the cap, never throws. */
 async function appendLogFile(
   filePath: string,
@@ -101,7 +124,13 @@ async function appendLogFile(
   maxBytes: number = MAX_LOG_BYTES,
 ): Promise<void> {
   try {
-    await mkdir(dirname(filePath), { recursive: true });
+    // The log path is fixed per process, so the parent dir only needs
+    // creating once — not on every line.
+    const dir = dirname(filePath);
+    if (!createdDirs.has(dir)) {
+      await mkdir(dir, { recursive: true });
+      createdDirs.add(dir);
+    }
     await rotateLogFile(filePath, maxBytes);
     await appendFile(filePath, `${line}\n`);
   } catch {
@@ -145,7 +174,9 @@ export function createLogger(
   // a running server.
   const filePath =
     process.env.OPENCODE_DEV_FRAMEWORK_LOG_FILE ?? resolveDefaultLogFile() ?? undefined;
+  const minLevel = resolveMinLevel();
   return async (level, message, extra) => {
+    if (LOG_SEVERITIES[level] < LOG_SEVERITIES[minLevel]) return;
     const line = JSON.stringify({
       timestamp: new Date().toISOString(),
       service: LOG_SERVICE,

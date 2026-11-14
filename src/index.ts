@@ -73,8 +73,7 @@ import {
   clearSessionDirectory,
   hasSeenSessionStart,
   markSessionStartSeen,
-  resolveIsChildSession,
-  resolveSessionDepth,
+  resolveChildSession,
 } from "./registry.js";
 import { findRosterIndex, renderDutyRoster, rosterPresent } from "./roster.js";
 import { constitutionPresent, loadConstitution } from "./rules.js";
@@ -311,8 +310,8 @@ function runCompletion(state: HookState, sessionID: string): Promise<CompletionV
  * Build the host session lookup for child detection, defensively: older
  * cores (and stub contexts in tests) may not expose `session.get`, in
  * which case every session reads as top-level and behavior is unchanged.
- * The lookup is cached per sessionID inside `resolveIsChildSession`, so the
- * steady state pays one call per session lifetime.
+ * The lookup is cached per sessionID inside `resolveChildSession`, so the
+ * steady state pays one walk per session lifetime.
  */
 function childSessionGetter(
   ctx: Context,
@@ -625,20 +624,22 @@ const plugin = Plugin.define({
         // Child sessions owe no review duty (plan 23 phase 1): the review
         // artifact belongs to the top-level session, so a child idling on
         // a dirty tree must never be blocked or told to write it. Skip
-        // before any gate work; both levers share this predicate.
-        if (await resolveIsChildSession(sessionID, sessionGetter)) {
+        // before any gate work; both levers share this predicate. The
+        // tripwire depth (plan 24) rides the same walk, so this costs one
+        // cached lookup per session lifetime — never two.
+        const child = await resolveChildSession(sessionID, sessionGetter);
+        if (child.isChild) {
           // Tripwire (plan 24): log the chain depth on every child-gated
           // decision. Depth 1 is the entire world at core's default
           // `experimental.subagent_depth`; anything deeper means nesting
           // arrived via a raised limit or a non-tool creation path.
-          const depth = await resolveSessionDepth(sessionID, sessionGetter);
           await safeLog(
             state,
             "debug",
             "completion gate skipped: child session owes no review duty",
             {
               sessionID,
-              depth,
+              depth: child.depth,
             },
           );
           return;
@@ -809,15 +810,15 @@ const plugin = Plugin.define({
             }
             if (resourceHitsArtifact) {
               const childID = typeof event.sessionID === "string" ? event.sessionID : "";
-              if (await resolveIsChildSession(childID, sessionGetter)) {
+              const child = await resolveChildSession(childID, sessionGetter);
+              if (child.isChild) {
                 const reason = childArtifactDenial();
-                const depth = await resolveSessionDepth(childID, sessionGetter);
                 if (state.config.profile === "advisory") {
-                  await safeLog(state, "debug", reason, { ...baseExtra, depth });
+                  await safeLog(state, "debug", reason, { ...baseExtra, depth: child.depth });
                 } else {
                   event.effect = "deny";
                   event.message = reason;
-                  await safeLog(state, "error", reason, { ...baseExtra, depth });
+                  await safeLog(state, "error", reason, { ...baseExtra, depth: child.depth });
                 }
                 return;
               }
@@ -898,10 +899,10 @@ const plugin = Plugin.define({
             ));
         if (writesArtifact) {
           const childID = typeof sessionID === "string" ? sessionID : "";
-          if (await resolveIsChildSession(childID, sessionGetter)) {
+          const child = await resolveChildSession(childID, sessionGetter);
+          if (child.isChild) {
             const reason = childArtifactDenial();
-            const depth = await resolveSessionDepth(childID, sessionGetter);
-            const extra = { tool: toolName, sessionID, depth };
+            const extra = { tool: toolName, sessionID, depth: child.depth };
             if (state.config.profile === "advisory") {
               await safeLog(state, "warn", reason, extra);
             } else {
@@ -1417,13 +1418,13 @@ const plugin = Plugin.define({
             if (!sessionID) continue;
             // Same child-session skip as the hook lever above: no duty, no
             // verdict, no re-prompt — the parent answers for the tree.
-            if (await resolveIsChildSession(sessionID, sessionGetter)) {
-              const depth = await resolveSessionDepth(sessionID, sessionGetter);
+            const child = await resolveChildSession(sessionID, sessionGetter);
+            if (child.isChild) {
               await safeLog(
                 state,
                 "debug",
                 "completion gate skipped: child session owes no review duty",
-                { sessionID, depth },
+                { sessionID, depth: child.depth },
               );
               continue;
             }
