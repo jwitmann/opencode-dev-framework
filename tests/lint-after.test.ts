@@ -98,7 +98,9 @@ describe("Phase 24: per-edit lint via tool.hook(execute.after)", () => {
       cleanup = undefined;
     }
     clearConfigCache();
-    rmSync(directory, { recursive: true, force: true });
+    // CI runners can still be settling spawned lint processes when cleanup
+    // runs — retry the recursive remove instead of failing the suite.
+    rmSync(directory, { recursive: true, force: true, maxRetries: 3, retryDelay: 10 });
     vi.restoreAllMocks();
   });
 
