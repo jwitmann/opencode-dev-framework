@@ -1,10 +1,10 @@
 # Plan 24 — Nested review receipts (requester judges)
 
 Status: design, agreed 2026-11-14, hardened through review passes
-2026-11-15. Not built — deferred until `experimental.subagent_depth`
+the same day. Not built — deferred until `experimental.subagent_depth`
 is raised above 1 (core's default of 1 forbids nesting on the
 subagent-tool path, so the plan's scenario cannot arise by accident).
-Depth tripwire built 2026-11-15. Predecessor: plan 23
+Depth tripwire built 2026-11-14. Predecessor: plan 23
 (child sessions never touch the parent review artifact, phase 1).
 
 ## The principle
@@ -85,7 +85,7 @@ requester-judges rule itself.
   — the keyed files plus the parent chain *are* the audit trail. A
   nonlinear fan-out, if it ever happens, will be sitting in the scratch
   dir, self-organized, as the evidence for the cap.
-  Tripwire built 2026-11-15 (`resolveSessionDepth` in `registry.ts`,
+  Tripwire built 2026-11-14 (`resolveSessionDepth` in `registry.ts`,
   `depth` on all four child-gated log lines): at core's default
   `experimental.subagent_depth` of 1 the subagent tool itself refuses
   nesting, so depth 1 is the entire expected world and anything deeper

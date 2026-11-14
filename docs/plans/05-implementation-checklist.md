@@ -542,6 +542,24 @@ Dogfood the fork's V2 pre-terminal hook (upstream PR
   Should-fix fixed + tested, rest fixed-or-justified in `08-notes.md`);
   committed on a framework-repo branch (`feat/experimental-stopping-dogfood`).
 
+## Phase 41 — Depth tripwire (plan 24, DONE 2026-11-14)
+
+- [x] 41.1 `resolveSessionDepth` in `src/registry.ts` (best-effort
+  `parentID`-hop count, 0 = top-level, null = unknown; visited-set
+  cycle guard, never throws, stateless) + `depth` on all four
+  child-gated log lines in `src/index.ts`, computed only inside
+  child-positive branches so top-level paths pay zero extra lookups.
+  Telemetry only — no gate, guardrail, or caching behavior changed.
+- [x] 41.2 Tests: `resolveSessionDepth` unit (0, hop counts, null cases,
+  cycle termination) + idle-skip integration (`"depth":2` logged, no
+  continuation); updated the artifact-denial lookup-count assertion
+  (2 → 4: boolean + 2 depth hops + top-level boolean) with the cost
+  named. Full suite green (31 files / 488 tests).
+- [x] 41.3 Docs: plan 24 records the tripwire as built, defers the rest
+  until `experimental.subagent_depth` is raised above 1, refuses the
+  depth cap as core's duty, and pins core claims to the verified
+  revision. Rest of plan 24 stays unbuilt by design.
+
 ## Phase 40 — Child sessions never touch the parent review artifact (plan 23 phase 1, DONE 2026-11-14)
 
 - [x] 40.1 Production logs proved the gate fired inside reviewer subagent
@@ -606,24 +624,6 @@ Dogfood the fork's V2 pre-terminal hook (upstream PR
   warnings/empty, silent on current/clean re-run, return values, stale +
   delivery-failure paths unchanged). Full suite green; peer-review pass
   before done; commit locally, never push.
-
-## Phase 38 — Plan-24 depth tripwire (DONE 2026-11-15)
-
-- [x] 38.1 `resolveSessionDepth` in `src/registry.ts` (best-effort
-  `parentID`-hop count, 0 = top-level, null = unknown; visited-set
-  cycle guard, never throws, stateless) + `depth` on all four
-  child-gated log lines in `src/index.ts`, computed only inside
-  child-positive branches so top-level paths pay zero extra lookups.
-  Telemetry only — no gate, guardrail, or caching behavior changed.
-- [x] 38.2 Tests: `resolveSessionDepth` unit (0, hop counts, null cases,
-  cycle termination) + idle-skip integration (`"depth":2` logged, no
-  continuation); updated the artifact-denial lookup-count assertion
-  (2 → 4: boolean + 2 depth hops + top-level boolean) with the cost
-  named. Full suite green (31 files / 488 tests).
-- [x] 38.3 Docs: plan 24 records the tripwire as built, defers the rest
-  until `experimental.subagent_depth` is raised above 1, refuses the
-  depth cap as core's duty, and pins core claims to the verified
-  revision. Rest of plan 24 stays unbuilt by design.
 
 ## Phase 37 — Specialist file-write prohibition (plan 19 follow-up, DONE 2026-11-13)
 
