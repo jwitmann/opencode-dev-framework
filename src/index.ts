@@ -64,7 +64,7 @@ import { clearSessionDirectory, hasSeenSessionStart, markSessionStartSeen } from
 import { findRosterIndex, renderDutyRoster, rosterPresent } from "./roster.js";
 import { writeRuntimeStatus, type IdleHookVia, type TemplateState } from "./runtime-status.js";
 import type { ResolvedConfig } from "./types.js";
-import { checkTemplateUpdates, driftMentionLine } from "./update.js";
+import { checkTemplateUpdates, driftMentionLine, summarizeDrift } from "./update.js";
 import { snapshotEnforceable, type EnforceableSnapshot } from "./weakening.js";
 
 // ---------------------------------------------------------------------------
@@ -312,7 +312,6 @@ function stampRuntimeStatus(
   void (async () => {
     let templates: TemplateState | undefined;
     try {
-      const { checkTemplateUpdates, summarizeDrift } = await import("./update.js");
       templates = summarizeDrift(await checkTemplateUpdates(directory));
     } catch {
       // Best-effort: the snapshot renders without template state.

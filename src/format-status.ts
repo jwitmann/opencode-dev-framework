@@ -1,5 +1,6 @@
 import type { HookState } from "./registry.js";
 import type { RuntimeStatus, TemplateState } from "./runtime-status.js";
+import type { ResolvedConfig } from "./types.js";
 
 /**
  * One-line template drift state for `/df-runtime`: up to date, drifted
@@ -21,7 +22,6 @@ export function renderTemplateState(templates: TemplateState | undefined): strin
     "— run /df-update"
   );
 }
-import type { ResolvedConfig } from "./types.js";
 
 function formatCommandMap(
   map: ResolvedConfig["commands"]["lint"] | undefined,

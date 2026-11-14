@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -46,14 +46,12 @@ describe("runtime status snapshot", () => {
   });
 
   it("returns null for corrupt snapshots instead of throwing", async () => {
-    const { mkdirSync } = await import("node:fs");
     mkdirSync(join(dir, ".opencode/opencode-dev-framework"), { recursive: true });
     writeFileSync(snapshotPath(dir), "{ not json", "utf8");
     await expect(readRuntimeStatus(dir)).resolves.toBeNull();
   });
 
   it("defaults unknown enum values instead of rejecting the snapshot", async () => {
-    const { mkdirSync } = await import("node:fs");
     mkdirSync(join(dir, ".opencode/opencode-dev-framework"), { recursive: true });
     writeFileSync(
       snapshotPath(dir),
