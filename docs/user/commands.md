@@ -7,7 +7,8 @@ companion module. They open instantly and **never** feed text back to the LLM:
   configured commands in a modal dialog.
 - `/df-runtime` — shows the plugin version and live hook/gate runtime state
   (which idle-hook method the core accepted, dispatch history) in a modal
-  dialog. Read from a snapshot the server writes per project; reports
+  dialog, plus the template drift state (up to date, drifted, or not
+  installed). Read from a snapshot the server writes per project; reports
   "not reported yet" before the first session instead of guessing.
 - `/df-help` — lists the available dev-framework commands in a modal dialog.
 - `/df-profile` — opens a profile picker (off / advisory / standard / strict) in

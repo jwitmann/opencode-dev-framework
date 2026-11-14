@@ -23,10 +23,26 @@ export type IdleHookVia = "experimental.idle" | "idle" | "none";
 /** Dispatch history this session: hook-fired, net-fired, or neither yet. */
 export type ContinuationState = "idle" | "fallback" | "armed";
 
+/** Template drift state for the TUI `/df-runtime` command: up to date,
+ * drifted (run `/df-update`), or nothing installed (run `/df-init`). */
+export interface TemplateState {
+  state: "current" | "drifted" | "empty";
+  /** Shipped files matching the deployed set. */
+  current: number;
+  /** Total shipped files. */
+  total: number;
+  /** Deployed files differing from shipped (refresh candidates). */
+  refresh: number;
+  /** Shipped files absent (add candidates). */
+  add: number;
+}
+
 export interface RuntimeStatus {
   frameworkVersion: string;
   idleHookVia: IdleHookVia;
   continuation: ContinuationState;
+  /** Absent on snapshots written before template reporting existed. */
+  templates?: TemplateState;
   updatedAt: string;
 }
 
@@ -58,7 +74,7 @@ async function resolveFrameworkVersion(): Promise<string> {
 
 export async function writeRuntimeStatus(
   directory: string,
-  partial: { idleHookVia: IdleHookVia; continuation: ContinuationState },
+  partial: { idleHookVia: IdleHookVia; continuation: ContinuationState; templates?: TemplateState },
 ): Promise<void> {
   try {
     const status: RuntimeStatus = {
@@ -81,6 +97,18 @@ function isContinuationState(value: unknown): value is ContinuationState {
   return value === "idle" || value === "fallback" || value === "armed";
 }
 
+function isTemplateState(value: unknown): value is TemplateState {
+  if (typeof value !== "object" || value === null) return false;
+  const t = value as Record<string, unknown>;
+  return (
+    (t.state === "current" || t.state === "drifted" || t.state === "empty") &&
+    typeof t.current === "number" &&
+    typeof t.total === "number" &&
+    typeof t.refresh === "number" &&
+    typeof t.add === "number"
+  );
+}
+
 export async function readRuntimeStatus(directory: string): Promise<RuntimeStatus | null> {
   try {
     const parsed = JSON.parse(
@@ -93,6 +121,7 @@ export async function readRuntimeStatus(directory: string): Promise<RuntimeStatu
       frameworkVersion: parsed.frameworkVersion,
       idleHookVia: isIdleHookVia(parsed.idleHookVia) ? parsed.idleHookVia : "none",
       continuation: isContinuationState(parsed.continuation) ? parsed.continuation : "armed",
+      ...(isTemplateState(parsed.templates) ? { templates: parsed.templates } : {}),
       updatedAt: parsed.updatedAt,
     };
   } catch {

@@ -542,6 +542,20 @@ Dogfood the fork's V2 pre-terminal hook (upstream PR
   Should-fix fixed + tested, rest fixed-or-justified in `08-notes.md`);
   committed on a framework-repo branch (`feat/experimental-stopping-dogfood`).
 
+## Phase 39 — Template state in `/df-runtime` (plan 22, DONE 2026-11-14)
+
+- [x] 39.1 Plan-21 silent no-ops leave no transcript trace, so the visible
+  counterpart goes where turns cost nothing: snapshot gains optional
+  `templates: TemplateState` (counts only), `summarizeDrift` in
+  `src/update.ts`, one `stampRuntimeStatus` helper in `src/index.ts`
+  (setup + every continuation dispatch, best-effort), renderer line for
+  the three states + unknown-for-old-snapshots. TUI untouched (renders
+  the snapshot verbatim). No toast exists server-side — recorded in
+  plan 21, not revisited.
+- [x] 39.2 Tests (snapshot round-trip/tolerance, renderer states,
+  summarize three states); full suite green; peer-review pass before
+  done; commit locally, never push.
+
 ## Phase 38 — Silent no-ops for `/df-update` + `/df-init` (plan 21, DONE 2026-11-14)
 
 - [x] 38.1 `~/finnomena`: `/df-update` on a current tree cost a full agent

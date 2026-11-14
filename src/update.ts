@@ -11,6 +11,7 @@
 
 import { statusTemplates } from "./installer.js";
 import type { TemplateStatus } from "./installer.js";
+import type { TemplateState } from "./runtime-status.js";
 
 export interface TemplateDrift {
   /** Shipped files present and identical. */
@@ -79,6 +80,28 @@ export function composeUpdatePrompt(drift: TemplateDrift, directory: string): st
       "Report what was applied and what was left alone.",
   );
   return lines.join("\n");
+}
+
+/**
+ * Summarize drift for the runtime snapshot (`/df-runtime` renders one of
+ * three states: up to date, drifted, nothing installed). Pure; counts
+ * only, no file lists.
+ */
+export function summarizeDrift(drift: TemplateDrift): TemplateState {
+  const total = drift.current.length + drift.refresh.length + drift.add.length;
+  if (drift.empty) {
+    return { state: "empty", current: 0, total, refresh: 0, add: drift.add.length };
+  }
+  if (drift.refresh.length === 0 && drift.add.length === 0) {
+    return { state: "current", current: drift.current.length, total, refresh: 0, add: 0 };
+  }
+  return {
+    state: "drifted",
+    current: drift.current.length,
+    total,
+    refresh: drift.refresh.length,
+    add: drift.add.length,
+  };
 }
 
 /**

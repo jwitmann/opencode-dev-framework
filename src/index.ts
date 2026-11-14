@@ -62,7 +62,7 @@ import { checkToolCall, extractFilePath, FILE_TOOLS, toPermissionGuard } from ".
 import { constitutionPresent, loadConstitution } from "./rules.js";
 import { clearSessionDirectory, hasSeenSessionStart, markSessionStartSeen } from "./registry.js";
 import { findRosterIndex, renderDutyRoster, rosterPresent } from "./roster.js";
-import { writeRuntimeStatus, type IdleHookVia } from "./runtime-status.js";
+import { writeRuntimeStatus, type IdleHookVia, type TemplateState } from "./runtime-status.js";
 import type { ResolvedConfig } from "./types.js";
 import { checkTemplateUpdates, driftMentionLine } from "./update.js";
 import { snapshotEnforceable, type EnforceableSnapshot } from "./weakening.js";
@@ -298,6 +298,27 @@ function runCompletion(state: HookState, sessionID: string): Promise<CompletionV
  */
 function stampIdleHandled(state: HookState, sessionID: string): void {
   state.lastIdleHandled.set(sessionID, Date.now());
+}
+
+/**
+ * Best-effort runtime snapshot for `/df-runtime`: hook state plus template
+ * drift, fire-and-forget (never throws, never blocks the caller).
+ */
+function stampRuntimeStatus(
+  directory: string,
+  idleHookVia: IdleHookVia,
+  continuation: "idle" | "fallback" | "armed",
+): void {
+  void (async () => {
+    let templates: TemplateState | undefined;
+    try {
+      const { checkTemplateUpdates, summarizeDrift } = await import("./update.js");
+      templates = summarizeDrift(await checkTemplateUpdates(directory));
+    } catch {
+      // Best-effort: the snapshot renders without template state.
+    }
+    await writeRuntimeStatus(directory, { idleHookVia, continuation, templates });
+  })();
 }
 
 /**
@@ -585,7 +606,7 @@ const plugin = Plugin.define({
           // Pass/stand-down: completed evaluation, nothing to admit.
           stampIdleHandled(state, sessionID);
           state.continuationLevel = "idle";
-          void writeRuntimeStatus(state.directory, { idleHookVia, continuation: "idle" });
+          stampRuntimeStatus(state.directory, idleHookVia, "idle");
           return;
         }
         // Blocked: admit a synthetic continuation (same execution).
@@ -600,7 +621,7 @@ const plugin = Plugin.define({
         await ctx.session.synthetic({ sessionID, text: message });
         stampIdleHandled(state, sessionID);
         state.continuationLevel = "idle";
-        void writeRuntimeStatus(state.directory, { idleHookVia, continuation: "idle" });
+        stampRuntimeStatus(state.directory, idleHookVia, "idle");
         await safeLog(
           state,
           "info",
@@ -640,7 +661,7 @@ const plugin = Plugin.define({
     }
     // Record the registration outcome for `/df-runtime` even before the
     // first dispatch: "armed" is a real state, not a missing one.
-    void writeRuntimeStatus(state.directory, { idleHookVia, continuation: "armed" });
+    stampRuntimeStatus(state.directory, idleHookVia, "armed");
     await safeLog(
       state,
       "info",
@@ -1283,7 +1304,7 @@ const plugin = Plugin.define({
             const verdict = await runCompletion(state, sessionID);
             if (state.continuationLevel === undefined) {
               state.continuationLevel = "fallback";
-              void writeRuntimeStatus(state.directory, { idleHookVia, continuation: "fallback" });
+              stampRuntimeStatus(state.directory, idleHookVia, "fallback");
             }
             const message = await actOnVerdict(state, verdict);
             if (message === null) continue;

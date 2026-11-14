@@ -69,6 +69,54 @@ describe("runtime status snapshot", () => {
     expect(snapshot?.idleHookVia).toBe("none");
     expect(snapshot?.continuation).toBe("armed");
   });
+
+  it("round-trips template state", async () => {
+    await writeRuntimeStatus(dir, {
+      idleHookVia: "experimental.idle",
+      continuation: "armed",
+      templates: { state: "drifted", current: 7, total: 10, refresh: 1, add: 2 },
+    });
+    expect(await readRuntimeStatus(dir)).toMatchObject({
+      templates: { state: "drifted", current: 7, total: 10, refresh: 1, add: 2 },
+    });
+  });
+
+  it("tolerates snapshots without template state (older servers)", async () => {
+    const { mkdirSync } = await import("node:fs");
+    mkdirSync(join(dir, ".opencode/opencode-dev-framework"), { recursive: true });
+    writeFileSync(
+      snapshotPath(dir),
+      JSON.stringify({
+        frameworkVersion: "1.9.0",
+        idleHookVia: "idle",
+        continuation: "armed",
+        updatedAt: new Date().toISOString(),
+      }),
+      "utf8",
+    );
+    const snapshot = await readRuntimeStatus(dir);
+    expect(snapshot).not.toBeNull();
+    expect(snapshot?.templates).toBeUndefined();
+  });
+
+  it("drops invalid template state instead of rejecting the snapshot", async () => {
+    const { mkdirSync } = await import("node:fs");
+    mkdirSync(join(dir, ".opencode/opencode-dev-framework"), { recursive: true });
+    writeFileSync(
+      snapshotPath(dir),
+      JSON.stringify({
+        frameworkVersion: "1.9.0",
+        idleHookVia: "idle",
+        continuation: "armed",
+        templates: { state: "whatever", current: "7" },
+        updatedAt: new Date().toISOString(),
+      }),
+      "utf8",
+    );
+    const snapshot = await readRuntimeStatus(dir);
+    expect(snapshot).not.toBeNull();
+    expect(snapshot?.templates).toBeUndefined();
+  });
 });
 
 describe("renderRuntimeStatus", () => {
@@ -97,5 +145,32 @@ describe("renderRuntimeStatus", () => {
     expect(
       renderRuntimeStatus({ ...base, idleHookVia: "none", continuation: "fallback" }),
     ).toContain("not registered — event-subscribe fallback only");
+  });
+
+  it("renders template state unknown when the snapshot predates it", () => {
+    const text = renderRuntimeStatus(base);
+    expect(text).toContain("Templates: state unknown");
+    expect(text).not.toContain("/df-update");
+  });
+
+  it("renders the three template states with the right command", () => {
+    expect(
+      renderRuntimeStatus({
+        ...base,
+        templates: { state: "current", current: 10, total: 10, refresh: 0, add: 0 },
+      }),
+    ).toContain("Templates: up to date (10/10 match)");
+    const drifted = renderRuntimeStatus({
+      ...base,
+      templates: { state: "drifted", current: 7, total: 10, refresh: 1, add: 2 },
+    });
+    expect(drifted).toContain("Templates: drifted (1 to refresh, 2 to add)");
+    expect(drifted).toContain("/df-update");
+    expect(
+      renderRuntimeStatus({
+        ...base,
+        templates: { state: "empty", current: 0, total: 10, refresh: 0, add: 10 },
+      }),
+    ).toContain("Templates: not installed — run /df-init");
   });
 });

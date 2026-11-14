@@ -1,5 +1,26 @@
 import type { HookState } from "./registry.js";
-import type { RuntimeStatus } from "./runtime-status.js";
+import type { RuntimeStatus, TemplateState } from "./runtime-status.js";
+
+/**
+ * One-line template drift state for `/df-runtime`: up to date, drifted
+ * (run `/df-update`), or nothing installed (run `/df-init`). Absent
+ * state (older snapshot) renders as unknown, never as current.
+ */
+export function renderTemplateState(templates: TemplateState | undefined): string {
+  if (templates === undefined) {
+    return "Templates: state unknown (no report yet)";
+  }
+  if (templates.state === "empty") {
+    return "Templates: not installed — run /df-init";
+  }
+  if (templates.state === "current") {
+    return `Templates: up to date (${templates.current}/${templates.total} match)`;
+  }
+  return (
+    `Templates: drifted (${templates.refresh} to refresh, ${templates.add} to add) ` +
+    "— run /df-update"
+  );
+}
 import type { ResolvedConfig } from "./types.js";
 
 function formatCommandMap(
@@ -181,9 +202,10 @@ export function renderStatus(config: ResolvedConfig, state?: HookState | null): 
 
 /**
  * Render the runtime snapshot for the TUI `/df-runtime` command: plugin
- * version, which session-hook method the core accepted, and dispatch
- * history. A null snapshot (server hasn't reported yet) renders as such —
- * never as a negative claim about the hook.
+ * version, which session-hook method the core accepted, dispatch
+ * history, and template drift state. A null snapshot (server hasn't
+ * reported yet) renders as such — never as a negative claim about the
+ * hook. A snapshot without template state (older server) says unknown.
  */
 export function renderRuntimeStatus(snapshot: RuntimeStatus | null): string {
   const lines: string[] = ["dev-framework runtime", ""];
@@ -193,6 +215,7 @@ export function renderRuntimeStatus(snapshot: RuntimeStatus | null): string {
     return lines.join("\n");
   }
   lines.push(`Framework: v${snapshot.frameworkVersion} (snapshot as of ${snapshot.updatedAt})`);
+  lines.push(renderTemplateState(snapshot.templates));
   lines.push(
     snapshot.idleHookVia === "none"
       ? "Idle hook: not registered — event-subscribe fallback only"

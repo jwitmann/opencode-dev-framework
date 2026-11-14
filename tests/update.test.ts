@@ -9,6 +9,7 @@ import {
   driftMentionLine,
   needsAgentHandoff,
   runUpdateCommand,
+  summarizeDrift,
 } from "../src/update";
 
 let dir: string;
@@ -212,5 +213,32 @@ describe("needsAgentHandoff", () => {
     const drift = await checkTemplateUpdates(dir);
     expect(drift.empty).toBe(true);
     expect(needsAgentHandoff(drift)).toBe(true);
+  });
+});
+
+describe("summarizeDrift", () => {
+  it("reports current with counts", async () => {
+    await installAll();
+    expect(summarizeDrift(await checkTemplateUpdates(dir))).toMatchObject({
+      state: "current",
+      refresh: 0,
+      add: 0,
+    });
+  });
+
+  it("reports drift with counts", async () => {
+    const first = await installFirstOnly();
+    await writeFile(join(dir, first), "customized", "utf8");
+    const summary = summarizeDrift(await checkTemplateUpdates(dir));
+    expect(summary.state).toBe("drifted");
+    expect(summary.refresh).toBe(1);
+    expect(summary.add).toBeGreaterThan(0);
+    expect(summary.current + summary.refresh + summary.add).toBe(summary.total);
+  });
+
+  it("reports empty", async () => {
+    const summary = summarizeDrift(await checkTemplateUpdates(dir));
+    expect(summary.state).toBe("empty");
+    expect(summary.current).toBe(0);
   });
 });
