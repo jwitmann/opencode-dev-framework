@@ -49,7 +49,8 @@ more, since a headless transcript can't show TUI chrome anyway.
 ## Wiring
 
 - Pure predicates beside their composers: `needsAgentHandoff(drift)`
-  in `src/update.ts` (`!empty && (refresh || add)`), equivalent in
+  in `src/update.ts` (`refresh || add` — an empty tree's missing files
+  already read as `add`, so no special-casing), equivalent in
   `src/init.ts` (fresh, or warnings non-empty).
 - `runUpdateCommand` / `runInitCommand` return whether they delivered
   (`true`/`false`) instead of `void`; the `execute` site logs the skip
