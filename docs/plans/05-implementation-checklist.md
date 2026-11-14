@@ -542,6 +542,25 @@ Dogfood the fork's V2 pre-terminal hook (upstream PR
   Should-fix fixed + tested, rest fixed-or-justified in `08-notes.md`);
   committed on a framework-repo branch (`feat/experimental-stopping-dogfood`).
 
+## Phase 38 — Silent no-ops for `/df-update` + `/df-init` (plan 21, DONE 2026-11-14)
+
+- [x] 38.1 `~/finnomena`: `/df-update` on a current tree cost a full agent
+  turn for "Nothing to do". Root cause is structural: server `execute`
+  returns `Promise<void>` (SDK + core protocol both), so prompt-or-nothing
+  is the only lever — and both commands always prompted. Fix: pure
+  predicates (`needsAgentHandoff` in `src/update.ts`, `initNeedsHandoff`
+  in `src/init.ts`); `runUpdateCommand` / `runInitCommand` return whether
+  they delivered; the `execute` sites log the skip. Drift / fresh /
+  warnings / empty-update still prompt; clean no-ops return silent.
+- [x] 38.2 Feedback channel verified before claiming: no server-side toast
+  exists (`ctx.ui.toast` is TUI-process-only; `HookState.showToast` is a
+  dead field). "Quiet" = nothing in the transcript beyond the invocation
+  line, log line only. Recorded in plan 21.
+- [x] 38.3 Tests pin both directions per command (deliver on drift/fresh/
+  warnings/empty, silent on current/clean re-run, return values, stale +
+  delivery-failure paths unchanged). Full suite green; peer-review pass
+  before done; commit locally, never push.
+
 ## Phase 37 — Specialist file-write prohibition (plan 19 follow-up, DONE 2026-11-13)
 
 - [x] 37.1 AnimeRSS session (2026-11-13) showed a style-enforcer subagent

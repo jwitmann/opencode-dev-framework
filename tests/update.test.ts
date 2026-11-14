@@ -7,6 +7,7 @@ import {
   checkTemplateUpdates,
   composeUpdatePrompt,
   driftMentionLine,
+  needsAgentHandoff,
   runUpdateCommand,
 } from "../src/update";
 
@@ -155,10 +156,24 @@ describe("runUpdateCommand", () => {
   it("delivers the drift report with delivery passthrough", async () => {
     await installFirstOnly();
     const d = deps();
-    await runUpdateCommand(d.base);
+    await expect(runUpdateCommand(d.base)).resolves.toBe(true);
     expect(d.delivered).toHaveLength(1);
     expect(d.delivered[0]?.delivery).toBe("steer");
     expect(d.delivered[0]?.text).toContain("to add");
+  });
+
+  it("stays silent when current (no turn for nothing to do)", async () => {
+    await installAll();
+    const d = deps();
+    await expect(runUpdateCommand(d.base)).resolves.toBe(false);
+    expect(d.delivered).toHaveLength(0);
+  });
+
+  it("still hands off when empty (the /df-init redirect needs relay)", async () => {
+    const d = deps();
+    await expect(runUpdateCommand(d.base)).resolves.toBe(true);
+    expect(d.delivered).toHaveLength(1);
+    expect(d.delivered[0]?.text).toContain("/df-init");
   });
 
   it("refuses to deliver when stale", async () => {
@@ -172,11 +187,30 @@ describe("runUpdateCommand", () => {
   });
 
   it("throws a recoverable error when delivery fails", async () => {
+    await installFirstOnly();
     const d = deps({
       deliver: async () => {
         throw new Error("ConflictError");
       },
     });
     await expect(runUpdateCommand(d.base)).rejects.toThrow(/retry \/df-update/);
+  });
+});
+
+describe("needsAgentHandoff", () => {
+  it("is true for drift", async () => {
+    await installFirstOnly();
+    expect(needsAgentHandoff(await checkTemplateUpdates(dir))).toBe(true);
+  });
+
+  it("is false when current", async () => {
+    await installAll();
+    expect(needsAgentHandoff(await checkTemplateUpdates(dir))).toBe(false);
+  });
+
+  it("is true when empty (missing files read as add; the redirect needs relay)", async () => {
+    const drift = await checkTemplateUpdates(dir);
+    expect(drift.empty).toBe(true);
+    expect(needsAgentHandoff(drift)).toBe(true);
   });
 });

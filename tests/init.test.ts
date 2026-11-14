@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   composeInitPrompt,
+  initNeedsHandoff,
   runInitCommand,
   runInitScaffold,
   scaffoldReportLines,
@@ -170,12 +171,32 @@ describe("runInitCommand", () => {
 
   it("scaffolds, reloads, and delivers the handoff with delivery passthrough", async () => {
     const d = deps();
-    await runInitCommand(d.base);
+    await expect(runInitCommand(d.base)).resolves.toBe(true);
     expect(d.reloaded()).toBe(1);
     expect(d.delivered).toHaveLength(1);
     expect(d.delivered[0]?.delivery).toBe("steer");
     expect(d.delivered[0]?.text).toContain("Wizard brief");
     expect(d.delivered[0]?.text).toContain("at most 3 genuinely");
+  });
+
+  it("stays silent on a clean re-run (reload still runs, nothing delivered)", async () => {
+    await runInitScaffold(dir, stubRun(), { wizard: true });
+    const d = deps();
+    await expect(runInitCommand(d.base)).resolves.toBe(false);
+    expect(d.reloaded()).toBe(1);
+    expect(d.delivered).toHaveLength(0);
+  });
+
+  it("hands off a non-fresh re-run when warnings exist", async () => {
+    await runInitScaffold(dir, stubRun(), { wizard: true });
+    const d = deps({
+      reload: async () => {
+        throw new Error("Invalid configuration in x");
+      },
+    });
+    await expect(runInitCommand(d.base)).resolves.toBe(true);
+    expect(d.delivered).toHaveLength(1);
+    expect(d.delivered[0]?.text).toContain("could not be reloaded");
   });
 
   it("degrades a reload failure to a warning inside the prompt", async () => {
@@ -211,5 +232,25 @@ describe("runInitCommand", () => {
     await expect(runInitCommand(d.base)).rejects.toThrow(/retry \/df-init/);
     expect(d.reloaded()).toBe(0);
     expect(d.delivered).toHaveLength(0);
+  });
+});
+
+describe("initNeedsHandoff", () => {
+  const reRun = {
+    created: [],
+    overwritten: [],
+    skipped: [],
+    configAction: "skipped",
+    detailLines: [],
+    fresh: false,
+  };
+  it("is true for a fresh scaffold", () => {
+    expect(initNeedsHandoff({ ...reRun, fresh: true })).toBe(true);
+  });
+  it("is false for a clean re-run", () => {
+    expect(initNeedsHandoff(reRun)).toBe(false);
+  });
+  it("is true when warnings exist", () => {
+    expect(initNeedsHandoff(reRun, ["the config could not be reloaded"])).toBe(true);
   });
 });

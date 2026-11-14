@@ -27,7 +27,9 @@ reports status instead of touching anything. No terminal, no flags.
 
 `df init` from a shell is the scripted equivalent (CI, dotfiles,
 non-interactive runs): same scaffold, detect, and trial-run, with
-`--overwrite-existing` / `--skip-existing` for conflicts. The `dev_framework_*`
+`--overwrite-existing` / `--skip-existing` for conflicts. A clean re-run
+stays silent server-side (log line only, no agent turn) — same
+prompt-or-nothing constraint as `/df-update` below. The `dev_framework_*`
 custom *tools* remain available for in-agent use (e.g. when the model wants to
 change the profile itself); `dev_framework_init` accepts `wizard: true` to
 append the same brief to its result when the scaffold changed anything (a
@@ -39,9 +41,11 @@ against the shipped set and hands the drift to the agent — refresh differing
 files, add missing ones (absence usually means a partial install), each with
 user approval. Detection only, never writes; the user config is not in the
 template set, so it cannot be touched. On a tree with nothing installed it
-says to run `/df-init` instead. At session startup the plugin mentions
-drift (if any) with a one-line `/df-update` pointer — current and empty
-trees stay silent.
+says to run `/df-init` instead. Stays silent (log line only, no agent turn)
+when everything already matches — the server command API has no
+result channel, so a "nothing to do" turn would be pure waste. At session
+startup the plugin mentions drift (if any) with a one-line `/df-update`
+pointer — current and empty trees stay silent.
 
 `/df-goal <objective>` is a **server-side command** instead (registered by the
 server plugin, not the TUI): it starts a **verified** native goal. The plugin

@@ -82,6 +82,19 @@ export function composeUpdatePrompt(drift: TemplateDrift, directory: string): st
 }
 
 /**
+ * Whether the drift needs an agent handoff (a turn). Drifted trees do
+ * (the agent must diff, present per file, and get approval), and empty
+ * trees do too (the `/df-init` redirect guides someone who just invoked
+ * the command while exploring — silence would leave zero feedback that
+ * anything ran). Current trees ("nothing to do") stay silent: an empty
+ * tree's missing files already read as `add`, so the two length checks
+ * below cover all three cases with no special-casing.
+ */
+export function needsAgentHandoff(drift: TemplateDrift): boolean {
+  return drift.refresh.length > 0 || drift.add.length > 0;
+}
+
+/**
  * One-line startup mention for template drift, or null when there is
  * nothing to say. Installed-but-current and empty trees stay silent: the
  * mention covers drift only (an empty tree is `/df-init` territory, and
@@ -116,12 +129,19 @@ export interface UpdateCommandDeps {
 /**
  * Execute the `/df-update` command with injected dependencies (pure policy,
  * testable without a plugin context). Check, re-check liveness across the
- * await, then deliver. A delivery failure throws: the check succeeded, only
- * the handoff back failed, and the message says how to recover.
+ * await, then deliver — but only when the drift needs an agent handoff.
+ * A current tree returns `false` without delivering: the server command
+ * API returns void, so any delivery costs a full agent turn, and a
+ * "nothing to do" turn is pure waste. A delivery failure throws: the check
+ * succeeded, only the handoff back failed, and the message says how to
+ * recover. Returns whether the handoff was delivered.
  */
-export async function runUpdateCommand(deps: UpdateCommandDeps): Promise<void> {
+export async function runUpdateCommand(deps: UpdateCommandDeps): Promise<boolean> {
   const drift = await checkTemplateUpdates(deps.directory);
   deps.checkAlive();
+  if (!needsAgentHandoff(drift)) {
+    return false;
+  }
   const text = composeUpdatePrompt(drift, deps.directory);
   try {
     await deps.deliver(text, deps.delivery);
@@ -132,4 +152,5 @@ export async function runUpdateCommand(deps: UpdateCommandDeps): Promise<void> {
         `but the handoff back to the session failed (${detail}); retry /df-update — it only reads, never writes.`,
     );
   }
+  return true;
 }

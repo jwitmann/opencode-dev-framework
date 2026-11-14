@@ -39,6 +39,18 @@ export interface InitScaffold {
   fresh: boolean;
 }
 
+/**
+ * Whether the scaffold result needs an agent handoff (a turn). Fresh
+ * scaffolds do (the agent must resolve the brief); re-runs with warnings
+ * do (reload/trial failures the user came to fix must be relayed). A clean
+ * re-run stays silent: the server command API returns void, so any
+ * delivery costs a full agent turn, and an "already configured" turn is
+ * pure waste.
+ */
+export function initNeedsHandoff(scaffold: InitScaffold, warnings: string[] = []): boolean {
+  return scaffold.fresh || warnings.length > 0;
+}
+
 export async function runInitScaffold(
   directory: string,
   run: RunCommand,
@@ -165,13 +177,17 @@ export interface InitCommandDeps {
  * Execute the `/df-init` command with injected dependencies (pure policy,
  * testable without a plugin context). Scaffold first, re-check liveness
  * across the long await (file IO + trial-runs), reload the just-written
- * config, then deliver the handoff. A reload failure degrades to a
+ * config, then deliver the handoff — but only when it needs an agent
+ * handoff (fresh scaffold, or warnings). A clean re-run returns `false`
+ * without delivering: the server command API returns void, so any
+ * delivery costs a full agent turn. A reload failure degrades to a
  * warning inside the prompt — `/df-init` is the command you run to fix
  * a broken setup, so it must not fail on exactly the broken setups.
  * A delivery failure throws: the scaffold succeeded, only the handoff
- * back failed, and the message says how to recover.
+ * back failed, and the message says how to recover. Returns whether the
+ * handoff was delivered.
  */
-export async function runInitCommand(deps: InitCommandDeps): Promise<void> {
+export async function runInitCommand(deps: InitCommandDeps): Promise<boolean> {
   const scaffold = await runInitScaffold(deps.directory, deps.run, { wizard: true });
   deps.checkAlive();
   const warnings: string[] = [];
@@ -187,6 +203,9 @@ export async function runInitCommand(deps: InitCommandDeps): Promise<void> {
       error: detail,
     });
   }
+  if (!initNeedsHandoff(scaffold, warnings)) {
+    return false;
+  }
   const text = composeInitPrompt(scaffold, deps.directory, warnings);
   try {
     await deps.deliver(text, deps.delivery);
@@ -197,4 +216,5 @@ export async function runInitCommand(deps: InitCommandDeps): Promise<void> {
         `but the handoff back to the session failed (${detail}); retry /df-init — a re-run reports status without touching anything.`,
     );
   }
+  return true;
 }

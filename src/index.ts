@@ -1077,7 +1077,7 @@ const plugin = Plugin.define({
                 );
               }
               const { runInitCommand } = await import("./init.js");
-              await runInitCommand({
+              const delivered = await runInitCommand({
                 directory: state.directory,
                 run: state.run,
                 delivery: invocation.delivery,
@@ -1117,6 +1117,13 @@ const plugin = Plugin.define({
                   await safeLog(state, level, message, extra);
                 },
               });
+              if (!delivered) {
+                await safeLog(
+                  state,
+                  "info",
+                  "df-init: already configured and clean, staying silent (no handoff)",
+                );
+              }
             },
           });
         }),
@@ -1153,7 +1160,7 @@ const plugin = Plugin.define({
                 );
               }
               const { runUpdateCommand } = await import("./update.js");
-              await runUpdateCommand({
+              const delivered = await runUpdateCommand({
                 directory: state.directory,
                 delivery: invocation.delivery,
                 checkAlive: () => {
@@ -1172,6 +1179,13 @@ const plugin = Plugin.define({
                   } as never);
                 },
               });
+              if (!delivered) {
+                await safeLog(
+                  state,
+                  "info",
+                  "df-update: templates current, staying silent (no handoff)",
+                );
+              }
             },
           });
         }),
