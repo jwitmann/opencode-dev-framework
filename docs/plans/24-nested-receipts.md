@@ -157,11 +157,11 @@ Core decides how deep trees may grow (`experimental.subagent_depth`,
 creation validation); this plan decides duties within whatever tree
 exists, and applies identically at depth 1 or depth 5. Enforcement and
 attribution are inversely distributed: the tool path has both (core
-cap plus core-set `parentID`), while the bypass paths that can nest at
-default config have neither (self-asserted or absent parentage) — the
-tripwire watches precisely those paths. A plugin-side depth policy
-would fight core's config rather than complement it (see refused
-machinery).
+cap plus core-set `parentID`), while the non-tool creation paths that
+can nest at default config have neither (supplied or absent
+parentage) — the tripwire watches precisely those paths. A plugin-side
+depth policy would fight core's config rather than complement it (see
+refused machinery).
 
 ## Acceptance: caller-supplied parentage needs no oracle
 
