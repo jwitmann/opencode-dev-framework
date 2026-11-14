@@ -6,6 +6,12 @@ Generated from conventional commits (`scripts/changelog.sh`).
 Single source: CI publishes each version's section as the GitHub
 release notes, so this file and the release page never diverge.
 
+## [v1.9.3] - 2026-11-14
+
+### Other
+
+- retry temp-dir removal in lint-after cleanup (CI ENOTEMPTY flake) ([`331b65f`](https://github.com/jwitmann/opencode-dev-framework/commit/331b65f77ad4eebb4b37a067ae9cab22f2e6f0ab))
+
 ## [v1.9.2] - 2026-11-14
 
 ### Features
