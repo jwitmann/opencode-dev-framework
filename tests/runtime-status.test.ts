@@ -80,7 +80,6 @@ describe("runtime status snapshot", () => {
   });
 
   it("tolerates snapshots without template state (older servers)", async () => {
-    const { mkdirSync } = await import("node:fs");
     mkdirSync(join(dir, ".opencode/opencode-dev-framework"), { recursive: true });
     writeFileSync(
       snapshotPath(dir),
@@ -98,7 +97,6 @@ describe("runtime status snapshot", () => {
   });
 
   it("drops invalid template state instead of rejecting the snapshot", async () => {
-    const { mkdirSync } = await import("node:fs");
     mkdirSync(join(dir, ".opencode/opencode-dev-framework"), { recursive: true });
     writeFileSync(
       snapshotPath(dir),
