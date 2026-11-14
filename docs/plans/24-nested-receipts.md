@@ -1,7 +1,10 @@
 # Plan 24 — Nested review receipts (requester judges)
 
-Status: design, agreed 2026-11-14, amended 2026-11-15 after
-code-reviewer passes. Not built. Predecessor: plan 23
+Status: design, agreed 2026-11-14, hardened through review passes
+2026-11-15. Not built — deferred until `experimental.subagent_depth`
+is raised above 1 (core's default of 1 forbids nesting on the
+subagent-tool path, so the plan's scenario cannot arise by accident).
+Depth tripwire built 2026-11-15. Predecessor: plan 23
 (child sessions never touch the parent review artifact, phase 1).
 
 ## The principle
@@ -148,6 +151,18 @@ as top-level (gate fires, artifact writable). That state needs a
 deliberate fork at a chosen message boundary — no shortcut path — so
 it is the opposite of the Phase 40 failure.
 
+## Layer boundary: core owns depth, we own duties
+
+Core decides how deep trees may grow (`experimental.subagent_depth`,
+creation validation); this plan decides duties within whatever tree
+exists, and applies identically at depth 1 or depth 5. Enforcement and
+attribution are inversely distributed: the tool path has both (core
+cap plus core-set `parentID`), while the bypass paths that can nest at
+default config have neither (self-asserted or absent parentage) — the
+tripwire watches precisely those paths. A plugin-side depth policy
+would fight core's config rather than complement it (see refused
+machinery).
+
 ## Acceptance: caller-supplied parentage needs no oracle
 
 `parentID` is supplied at creation, and that is accepted outright —
@@ -166,8 +181,12 @@ here, so no future session relitigates it.
   an escape hatch. Revisit only on a real incident of uncertain delivery
   (two-strike rule); the citation-closure check covers the need today.
 - **Content-judging gate**: refused constitutively, no revisit trigger.
-- **Depth cap**: deferred, not refused. Revisit on the first observed
-  nonlinear fan-out.
+- **Depth cap**: refused — core's duty, not ours. Core enforces
+  `experimental.subagent_depth` (default 1) at the subagent tool; a
+  plugin-side cap would fight core's config rather than complement it.
+  No revisit trigger: if depth ever becomes a problem, that's core's
+  knob. This plan covers duties at whatever depth exists, never how
+  deep is too deep.
 - **Per-child consolidation ban** ("only depth 0 consolidates"):
   considered and rejected. Requester-judges legitimizes subtree
   consolidation; the ban would force raw grandchildren on the top-level
