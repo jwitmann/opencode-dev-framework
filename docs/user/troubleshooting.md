@@ -41,6 +41,14 @@ output:
 npm run build
 ```
 
+## Rebuilt but behavior unchanged (stale serve backend)
+
+Plugin code runs in the shared `opencode serve` backend, not in your
+terminal/TUI process — restarting the client alone reuses the old server,
+so a rebuilt `dist/` sits unread and new behavior silently never fires.
+After every plugin upgrade or rebuild, restart the serve backend so new
+and continued sessions pick up the new code.
+
 ## Version matrix
 
 Requires OpenCode `v2.x` (`@opencode/plugin` `^2`) — tested on `v2.0.26`
