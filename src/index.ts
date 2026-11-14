@@ -41,12 +41,12 @@ import { type ChangedFileTracker, createChangedFileTracker } from "./gate.js";
 import type { GoalDelegate } from "./goal.js";
 import {
   artifactState,
+  childArtifactDenial,
   createPassCache,
   evaluateCompletion,
   isReviewArtifact,
   PREFLIGHT_ARTIFACT_REL,
   preflightBlockReason,
-  REVIEW_ARTIFACT_REL,
   type CompletionVerdict,
   type PassCache,
 } from "./harness.js";
@@ -60,7 +60,15 @@ import {
   type LintLimiter,
 } from "./lint.js";
 import { createLogger, type LogFn, type LogLevel } from "./logger.js";
-import { checkToolCall, extractFilePath, FILE_TOOLS, toPermissionGuard } from "./protect.js";
+import {
+  checkToolCall,
+  extractCommand,
+  extractFilePath,
+  extractRedirectTargets,
+  FILE_TOOLS,
+  SHELL_TOOLS,
+  toPermissionGuard,
+} from "./protect.js";
 import { constitutionPresent, loadConstitution } from "./rules.js";
 import {
   clearSessionDirectory,
@@ -308,10 +316,13 @@ function runCompletion(state: HookState, sessionID: string): Promise<CompletionV
 function childSessionGetter(
   ctx: Context,
 ): ((id: string) => Promise<{ parentID?: string | null }>) | undefined {
-  const get = (ctx.session as unknown as { get?: unknown }).get;
-  if (typeof get !== "function") return undefined;
-  const bound = get as (input: { sessionID: string }) => Promise<{ parentID?: string | null }>;
-  return (id: string) => bound({ sessionID: id });
+  const session = ctx.session as unknown as {
+    get: (input: { sessionID: string }) => Promise<{ parentID?: string | null }>;
+  };
+  if (typeof session.get !== "function") return undefined;
+  // Called as a method so the receiver is preserved (a detached `get`
+  // could throw on `this`-dependent adapters and fail open to top-level).
+  return (id: string) => session.get({ sessionID: id });
 }
 
 /**
@@ -615,9 +626,14 @@ const plugin = Plugin.define({
         // a dirty tree must never be blocked or told to write it. Skip
         // before any gate work; both levers share this predicate.
         if (await resolveIsChildSession(sessionID, sessionGetter)) {
-          await safeLog(state, "debug", "completion gate skipped: child session owes no review duty", {
-            sessionID,
-          });
+          await safeLog(
+            state,
+            "debug",
+            "completion gate skipped: child session owes no review duty",
+            {
+              sessionID,
+            },
+          );
           return;
         }
         await reloadConfigIfChanged(state);
@@ -768,29 +784,39 @@ const plugin = Plugin.define({
               return;
             }
           }
-          const verdict = toPermissionGuard(state.config, action, event.resources, state.directory);
-          if (verdict === null) {
-            // Child sessions never write the parent's review artifact
-            // (plan 23 phase 1, defense-in-depth behind execute.before).
-            // Consulted only for artifact targets; everything else keeps
-            // the existing abstain behavior.
-            if (action === "edit" && target !== undefined && isReviewArtifact(target, state.directory)) {
+          // Child sessions never write the parent's review artifact (plan 23
+          // phase 1, defense-in-depth behind execute.before). Checked before
+          // guardrails so the specific duty message wins and a future
+          // pipeline reorder cannot strand this check behind a guardrail
+          // early-return. Consulted only for artifact targets.
+          {
+            let resourceHitsArtifact = false;
+            if (action === "edit") {
+              resourceHitsArtifact = event.resources.some(
+                (r) => r !== undefined && isReviewArtifact(r, state.directory),
+              );
+            } else if (action === "shell" && event.resources[0] !== undefined) {
+              resourceHitsArtifact = extractRedirectTargets(event.resources[0]).some((t) =>
+                isReviewArtifact(t, state.directory),
+              );
+            }
+            if (resourceHitsArtifact) {
               const childID = typeof event.sessionID === "string" ? event.sessionID : "";
               if (await resolveIsChildSession(childID, sessionGetter)) {
-                const reason =
-                  `child sessions never write ${REVIEW_ARTIFACT_REL}: the review duty belongs ` +
-                  `to the top-level session — report back as text and let the orchestrator ` +
-                  `write the artifact`;
+                const reason = childArtifactDenial();
                 if (state.config.profile === "advisory") {
                   await safeLog(state, "debug", reason, { ...baseExtra });
-                  return;
+                } else {
+                  event.effect = "deny";
+                  event.message = reason;
+                  await safeLog(state, "error", reason, { ...baseExtra });
                 }
-                event.effect = "deny";
-                event.message = reason;
-                await safeLog(state, "error", reason, { ...baseExtra });
                 return;
               }
             }
+          }
+          const verdict = toPermissionGuard(state.config, action, event.resources, state.directory);
+          if (verdict === null) {
             await safeLog(
               state,
               "debug",
@@ -849,20 +875,23 @@ const plugin = Plugin.define({
         const sessionID = event.sessionID;
 
         // Child sessions never write the parent's review artifact (plan 23
-        // phase 1). Checked only for artifact targets so ordinary edits pay
-        // zero lookup cost and behave exactly as before.
+        // phase 1). Checked only for artifact targets so ordinary calls pay
+        // zero lookup cost. Covers edit tools by target path and shell tools
+        // by redirect/`tee` target: a bare mention of the path in a command
+        // (grep, cat without redirect) is not a write and stays allowed.
         const editTarget = extractFilePath(input);
-        if (
-          editTarget !== undefined &&
-          FILE_TOOLS.has(toolName) &&
-          isReviewArtifact(editTarget, state.directory)
-        ) {
+        const writesArtifact =
+          (editTarget !== undefined &&
+            FILE_TOOLS.has(toolName) &&
+            isReviewArtifact(editTarget, state.directory)) ||
+          (SHELL_TOOLS.has(toolName) &&
+            extractRedirectTargets(extractCommand(input) ?? "").some((t) =>
+              isReviewArtifact(t, state.directory),
+            ));
+        if (writesArtifact) {
           const childID = typeof sessionID === "string" ? sessionID : "";
           if (await resolveIsChildSession(childID, sessionGetter)) {
-            const reason =
-              `child sessions never write ${REVIEW_ARTIFACT_REL}: the review duty belongs ` +
-              `to the top-level session — report back as text and let the orchestrator ` +
-              `write the artifact`;
+            const reason = childArtifactDenial();
             const extra = { tool: toolName, sessionID };
             if (state.config.profile === "advisory") {
               await safeLog(state, "warn", reason, extra);

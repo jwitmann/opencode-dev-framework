@@ -4,6 +4,7 @@ import {
   checkToolCall,
   extractCommand,
   extractFilePath,
+  extractRedirectTargets,
   matchDangerousCommand,
   matchProtectedPath,
 } from "../src/protect";
@@ -135,6 +136,38 @@ describe("helpers", () => {
   it("detects dangerous commands", () => {
     expect(matchDangerousCommand("git push origin main")?.pattern.source).toContain("git");
     expect(matchDangerousCommand("git status")).toBeUndefined();
+  });
+
+  it("extracts shell redirect and tee targets, ignoring reads and heredocs", () => {
+    expect(extractRedirectTargets("cat > out.md <<'EOF'")).toEqual(["out.md"]);
+    expect(extractRedirectTargets("printf x >> logs/a.txt 2> err.txt")).toEqual([
+      "logs/a.txt",
+      "err.txt",
+    ]);
+    expect(extractRedirectTargets("echo hi | tee a.md b.md")).toEqual(["a.md", "b.md"]);
+    expect(extractRedirectTargets('tee -a "my file.md"')).toEqual(["my file.md"]);
+    expect(extractRedirectTargets("2>glued.md")).toEqual(["glued.md"]);
+    // Reads and heredoc bodies name no file target.
+    expect(extractRedirectTargets("grep review.md src/")).toEqual([]);
+    expect(extractRedirectTargets("cat .opencode/opencode-dev-framework/review.md")).toEqual([]);
+    expect(extractRedirectTargets("cat <<'EOF'\nreview.md\nEOF")).toEqual([]);
+  });
+
+  it("catches wrapper-prefixed tee, noclobber redirects, and argv writers", () => {
+    expect(extractRedirectTargets("echo hi | sudo tee out.md")).toEqual(["out.md"]);
+    expect(extractRedirectTargets("echo hi | /usr/bin/tee out.md")).toEqual(["out.md"]);
+    expect(extractRedirectTargets("FOO=bar tee out.md")).toEqual(["out.md"]);
+    expect(extractRedirectTargets("echo hi | env A=b tee out.md")).toEqual(["out.md"]);
+    expect(extractRedirectTargets("echo hi >| out.md")).toEqual(["out.md"]);
+    expect(extractRedirectTargets("echo hi 2>| err.md")).toEqual(["err.md"]);
+    expect(extractRedirectTargets("cp a.md out.md")).toEqual(["out.md"]);
+    expect(extractRedirectTargets("mv a.md out.md")).toEqual(["out.md"]);
+    expect(extractRedirectTargets("install -m 644 a.md out.md")).toEqual(["out.md"]);
+    expect(extractRedirectTargets("sed -i s/x/y/ out.md")).toEqual(["out.md"]);
+    // Reads stay silent: plain tee position in prose, sed without -i.
+    expect(extractRedirectTargets('echo "tee out.md"')).toEqual([]);
+    expect(extractRedirectTargets("sed s/x/y/ out.md")).toEqual([]);
+    expect(extractRedirectTargets("cat out.md")).toEqual([]);
   });
 
   it("stands down when the host already denies the tool globally (edit)", () => {

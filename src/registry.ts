@@ -128,17 +128,22 @@ export async function resolveIsChildSession(
   const cached = childSessionCache.get(sessionID);
   if (cached !== undefined) return cached;
   let isChild = false;
-  if (getSession !== undefined) {
-    try {
-      const info = await getSession(sessionID);
-      const parent = info?.parentID;
+  if (getSession === undefined) return false;
+  try {
+    const info = await getSession(sessionID);
+    // Cache only successful lookups that actually resolved a session:
+    // a throw or a nullish info (unknown to the host) returns top-level
+    // WITHOUT caching, so one transient failure can never permanently pin
+    // a child as top-level (which would re-enable the original bug).
+    if (info !== null && info !== undefined) {
+      const parent = info.parentID;
       isChild = typeof parent === "string" && parent !== "";
-    } catch {
-      isChild = false;
+      childSessionCache.set(sessionID, isChild);
     }
+    return isChild;
+  } catch {
+    return false;
   }
-  childSessionCache.set(sessionID, isChild);
-  return isChild;
 }
 
 export function setSessionDirectory(sessionID: string, directory: string): void {
@@ -157,6 +162,11 @@ const sessionStartSeen = new Set<string>();
 export function clearSessionDirectory(sessionID: string): void {
   sessionToDirectory.delete(sessionID);
   sessionStartSeen.delete(sessionID);
+  // A deleted session's verdict must never outlive it: IDs are unique per
+  // session, so this is just hygiene against unbounded growth — but a stale
+  // `true` here would wrongly exempt, and a stale `false` wrongly gate, a
+  // hypothetical ID reuse. Match the existing per-session eviction contract.
+  childSessionCache.delete(sessionID);
 }
 
 export function hasSeenSessionStart(sessionID: string): boolean {

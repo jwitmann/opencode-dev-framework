@@ -27,15 +27,33 @@ beats precise-but-racy until artifacts are keyed.
   in the shared tree/tracker and the parent answers for it at parent idle.
 - **Children cannot write `review.md`.** Deny in `execute.before`
   (load-bearing backstop) + `permission.evaluate` (defense-in-depth),
-  warn-in-advisory per profile semantics. Checked only for artifact
-  targets: ordinary edits (including top-level review writes) pay zero
-  extra lookups; behavior for non-artifact calls is byte-identical.
+  warn-in-advisory per profile semantics. Edit tools checked by target
+  path, shell tools by redirect/`tee` target scan
+  (`extractRedirectTargets` in `protect.ts`); bare mentions stay allowed.
+  Checked only for artifact targets: ordinary calls pay zero extra
+  lookups; behavior for non-artifact calls is byte-identical.
+- **Lookup hygiene.** `resolveIsChildSession` caches only successful
+  resolutions; throws and unknown sessions return top-level uncached (a
+  transient failure can never pin a session). `clearSessionDirectory`
+  evicts the verdict with the other per-session state. Receiver-preserving
+  `session.get` call (no detached `this`).
+- **Shared wording.** One `childArtifactDenial()` in `harness.ts`,
+  referenced from both layers. Artifact identity is one normalized
+  `isReviewArtifact()` (absolute + `normalize`d relative spellings).
 - **Fail closed to current behavior.** Missing `session.get` (older core),
-  empty sessionID, or lookup throw → treated as top-level: gated, writable.
-  An outage degrades to exactly today's behavior, loudly logged nowhere
+  empty sessionID, or lookup throw → treated as top-level: gated,
+  writable. An outage degrades to exactly today's behavior
   (deliberate: the skip is the new behavior, the fallback is the old one).
 - **No other behavior changes.** Single file, shared duty set, shared
   tracker, no attribution, no `review.d/`, no GC, no migration, no config.
+  Guards only ever deny children on exact artifact matches; top-level
+  behavior is byte-identical.
+- **Recorded, not built:** permission layer checks every edit resource
+  (multi-resource hardening); advisory stays warn-only by design;
+  pre-flight binds all editors including children (correct — it guards a
+  different artifact); the static constitution text still names the duty
+  for children but the deny message redirects them (mixed signal mitigated
+  at the enforcement point, not the prose).
 
 ## Deferred: full subtree design (phase 2, on second strike)
 
@@ -51,9 +69,14 @@ Seams are in place: `resolveIsChildSession` (predicate),
 
 ## Validation
 
-New `tests/child-sessions.test.ts` (12 tests): unit (child/top/missing/
-throwing/cached; artifact path matching incl. `./`, absolute, rejections)
-plus handler-level wiring (idle skip logged, no continuation; top-level
-still gates with a single cached lookup; execute.before deny/allow matrix;
-permission.evaluate deny/allow matrix with zero lookups for non-targets).
-Full matrix per AGENTS.md; commit locally, never push.
+New `tests/child-sessions.test.ts` (17 tests): unit (child/top/missing/
+throwing/empty-parent/cached/uncached-failure/eviction; artifact path
+matching incl. `./`, absolute, non-canonical, rejections) plus
+handler-level wiring (idle skip logged, no continuation; top-level still
+gates with a single cached lookup; execute.before edit + shell-redirect
+deny/allow matrix; permission.evaluate deny/allow matrix incl. shell and
+multi-resource, with zero lookups for non-targets).
+`tests/protect.test.ts` gains the redirect-scan matrix. Dogfood: both
+reviewer roles ran clean on the live build post-restart (skip line in log,
+no blocks, tree clean). Full matrix per AGENTS.md; commit locally, never
+push.

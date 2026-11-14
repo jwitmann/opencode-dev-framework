@@ -556,7 +556,23 @@ Dogfood the fork's V2 pre-terminal hook (upstream PR
 - [x] 40.2 `resolveIsChildSession` (cached, fail-closed) in `src/registry.ts`,
   `isReviewArtifact` in `src/harness.ts`, four wiring sites in
   `src/index.ts`; 12 new handler-level + unit tests; full suite green;
-  peer-review pass before done; commit locally, never push.
+  peer-review pass before done; dogfood post-restart (both reviewer roles
+  ran clean: skip in log, no blocks, tree clean); commit locally, never push.
+- [x] 40.3 Reviewer findings applied (same session): shell-redirect scan
+  (`extractRedirectTargets` in `src/protect.ts`, both layers),
+  cache-only-on-success + `clearSessionDirectory` eviction,
+  `normalize`d artifact identity, shared `childArtifactDenial()`,
+  receiver-preserving lookup, every-resource edit check; pre-flight and
+  constitution-text scope recorded in plan 23, not built.
+- [x] 40.4 Second-round findings closed: win32 `normalize`-both-sides fix
+  (code-reviewer round 2, platform-read verified); advisory warn-path
+  tests added per layer (test-grounder gap); style-enforcer clean on the
+  full delta; pattern-guardian round 2 clean.
+- [x] 40.5 Third-round findings closed (code-reviewer post-restart re-run):
+  wrapper-prefixed `tee`, `>|` noclobber, argv writers (`cp`/`mv`/
+  `install`/`sed -i`) all folded into the scan with tests; child check
+  moved above the guardrail verdict in `permission.evaluate`. Final
+  artifact rewritten, full matrix green (483), commit locally, never push.
 
 ## Phase 39 — Template state in `/df-runtime` (plan 22, DONE 2026-11-14)
 

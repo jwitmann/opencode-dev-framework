@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { clearConfigCache } from "../src/config";
 import { isReviewArtifact } from "../src/harness";
 import plugin from "../src/index";
-import { resetRegistry, resolveIsChildSession } from "../src/registry";
+import { clearSessionDirectory, resetRegistry, resolveIsChildSession } from "../src/registry";
 
 const REVIEW = ".opencode/opencode-dev-framework/review.md";
 
@@ -53,6 +53,29 @@ describe("resolveIsChildSession", () => {
     await resolveIsChildSession("ses_cached", getSession);
     expect(getSession).toHaveBeenCalledTimes(1);
   });
+
+  it("does not cache lookup failures or unknown sessions (never sticky fail-open)", async () => {
+    const failing = vi.fn(async (_id: string) => {
+      throw new Error("transient");
+    });
+    await resolveIsChildSession("ses_flaky", failing);
+    await resolveIsChildSession("ses_flaky", failing);
+    expect(failing).toHaveBeenCalledTimes(2);
+    const unknown = vi.fn(async (_id: string) => null);
+    await resolveIsChildSession("ses_ghost", unknown);
+    await resolveIsChildSession("ses_ghost", unknown);
+    expect(unknown).toHaveBeenCalledTimes(2);
+  });
+
+  it("evicts the cached verdict when the session is deleted", async () => {
+    const child = vi.fn(async (_id: string) => ({ parentID: "ses_parent" }));
+    await expect(resolveIsChildSession("ses_gone", child)).resolves.toBe(true);
+    clearSessionDirectory("ses_gone");
+    const top = vi.fn(async (_id: string) => ({ parentID: null }));
+    await expect(resolveIsChildSession("ses_gone", top)).resolves.toBe(false);
+    expect(child).toHaveBeenCalledTimes(1);
+    expect(top).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe("isReviewArtifact", () => {
@@ -70,6 +93,13 @@ describe("isReviewArtifact", () => {
     expect(isReviewArtifact(".opencode/opencode-dev-framework/review.d/ses_abc.md")).toBe(false);
     expect(isReviewArtifact(join("/other", REVIEW), "/proj")).toBe(false);
     expect(isReviewArtifact("review.md")).toBe(false);
+  });
+
+  it("resolves non-canonical spellings to the same artifact", () => {
+    expect(
+      isReviewArtifact(".opencode/opencode-dev-framework/../opencode-dev-framework/review.md"),
+    ).toBe(true);
+    expect(isReviewArtifact("././.opencode/opencode-dev-framework/review.md")).toBe(true);
   });
 });
 
@@ -149,7 +179,8 @@ describe("child sessions never touch the parent review artifact", () => {
     return { ctx, sessionHooks, toolHooks, permissionHooks };
   }
 
-  async function setupWith(parents: Record<string, string | null>) {
+  async function setupWith(parents: Record<string, string | null>, profile = "standard") {
+    writeFileSync(join(directory, ".opencode-dev-framework.yml"), `profile: ${profile}\n`);
     const { ctx, sessionHooks, toolHooks, permissionHooks } = createMockCtx(async (id) => ({
       parentID: parents[id] ?? null,
     }));
@@ -226,6 +257,59 @@ describe("child sessions never touch the parent review artifact", () => {
     }
   });
 
+  it("denies child shell-redirect writes, allows reads and top-level redirects", async () => {
+    const h = await setupWith({ ses_child: "ses_parent", ses_top: null });
+    try {
+      const executeBefore = h.toolHooks.get("execute.before");
+      await expect(
+        executeBefore?.({
+          tool: "bash",
+          sessionID: "ses_child",
+          input: { command: `cat > ${REVIEW} <<'EOF'\nhi\nEOF` },
+        } as never),
+      ).rejects.toThrow(/child sessions never write/i);
+      await expect(
+        executeBefore?.({
+          tool: "bash",
+          sessionID: "ses_child",
+          input: { command: "echo hi | tee a.md b.md" },
+        } as never),
+      ).resolves.toBeUndefined();
+      // Bare mentions are reads, not writes — allowed.
+      await expect(
+        executeBefore?.({
+          tool: "bash",
+          sessionID: "ses_child",
+          input: { command: `grep review ${REVIEW}` },
+        } as never),
+      ).resolves.toBeUndefined();
+      // Wrapper-prefixed tee and argv writers are writes — denied.
+      await expect(
+        executeBefore?.({
+          tool: "bash",
+          sessionID: "ses_child",
+          input: { command: `echo hi | sudo tee ${REVIEW}` },
+        } as never),
+      ).rejects.toThrow(/child sessions never write/i);
+      await expect(
+        executeBefore?.({
+          tool: "bash",
+          sessionID: "ses_child",
+          input: { command: `cp a.md ${REVIEW}` },
+        } as never),
+      ).rejects.toThrow(/child sessions never write/i);
+      await expect(
+        executeBefore?.({
+          tool: "bash",
+          sessionID: "ses_top",
+          input: { command: `echo hi > ${REVIEW}` },
+        } as never),
+      ).resolves.toBeUndefined();
+    } finally {
+      if (typeof h.dispose === "function") await h.dispose();
+    }
+  });
+
   it("denies child review.md edits at the permission layer, leaves the rest untouched", async () => {
     const h = await setupWith({ ses_child: "ses_parent", ses_top: null });
     try {
@@ -255,6 +339,91 @@ describe("child sessions never touch the parent review artifact", () => {
       };
       await permissionEvaluate?.(otherEvent as never);
       expect(otherEvent.effect).toBe("allow");
+    } finally {
+      if (typeof h.dispose === "function") await h.dispose();
+    }
+  });
+
+  it("never consults the parent lookup for non-artifact permission checks", async () => {
+    const h = await setupWith({ ses_child: "ses_parent" });
+    try {
+      const callsBefore = (h.sessionGet as unknown as { mock: { calls: unknown[] } }).mock.calls
+        .length;
+      const permissionEvaluate = h.permissionHooks.get("evaluate");
+      await permissionEvaluate?.({
+        action: "edit",
+        resources: ["src/index.ts"],
+        effect: "allow",
+        sessionID: "ses_child",
+      } as never);
+      await permissionEvaluate?.({
+        action: "shell",
+        resources: ["grep review.md src/"],
+        effect: "allow",
+        sessionID: "ses_child",
+      } as never);
+      const callsAfter = (h.sessionGet as unknown as { mock: { calls: unknown[] } }).mock.calls
+        .length;
+      expect(callsAfter).toBe(callsBefore);
+    } finally {
+      if (typeof h.dispose === "function") await h.dispose();
+    }
+  });
+
+  it("denies child shell-redirect writes at the permission layer across all resources", async () => {
+    const h = await setupWith({ ses_child: "ses_parent" });
+    try {
+      const permissionEvaluate = h.permissionHooks.get("evaluate");
+      const redirectEvent = {
+        action: "shell",
+        resources: [`printf x > ${REVIEW}`],
+        effect: "allow",
+        sessionID: "ses_child",
+      };
+      await permissionEvaluate?.(redirectEvent as never);
+      expect(redirectEvent.effect).toBe("deny");
+      // Edit events name every resource, not just the first.
+      const multiEvent = {
+        action: "edit",
+        resources: ["src/index.ts", REVIEW],
+        effect: "allow",
+        sessionID: "ses_child",
+      };
+      await permissionEvaluate?.(multiEvent as never);
+      expect(multiEvent.effect).toBe("deny");
+    } finally {
+      if (typeof h.dispose === "function") await h.dispose();
+    }
+  });
+
+  it("warns instead of denying child artifact writes in advisory profile", async () => {
+    const h = await setupWith({ ses_child: "ses_parent" }, "advisory");
+    try {
+      const executeBefore = h.toolHooks.get("execute.before");
+      await expect(
+        executeBefore?.({
+          tool: "edit",
+          sessionID: "ses_child",
+          input: { filePath: REVIEW },
+        } as never),
+      ).resolves.toBeUndefined();
+      await expect(
+        executeBefore?.({
+          tool: "bash",
+          sessionID: "ses_child",
+          input: { command: `echo hi > ${REVIEW}` },
+        } as never),
+      ).resolves.toBeUndefined();
+      const permissionEvaluate = h.permissionHooks.get("evaluate");
+      const childEvent = {
+        action: "edit",
+        resources: [REVIEW],
+        effect: "allow",
+        sessionID: "ses_child",
+      };
+      await permissionEvaluate?.(childEvent as never);
+      expect(childEvent.effect).toBe("allow");
+      expect(logText()).toContain("child sessions never write");
     } finally {
       if (typeof h.dispose === "function") await h.dispose();
     }

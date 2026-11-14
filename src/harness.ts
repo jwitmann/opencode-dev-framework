@@ -18,7 +18,7 @@
  */
 
 import { readFile, stat } from "node:fs/promises";
-import { isAbsolute, join, relative } from "node:path";
+import { isAbsolute, join, normalize, relative } from "node:path";
 import type { BlockStore, StuckSnapshotStore } from "./block-store.js";
 import { runGate, summarizeGate, type ChangedFileTracker, type GateReport } from "./gate.js";
 import type { RunCommand } from "./host.js";
@@ -43,16 +43,30 @@ export const REVIEW_ARTIFACT_REL = ".opencode/opencode-dev-framework/review.md";
 /**
  * True when a tool-call target is the review artifact. Normalizes like the
  * guardrail path matcher (absolute paths resolve against the project
- * directory, leading `./` is stripped) and matches the exact artifact only —
- * never a prefix or a similarly-named file.
+ * directory) plus `normalize`, so non-canonical spellings (`a/../b`,
+ * `././x`) compare by where they resolve, not how they are spelled.
+ * Matches the exact artifact only — never a prefix or a similarly-named
+ * file.
  */
 export function isReviewArtifact(filePath: string, directory?: string): boolean {
   let candidate = filePath;
   if (directory !== undefined && isAbsolute(filePath)) {
     candidate = relative(directory, filePath);
   }
-  candidate = candidate.replace(/^\.\//, "");
-  return candidate === REVIEW_ARTIFACT_REL;
+  return normalize(candidate) === normalize(REVIEW_ARTIFACT_REL);
+}
+
+/**
+ * Shared denial text for the child-session artifact guard (plan 23): one
+ * spelling, referenced from both enforcement layers so a wording fix can
+ * never update one site and miss the other.
+ */
+export function childArtifactDenial(): string {
+  return (
+    `child sessions never write ${REVIEW_ARTIFACT_REL}: the review duty belongs ` +
+    `to the top-level session — report back as text and let the orchestrator ` +
+    `write the artifact`
+  );
 }
 
 /** Project-relative path of the pre-flight artifact the agent must produce. */

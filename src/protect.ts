@@ -77,6 +77,95 @@ export function extractCommand(args: unknown): string | undefined {
 }
 
 /**
+ * Extract probable file-write targets from a shell command: filenames after
+ * output redirections (`>`, `>>`, with optional fd/`&` prefixes, glued or
+ * spaced) and operands of `tee` in command position. Heredocs (`<<`) and
+ * herestrings (`<<<`) carry input, never a target, so they are ignored.
+ * Token-based and deliberately over-collecting within a command tail: that
+ * is harmless because callers only act on exact artifact matches, while a
+ * false negative would reopen a write path. Quote-aware.
+ */
+export function extractRedirectTargets(command: string): string[] {
+  const targets: string[] = [];
+  // Operators and separators stay visible as tokens so `tee` is only
+  // honored in command position (not inside quoted prose).
+  const tokens: string[] = [];
+  const tokenRe = /"([^"]*)"|'([^']*)'|&&|\|\||[;|&()!<>]+|[^\s;|&<>()!]+/g;
+  for (let m = tokenRe.exec(command); m !== null; m = tokenRe.exec(command)) {
+    tokens.push(m[1] ?? m[2] ?? m[0]);
+  }
+  const isSeparator = (t: string): boolean => /^(?:&&|\|\||[;|&()!<>]+)$/.test(t);
+  const isBareRedirect = (t: string): boolean => /^(?:\d*>>?\|?|&>>?\|?)$/.test(t);
+  // Wrappers that pass through to the real command: `sudo tee`, `env A=B
+  // tee`, `VAR=val tee`, `/usr/bin/tee`. A bare `tee` elsewhere (prose,
+  // array contents) is not a command.
+  const isWrapper = (t: string): boolean =>
+    /^(?:sudo|command|env|nice|nohup|stdbuf|time|xargs)$/.test(t) ||
+    /^[A-Za-z_][A-Za-z0-9_]*=/.test(t);
+  const cmdBase = (t: string): string => t.split("/").pop() ?? t;
+  // A few shell commands take plain argv paths as write targets (no
+  // redirect involved): `cp`/`mv`/`install` write their last operand,
+  // `sed -i` rewrites every file operand, `ed`/`ex` edit their first.
+  const ARG_WRITERS_LAST = new Set(["cp", "mv", "install"]);
+  const ARG_WRITERS_FIRST = new Set(["ed", "ex"]);
+  const collectOperands = (from: number): string[] => {
+    const operands: string[] = [];
+    for (let j = from; j < tokens.length; j++) {
+      const next = tokens[j];
+      if (isSeparator(next) || isBareRedirect(next)) break;
+      if (!next.startsWith("-") && next !== "") operands.push(next);
+    }
+    return operands;
+  };
+  for (let i = 0; i < tokens.length; i++) {
+    const token = tokens[i];
+    const atCommand = i === 0 || isSeparator(tokens[i - 1]) || isBareRedirect(tokens[i - 1]);
+    const base = cmdBase(token);
+    if (base === "tee" && (atCommand || isWrapper(tokens[i - 1] ?? ""))) {
+      // `tee` writes every non-flag operand that follows it.
+      for (const next of collectOperands(i + 1)) {
+        if (next === "tee") break;
+        targets.push(next);
+      }
+      continue;
+    }
+    if (atCommand && (ARG_WRITERS_LAST.has(base) || ARG_WRITERS_FIRST.has(base))) {
+      const operands = collectOperands(i + 1);
+      const pick = ARG_WRITERS_LAST.has(base) ? operands.at(-1) : operands[0];
+      if (pick !== undefined) targets.push(pick);
+      continue;
+    }
+    if (
+      atCommand &&
+      base === "sed" &&
+      tokens.some((t, k) => k > i && (t === "-i" || t === "--in-place" || /^-i./.test(t)))
+    ) {
+      // First non-flag operand is the script; the rest are files.
+      let skippedScript = false;
+      for (const next of collectOperands(i + 1)) {
+        if (!skippedScript) {
+          skippedScript = true;
+          continue;
+        }
+        targets.push(next);
+      }
+      continue;
+    }
+    if (isBareRedirect(token)) {
+      const next = tokens[i + 1];
+      if (next !== undefined && next !== "" && !isSeparator(next)) targets.push(next);
+      continue;
+    }
+    // Glued forms: `2>file`, `>file`, `&>>file`. Exclude `<<`/`<<<`.
+    if (token.includes(">") && !token.includes("<")) {
+      const after = token.replace(/^.*?(?:\d*>>?|&>>?)/, "").replace(/^["']|["']$/g, "");
+      if (after !== "") targets.push(after);
+    }
+  }
+  return targets;
+}
+
+/**
  * Check a file path against the protected globs. Returns the matching
  * pattern, or undefined. Patterns without a slash also match basenames at
  * any depth (so `.env*` protects `config/.env.local` too). Matchers are
