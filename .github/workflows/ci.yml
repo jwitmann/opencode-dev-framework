@@ -25,8 +25,7 @@ jobs:
 
       - run: npm ci
 
-      - run: npm run format:check
-      - run: npm run lint
+      - run: npm run check
       - run: npm run lint:md
       - run: npm run typecheck
       - run: npm run test

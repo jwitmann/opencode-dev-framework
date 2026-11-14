@@ -39,6 +39,8 @@
     "pretest": "npm run build",
     "lint": "biome lint .",
     "lint:fix": "biome lint --write .",
+    "check": "biome check .",
+    "check:fix": "biome check --write .",
     "format:check": "biome format .",
     "format:fix": "biome format --write .",
     "lint:md": "markdownlint-cli2 \"**/*.md\"",

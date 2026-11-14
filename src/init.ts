@@ -11,6 +11,7 @@
  */
 
 import { detectProject } from "./detect.js";
+import type { RunCommand } from "./host.js";
 import {
   buildWizardBrief,
   formatBriefSkipped,
@@ -20,7 +21,6 @@ import {
   trialRunDetectedCommands,
   writeDetectedConfig,
 } from "./installer.js";
-import type { RunCommand } from "./host.js";
 
 export interface InitScaffoldOptions {
   wizard?: boolean;

@@ -12,6 +12,13 @@
       "preset": "recommended"
     }
   },
+  "assist": {
+    "actions": {
+      "source": {
+        "organizeImports": "on"
+      }
+    }
+  },
   "files": {
     "includes": ["src/**/*.ts", "tests/**/*.ts"]
   }

@@ -2,6 +2,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import type { CommandResult, RunCommand, RunCommandOptions } from "../src/host";
 import {
   buildWizardBrief,
   formatTrialRun,
@@ -13,7 +14,6 @@ import {
   trialRunDetectedCommands,
   writeDetectedConfig,
 } from "../src/installer";
-import type { CommandResult, RunCommand, RunCommandOptions } from "../src/host";
 
 let dir: string;
 

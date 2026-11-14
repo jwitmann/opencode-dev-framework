@@ -3,8 +3,8 @@ import { resolveConfig } from "../src/config";
 import {
   findRosterIndex,
   MAX_ROSTER_ACCEPTANCE,
-  renderDutyRoster,
   ROSTER_MARKER,
+  renderDutyRoster,
   rosterPresent,
 } from "../src/roster";
 import type { Config } from "../src/types";

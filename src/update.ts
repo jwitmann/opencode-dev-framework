@@ -9,8 +9,8 @@
  * structurally out of scope: it was never in the template set.
  */
 
-import { statusTemplates } from "./installer.js";
 import type { TemplateStatus } from "./installer.js";
+import { statusTemplates } from "./installer.js";
 import type { TemplateState } from "./runtime-status.js";
 
 export interface TemplateDrift {

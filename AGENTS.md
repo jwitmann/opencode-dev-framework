@@ -40,13 +40,22 @@ See `docs/plans/12-idle-hook-cutover.md` and `docs/plans/04-hook-mapping.md`.
 We enforce code style automatically. The exact tools are configured in `package.json`, but the interface is:
 
 ```bash
-# Check formatting
+# Check formatting, lint, and import organization (all three in one).
+# The switch from `lint` to `check` is what enforces organization —
+# `organizeImports` is pinned explicitly on in biome.json but Biome
+# defaults it on already.
+npm run check
+
+# Fix all of the above where auto-fixable
+npm run check:fix
+
+# Check formatting only
 npm run format:check
 
 # Fix formatting
 npm run format:fix
 
-# Check TypeScript lint
+# Check TypeScript lint only
 npm run lint
 
 # Fix TypeScript lint where auto-fixable
@@ -58,11 +67,10 @@ npm run lint:md
 
 Before finishing any change:
 
-1. Run `npm run format:check`. If it fails, run `npm run format:fix`.
-2. Run `npm run lint`. If it fails, fix the issues or run `npm run lint:fix` for auto-fixable issues.
-3. Run `npm run lint:md` on any Markdown files you changed.
-4. Re-run `npm run lint` and `npm run lint:md` to confirm everything is clean.
-5. Do not suppress lint warnings without a comment explaining why.
+1. Run `npm run check`. If it fails, run `npm run check:fix`.
+2. Run `npm run lint:md` on any Markdown files you changed.
+3. Re-run `npm run check` and `npm run lint:md` to confirm everything is clean.
+4. Do not suppress lint warnings without a comment explaining why.
 
 If you add a new file, make sure it is covered by the `biome.json` `files.include` glob.
 
@@ -72,8 +80,7 @@ Run these before finishing any change:
 
 ```bash
 npm install
-npm run format:check
-npm run lint
+npm run check
 npm run lint:md
 npm run typecheck
 npm run test

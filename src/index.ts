@@ -26,38 +26,38 @@
  * stays as a deduped fallback for the boundaries the hook skips.
  */
 
-import { Plugin } from "@opencode/plugin";
-import type { Context } from "@opencode/plugin/promise/plugin";
 import { stat } from "node:fs/promises";
 import { join } from "node:path";
+import { Plugin } from "@opencode/plugin";
+import type { Context } from "@opencode/plugin/promise/plugin";
 import {
   type BlockStore,
-  type StuckSnapshotStore,
   createBlockStore,
   createStuckSnapshotStore,
+  type StuckSnapshotStore,
 } from "./block-store.js";
 import { clearConfigCache, loadConfig } from "./config.js";
 import { type ChangedFileTracker, createChangedFileTracker } from "./gate.js";
 import type { GoalDelegate } from "./goal.js";
 import {
   artifactState,
+  type CompletionVerdict,
   childArtifactDenial,
   createPassCache,
   evaluateCompletion,
   isReviewArtifact,
+  type PassCache,
   PREFLIGHT_ARTIFACT_REL,
   preflightBlockReason,
-  type CompletionVerdict,
-  type PassCache,
 } from "./harness.js";
-import { runCommand, type RunCommand } from "./host.js";
+import { type RunCommand, runCommand } from "./host.js";
 import {
   createLintLimiter,
   detectPreCommitAvailability,
   isLintFailure,
+  type LintLimiter,
   lintFile,
   summarizeLint,
-  type LintLimiter,
 } from "./lint.js";
 import { createLogger, type LogFn, type LogLevel } from "./logger.js";
 import {
@@ -69,7 +69,6 @@ import {
   SHELL_TOOLS,
   toPermissionGuard,
 } from "./protect.js";
-import { constitutionPresent, loadConstitution } from "./rules.js";
 import {
   clearSessionDirectory,
   hasSeenSessionStart,
@@ -77,10 +76,11 @@ import {
   resolveIsChildSession,
 } from "./registry.js";
 import { findRosterIndex, renderDutyRoster, rosterPresent } from "./roster.js";
-import { writeRuntimeStatus, type IdleHookVia, type TemplateState } from "./runtime-status.js";
+import { constitutionPresent, loadConstitution } from "./rules.js";
+import { type IdleHookVia, type TemplateState, writeRuntimeStatus } from "./runtime-status.js";
 import type { ResolvedConfig } from "./types.js";
 import { checkTemplateUpdates, driftMentionLine, summarizeDrift } from "./update.js";
-import { snapshotEnforceable, type EnforceableSnapshot } from "./weakening.js";
+import { type EnforceableSnapshot, snapshotEnforceable } from "./weakening.js";
 
 // ---------------------------------------------------------------------------
 // Internal state — single plugin instance per location.directory.

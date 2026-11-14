@@ -7,12 +7,11 @@ is a pointer, not a fork. If they ever disagree, `AGENTS.md` wins.
 
 ```bash
 npm install
-npm run format:check   # fix with: npm run format:fix
-npm run lint           # fix with: npm run lint:fix
-npm run lint:md        # for touched Markdown
+npm run check        # fix with: npm run check:fix
+npm run lint:md      # for touched Markdown
 npm run typecheck
 npm run test
-npm run build          # verify dist/ is produced
+npm run build        # verify dist/ is produced
 ```
 
 Run `npm run test` frequently during work; update tests with every behavior

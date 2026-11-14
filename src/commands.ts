@@ -1,10 +1,10 @@
 import { join } from "node:path";
 import { loadConfig } from "./config.js";
 import type { GateReport } from "./gate.js";
-import { inspectCompletion, type CompletionInspection } from "./harness.js";
+import { type CompletionInspection, inspectCompletion } from "./harness.js";
+import type { RunCommand } from "./host.js";
 import { setProfileInFile } from "./installer.js";
 import { createLintLimiter } from "./lint.js";
-import type { RunCommand } from "./host.js";
 import type { Profile, ResolvedConfig } from "./types.js";
 
 /**

@@ -2,9 +2,8 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { resolveConfig } from "../src/config";
 import { changeProfile, verifyGate } from "../src/commands";
-import { clearConfigCache } from "../src/config";
+import { clearConfigCache, resolveConfig } from "../src/config";
 import type { RunCommand } from "../src/host";
 
 let dir: string;

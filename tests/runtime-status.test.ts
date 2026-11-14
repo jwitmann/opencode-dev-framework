@@ -4,10 +4,10 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { renderRuntimeStatus } from "../src/format-status";
 import {
+  type RuntimeStatus,
   readRuntimeStatus,
   snapshotPath,
   writeRuntimeStatus,
-  type RuntimeStatus,
 } from "../src/runtime-status";
 
 describe("runtime status snapshot", () => {

@@ -7,14 +7,14 @@ import {
   buildVerifiedObjective,
   checkGoalAvailability,
   extractObjectiveText,
+  type GoalDelegate,
   isNativeGoalListed,
   NATIVE_GOAL_LIMIT,
   runGoalCommand,
   VERIFICATION_ADDENDUM,
-  type GoalDelegate,
 } from "../src/goal";
-import type { Config } from "../src/types";
 import plugin from "../src/index";
+import type { Config } from "../src/types";
 
 function resolve(raw: Config) {
   return resolveConfig(raw, "/project/.opencode-dev-framework.yml");

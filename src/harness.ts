@@ -20,7 +20,7 @@
 import { readFile, stat } from "node:fs/promises";
 import { isAbsolute, join, normalize, relative } from "node:path";
 import type { BlockStore, StuckSnapshotStore } from "./block-store.js";
-import { runGate, summarizeGate, type ChangedFileTracker, type GateReport } from "./gate.js";
+import { type ChangedFileTracker, type GateReport, runGate, summarizeGate } from "./gate.js";
 import type { RunCommand } from "./host.js";
 import type { LintLimiter } from "./lint.js";
 import type { LogFn } from "./logger.js";
@@ -28,10 +28,10 @@ import {
   assessReviewContent,
   findUncoveredFiles,
   normalizeReviewPath,
+  type ReviewState,
   staleReviewMessage,
   templateReviewMessage,
   thinReviewMessage,
-  type ReviewState,
 } from "./review.js";
 import { RUNTIME_STATUS_DIR, RUNTIME_STATUS_FILE } from "./runtime-status.js";
 import type { ResolvedConfig } from "./types.js";

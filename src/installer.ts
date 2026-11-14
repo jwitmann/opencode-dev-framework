@@ -1,7 +1,7 @@
 import { promises as fs } from "node:fs";
 import { dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
 import { createInterface } from "node:readline";
+import { fileURLToPath } from "node:url";
 import { splitCommand } from "./command-utils.js";
 import { checkConfigEnforceable, DEFAULT_PROTECT, resolveConfig } from "./config.js";
 import { detectProject } from "./detect.js";

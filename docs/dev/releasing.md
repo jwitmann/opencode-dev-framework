@@ -9,8 +9,8 @@ Releases are deliberate user actions: version bump, local commit, local tag.
 ./scripts/release.sh minor   # or: patch | major (default: patch)
 ```
 
-The script runs the full validation suite (`format:check`, `lint`,
-`lint:md`, `typecheck`, `test`, `build`), bumps `package.json` +
+The script runs the full validation suite (`check`, `lint:md`,
+`typecheck`, `test`, `build`), bumps `package.json` +
 `package-lock.json` via `npm version`, prepends a `CHANGELOG.md` section
 generated from conventional commits since the previous tag
 (`scripts/changelog.sh` — no dependencies, fully offline), commits, and

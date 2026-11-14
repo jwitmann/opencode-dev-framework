@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   BLOCK_COUNT_KEY_PREFIX,
-  STUCK_SNAPSHOT_KEY_PREFIX,
   createBlockStore,
   createStuckSnapshotStore,
+  STUCK_SNAPSHOT_KEY_PREFIX,
   type StorageLike,
 } from "../src/block-store";
 

@@ -7,7 +7,7 @@
 # Defaults to `patch` if no bump type is given.
 #
 # What it does:
-#   1. Runs the full validation suite (format, lint, lint:md, typecheck, test, build).
+#   1. Runs the full validation suite (check, lint:md, typecheck, test, build).
 #   2. Bumps the version in BOTH package.json and package-lock.json via `npm version`.
 #   3. Commits and creates a git tag.
 #   4. Prints the push command (does NOT push automatically).
@@ -23,8 +23,7 @@ fi
 cd "$(dirname "$0")/.."
 
 echo "==> Running validation..."
-npm run format:check
-npm run lint
+npm run check
 npm run lint:md
 npm run typecheck
 npm run test

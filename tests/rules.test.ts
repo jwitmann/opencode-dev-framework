@@ -1,17 +1,17 @@
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { resolveConfig } from "../src/config";
 import {
   BUNDLED_CONSTITUTION_DIR,
-  constitutionPresent,
   CONSTITUTION_PREFIX_LENGTH,
+  constitutionPresent,
   injectConstitution,
-  loadConstitution,
   LOCAL_RULES_DIR,
+  loadConstitution,
 } from "../src/rules";
 import type { Config, ResolvedConfig } from "../src/types";
-import { resolveConfig } from "../src/config";
 
 const CONFIG_PATH = "/project/.opencode-dev-framework.yml";
 

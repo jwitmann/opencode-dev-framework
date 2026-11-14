@@ -13,7 +13,7 @@ import { existsSync } from "node:fs";
 import { isAbsolute, relative } from "node:path";
 import { splitCommand, toAbsolutePath } from "./command-utils.js";
 import type { CommandResult, RunCommand } from "./host.js";
-import { lintFile, MAX_CONCURRENT_LINTS, type LintLimiter } from "./lint.js";
+import { type LintLimiter, lintFile, MAX_CONCURRENT_LINTS } from "./lint.js";
 import type { ResolvedConfig } from "./types.js";
 
 /** Fallback per-command timeout (seconds) when `gate.timeout` is unset. */
