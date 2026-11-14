@@ -6,6 +6,23 @@ Generated from conventional commits (`scripts/changelog.sh`).
 Single source: CI publishes each version's section as the GitHub
 release notes, so this file and the release page never diverge.
 
+## [v1.9.4] - 2026-11-14
+
+### Features
+
+- log session chain depth on child-gated decisions (plan-24 tripwire) ([`f390caf`](https://github.com/jwitmann/opencode-dev-framework/commit/f390caf068b7bb8ab84fe24e1708235bd7711121))
+
+### Documentation
+
+- nested review receipts design (requester judges) ([`8efe95e`](https://github.com/jwitmann/opencode-dev-framework/commit/8efe95e7d9524d19c3e8ed4b19d1613bfdcc0691))
+- harden nested-receipts design through three review passes ([`b39f37c`](https://github.com/jwitmann/opencode-dev-framework/commit/b39f37cc3d53ce3ddff311bea374987731957ec1))
+- plan 24 deferred to subagent_depth raise, depth cap refused as core duty ([`3ddeb16`](https://github.com/jwitmann/opencode-dev-framework/commit/3ddeb16c68581fa919d75b1278344d6b4b53a8dd))
+- drop adversarial bypass framing from plan 24 ([`37eb346`](https://github.com/jwitmann/opencode-dev-framework/commit/37eb3463727e8430a0a999989a289d75c694b8ce))
+- pin core revision for subagent_depth claims in plan 24 ([`c4bf7da`](https://github.com/jwitmann/opencode-dev-framework/commit/c4bf7da1c9819afdf22ae5abd56f8e20d4ccd6a7))
+- re-verify subagent_depth claims against resynced core ([`c957d3e`](https://github.com/jwitmann/opencode-dev-framework/commit/c957d3e94a900d63b67d1282c9f1eadc19359403))
+- record plan-24 depth tripwire as checklist Phase 38 ([`55fc4c2`](https://github.com/jwitmann/opencode-dev-framework/commit/55fc4c2c26c25bed7d983eeaf6b2fe54fb55ea5b))
+- correct tripwire entry to Phase 41, fix future dates ([`3184b03`](https://github.com/jwitmann/opencode-dev-framework/commit/3184b034b133c00b12518bb143e6aae6c60b50d5))
+
 ## [v1.9.3] - 2026-11-14
 
 ### Other
