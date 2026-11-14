@@ -90,8 +90,9 @@ requester-judges rule itself.
   `experimental.subagent_depth` of 1 the subagent tool itself refuses
   nesting, so depth 1 is the entire expected world and anything deeper
   means a raised limit or a non-tool creation path (e.g. API-supplied
-  `parentID`, which has no depth check). The rest of this plan stays
-  unbuilt until the tripwire fires.
+  `parentID`, which has no depth check). Verified against local core @
+  `5a7f398` (2026-11-06, `experimental` namespace — recheck on drift).
+  The rest of this plan stays unbuilt until the tripwire fires.
 
 ## Gate linkage: citation, not content
 
