@@ -82,6 +82,13 @@ requester-judges rule itself.
   — the keyed files plus the parent chain *are* the audit trail. A
   nonlinear fan-out, if it ever happens, will be sitting in the scratch
   dir, self-organized, as the evidence for the cap.
+  Tripwire built 2026-11-15 (`resolveSessionDepth` in `registry.ts`,
+  `depth` on all four child-gated log lines): at core's default
+  `experimental.subagent_depth` of 1 the subagent tool itself refuses
+  nesting, so depth 1 is the entire expected world and anything deeper
+  means a raised limit or a non-tool creation path (e.g. API-supplied
+  `parentID`, which has no depth check). The rest of this plan stays
+  unbuilt until the tripwire fires.
 
 ## Gate linkage: citation, not content
 

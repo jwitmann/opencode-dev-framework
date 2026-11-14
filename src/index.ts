@@ -74,6 +74,7 @@ import {
   hasSeenSessionStart,
   markSessionStartSeen,
   resolveIsChildSession,
+  resolveSessionDepth,
 } from "./registry.js";
 import { findRosterIndex, renderDutyRoster, rosterPresent } from "./roster.js";
 import { constitutionPresent, loadConstitution } from "./rules.js";
@@ -626,12 +627,18 @@ const plugin = Plugin.define({
         // a dirty tree must never be blocked or told to write it. Skip
         // before any gate work; both levers share this predicate.
         if (await resolveIsChildSession(sessionID, sessionGetter)) {
+          // Tripwire (plan 24): log the chain depth on every child-gated
+          // decision. Depth 1 is the entire world at core's default
+          // `experimental.subagent_depth`; anything deeper means nesting
+          // arrived via a raised limit or a non-tool creation path.
+          const depth = await resolveSessionDepth(sessionID, sessionGetter);
           await safeLog(
             state,
             "debug",
             "completion gate skipped: child session owes no review duty",
             {
               sessionID,
+              depth,
             },
           );
           return;
@@ -804,12 +811,13 @@ const plugin = Plugin.define({
               const childID = typeof event.sessionID === "string" ? event.sessionID : "";
               if (await resolveIsChildSession(childID, sessionGetter)) {
                 const reason = childArtifactDenial();
+                const depth = await resolveSessionDepth(childID, sessionGetter);
                 if (state.config.profile === "advisory") {
-                  await safeLog(state, "debug", reason, { ...baseExtra });
+                  await safeLog(state, "debug", reason, { ...baseExtra, depth });
                 } else {
                   event.effect = "deny";
                   event.message = reason;
-                  await safeLog(state, "error", reason, { ...baseExtra });
+                  await safeLog(state, "error", reason, { ...baseExtra, depth });
                 }
                 return;
               }
@@ -892,7 +900,8 @@ const plugin = Plugin.define({
           const childID = typeof sessionID === "string" ? sessionID : "";
           if (await resolveIsChildSession(childID, sessionGetter)) {
             const reason = childArtifactDenial();
-            const extra = { tool: toolName, sessionID };
+            const depth = await resolveSessionDepth(childID, sessionGetter);
+            const extra = { tool: toolName, sessionID, depth };
             if (state.config.profile === "advisory") {
               await safeLog(state, "warn", reason, extra);
             } else {
@@ -1409,11 +1418,12 @@ const plugin = Plugin.define({
             // Same child-session skip as the hook lever above: no duty, no
             // verdict, no re-prompt — the parent answers for the tree.
             if (await resolveIsChildSession(sessionID, sessionGetter)) {
+              const depth = await resolveSessionDepth(sessionID, sessionGetter);
               await safeLog(
                 state,
                 "debug",
                 "completion gate skipped: child session owes no review duty",
-                { sessionID },
+                { sessionID, depth },
               );
               continue;
             }

@@ -5,7 +5,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { clearConfigCache } from "../src/config";
 import { isReviewArtifact } from "../src/harness";
 import plugin from "../src/index";
-import { clearSessionDirectory, resetRegistry, resolveIsChildSession } from "../src/registry";
+import {
+  clearSessionDirectory,
+  resetRegistry,
+  resolveIsChildSession,
+  resolveSessionDepth,
+} from "../src/registry";
 
 const REVIEW = ".opencode/opencode-dev-framework/review.md";
 
@@ -75,6 +80,43 @@ describe("resolveIsChildSession", () => {
     await expect(resolveIsChildSession("ses_gone", top)).resolves.toBe(false);
     expect(child).toHaveBeenCalledTimes(1);
     expect(top).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("resolveSessionDepth", () => {
+  function chain(parents: Record<string, string | null>) {
+    return vi.fn(async (id: string) => ({ parentID: parents[id] ?? null }));
+  }
+
+  it("is 0 for a top-level session", async () => {
+    await expect(resolveSessionDepth("ses_top", chain({ ses_top: null }))).resolves.toBe(0);
+    await expect(resolveSessionDepth("ses_top2", chain({}))).resolves.toBe(0);
+  });
+
+  it("counts parentID hops to the root", async () => {
+    const getSession = chain({ ses_a: "ses_b", ses_b: "ses_top", ses_top: null });
+    await expect(resolveSessionDepth("ses_a", getSession)).resolves.toBe(2);
+    await expect(resolveSessionDepth("ses_b", getSession)).resolves.toBe(1);
+  });
+
+  it("is null without a session, without a getter, or when a lookup fails", async () => {
+    const getSession = chain({ ses_a: "ses_b" });
+    await expect(resolveSessionDepth("", getSession)).resolves.toBeNull();
+    await expect(resolveSessionDepth("ses_a", undefined)).resolves.toBeNull();
+    const failing = vi.fn(async (_id: string) => {
+      throw new Error("transient");
+    });
+    await expect(resolveSessionDepth("ses_a", failing)).resolves.toBeNull();
+    const flaky = vi.fn(async (id: string) => {
+      if (id === "ses_mid") throw new Error("transient");
+      return { parentID: "ses_mid" as string | null };
+    });
+    await expect(resolveSessionDepth("ses_a", flaky)).resolves.toBeNull();
+  });
+
+  it("terminates on a parent cycle instead of looping", async () => {
+    const getSession = chain({ ses_a: "ses_b", ses_b: "ses_a" });
+    await expect(resolveSessionDepth("ses_a", getSession)).resolves.toBe(1);
   });
 });
 
@@ -217,6 +259,19 @@ describe("child sessions never touch the parent review artifact", () => {
     }
   });
 
+  it("logs the chain depth on the child skip (plan-24 tripwire)", async () => {
+    const h = await setupWith({ ses_child: "ses_mid", ses_mid: "ses_top" });
+    try {
+      const idle = h.sessionHooks.get("experimental.idle");
+      await idle?.({ sessionID: "ses_child" } as never);
+      expect(h.synthetic).not.toHaveBeenCalled();
+      expect(logText()).toContain("child session owes no review duty");
+      expect(logText()).toContain('"depth":2');
+    } finally {
+      if (typeof h.dispose === "function") await h.dispose();
+    }
+  });
+
   it("still gates a top-level session and never consults the parent twice", async () => {
     const h = await setupWith({ ses_top: null });
     try {
@@ -251,7 +306,9 @@ describe("child sessions never touch the parent review artifact", () => {
         } as never),
       ).resolves.toBeUndefined();
       // Unrelated child edits never consult the parent lookup (zero hot-path impact).
-      expect(h.sessionGet).toHaveBeenCalledTimes(2);
+      // The two artifact checks cost 4 lookups: child boolean + 2-hop depth
+      // walk for the tripwire log line, plus the top-level boolean.
+      expect(h.sessionGet).toHaveBeenCalledTimes(4);
     } finally {
       if (typeof h.dispose === "function") await h.dispose();
     }

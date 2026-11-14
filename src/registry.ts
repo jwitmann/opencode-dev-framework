@@ -146,6 +146,41 @@ export async function resolveIsChildSession(
   }
 }
 
+/**
+ * Best-effort session-tree depth for the plan-24 tripwire: the number of
+ * `parentID` hops from the session to its top-level root (0 = top-level).
+ * Logged on child-gated decisions so the first real nesting shows up in
+ * the log instead of passing silently. Uncapped by policy — the visited
+ * set only guards against a pathological cycle, which the core API cannot
+ * currently produce (no `parentID` mutation; creation with an unknown
+ * parent is rejected). Never throws and never caches: an empty sessionID
+ * or missing getter yields null (unknown), any lookup failure abandons
+ * the walk and yields null rather than a misleading partial count, and
+ * the call sites are rare (idle boundaries, artifact writes) so
+ * freshness beats memoization.
+ */
+export async function resolveSessionDepth(
+  sessionID: string,
+  getSession?: (id: string) => Promise<SessionParentInfo | null | undefined>,
+): Promise<number | null> {
+  if (sessionID === "" || getSession === undefined) return null;
+  const seen = new Set<string>([sessionID]);
+  let depth = 0;
+  let current = sessionID;
+  try {
+    while (true) {
+      const parent = (await getSession(current))?.parentID;
+      if (typeof parent !== "string" || parent === "" || seen.has(parent)) break;
+      seen.add(parent);
+      depth++;
+      current = parent;
+    }
+    return depth;
+  } catch {
+    return null;
+  }
+}
+
 export function setSessionDirectory(sessionID: string, directory: string): void {
   sessionToDirectory.set(sessionID, directory);
 }
