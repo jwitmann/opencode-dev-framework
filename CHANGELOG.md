@@ -6,6 +6,29 @@ Generated from conventional commits (`scripts/changelog.sh`).
 Single source: CI publishes each version's section as the GitHub
 release notes, so this file and the release page never diverge.
 
+## [v1.9.2] - 2026-11-14
+
+### Features
+
+- silent no-op turns for /df-update and /df-init ([`0044eb1`](https://github.com/jwitmann/opencode-dev-framework/commit/0044eb154eb3702d1c48e9eb6699f0955bc80216))
+- template drift state in /df-runtime snapshot ([`3da862e`](https://github.com/jwitmann/opencode-dev-framework/commit/3da862e7c47965cceb1787105b4f51382477fcf1))
+- child sessions never touch the parent review artifact ([`4480483`](https://github.com/jwitmann/opencode-dev-framework/commit/4480483d699432fcd4e6c2303377ee98517aec0b))
+
+### Fixes
+
+- apply review findings on runtime template state ([`195aab3`](https://github.com/jwitmann/opencode-dev-framework/commit/195aab3d2ddfb2cf6a2949a8336d788105879e59))
+- close reviewer-found bypasses in child artifact guard ([`aab03cd`](https://github.com/jwitmann/opencode-dev-framework/commit/aab03cd34188a803899c800fa72b91a8def71adf))
+
+### Documentation
+
+- correct predicate formula in plan 21 ([`32b6e7b`](https://github.com/jwitmann/opencode-dev-framework/commit/32b6e7bfe4008924e45c819df6ddbe067b3252cb))
+- stale serve backend troubleshooting entry ([`2e57427`](https://github.com/jwitmann/opencode-dev-framework/commit/2e574276fd07218d545f9bae1a5230d6c093947f))
+
+### Other
+
+- use static mkdirSync import in new tolerance tests ([`85808cb`](https://github.com/jwitmann/opencode-dev-framework/commit/85808cb3a4b4da6c05b935403734239420f952ce))
+- enforce import organization via biome check ([`47072f9`](https://github.com/jwitmann/opencode-dev-framework/commit/47072f9cf3343d9b4652fe98643a800a799f9ac3))
+
 ## [v1.9.1] - 2026-11-13
 
 ### Features
