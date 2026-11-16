@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -38,11 +38,32 @@ interface Captured {
         signal?: AbortSignal;
       }) => Promise<void> | void)
     | undefined;
-  registered: Array<{ name: string; description: string; handler: () => unknown }>;
+  preStep:
+    | ((
+        payload: {
+          agent: { steer?: (m: unknown) => void; followup?: (m: unknown) => void };
+          messages: unknown[];
+          turn: unknown;
+          step?: unknown;
+          signal?: AbortSignal;
+        },
+        next: () => Promise<unknown>,
+      ) => Promise<unknown>)
+    | undefined;
+  registered: Array<{
+    name: string;
+    description: string;
+    handler: (invocation?: { agent?: unknown; rawInput?: string; signal?: AbortSignal }) => unknown;
+  }>;
+  goalsCreated: Array<{ objective: string }>;
+  commandNames: string[] | undefined;
   warns: string[];
 }
 
-function stubContext(spawn?: { exitCode?: number; stdout?: string; stderr?: string }): {
+function stubContext(
+  spawn?: { exitCode?: number; stdout?: string; stderr?: string },
+  commandNames: string[] | undefined = ["goal"],
+): {
   ctx: DshContext;
   captured: Captured;
   spawned: string[][];
@@ -53,6 +74,8 @@ function stubContext(spawn?: { exitCode?: number; stdout?: string; stderr?: stri
     stopping: undefined,
     registered: [],
     warns: [],
+    goalsCreated: [],
+    commandNames,
   } as unknown as Captured;
   const spawned: string[][] = [];
   const ctx = {
@@ -80,11 +103,19 @@ function stubContext(spawn?: { exitCode?: number; stdout?: string; stderr?: stri
       register: (def: { name: string; description: string; handler: () => unknown }) => {
         captured.registered.push(def);
       },
+      list: async () => (captured.commandNames ?? []).map((name) => ({ name })),
+    },
+    goals: {
+      create: (agent: unknown, request: { objective: string }) => {
+        captured.goalsCreated.push(request);
+        return { id: "goal-1" };
+      },
     },
     on: (event: string, listener: never) => {
       if (event === "tools/pre-execute") captured.pre = listener as never;
       if (event === "tools/post-execute") captured.post = listener as never;
       if (event === "agent/turn-stopping") captured.stopping = listener as never;
+      if (event === "agent/pre-step") captured.preStep = listener as never;
     },
   } as unknown as DshContext;
   return { ctx, captured, spawned };
@@ -187,6 +218,12 @@ describe("core guard seam (plan 25 slice 4)", () => {
 describe("DSH adapter (plan 25 slice 4)", () => {
   let directory: string;
   let savedEnv: string | undefined;
+
+  const userMessage = {
+    role: "user",
+    content: [{ type: "text", text: "do the thing" }],
+    source: { kind: "user" },
+  };
 
   beforeEach(() => {
     directory = mkdtempSync(join(tmpdir(), "odf-dsh-"));
@@ -644,5 +681,246 @@ describe("DSH adapter (plan 25 slice 4)", () => {
     const { ctx, captured } = stubContext();
     apply(ctx);
     expect(captured.registered.map((r) => r.name)).toContain("odf-status");
+  });
+
+  it("pre-step prepends the constitution on the first step of a session", async () => {
+    writeFileSync(join(directory, "TEAM.md"), "# Team Rules\nDo the thing.");
+    writeConfig(directory, 'profile: standard\nrules:\n  - "TEAM.md"\n');
+    const { ctx, captured } = stubContext();
+    apply(ctx);
+    const passthrough = { kind: "enter", messages: [userMessage] };
+    const next = async () => passthrough;
+    const decision = (await captured.preStep?.(
+      { agent: {}, messages: [userMessage], turn: 1 },
+      next,
+    )) as {
+      kind: string;
+      messages: Array<{ content: Array<{ text: string }> }>;
+    };
+    expect(decision?.kind).toBe("enter");
+    expect(decision.messages[0].content[0].text).toContain("Team Rules");
+    expect(decision.messages[decision.messages.length - 1]).toEqual(userMessage);
+  });
+
+  it("pre-step passes through once the session already received it", async () => {
+    writeFileSync(join(directory, "TEAM.md"), "# Team Rules\nDo the thing.");
+    writeConfig(directory, 'profile: standard\nrules:\n  - "TEAM.md"\n');
+    const { ctx, captured } = stubContext();
+    apply(ctx);
+    const passthrough = { kind: "enter", messages: [userMessage] };
+    const next = async () => passthrough;
+    await captured.preStep?.({ agent: {}, messages: [userMessage], turn: 1 }, next);
+    const second = await captured.preStep?.({ agent: {}, messages: [userMessage], turn: 1 }, next);
+    expect(second).toBe(passthrough);
+  });
+
+  it("pre-step injects again for a new session", async () => {
+    writeFileSync(join(directory, "TEAM.md"), "# Team Rules\nDo the thing.");
+    writeConfig(directory, 'profile: standard\nrules:\n  - "TEAM.md"\n');
+    const { ctx, captured } = stubContext();
+    apply(ctx);
+    const next = async () => ({ kind: "enter", messages: [userMessage] });
+    const first = (await captured.preStep?.(
+      { agent: {}, messages: [userMessage], turn: 1 },
+      next,
+    )) as {
+      kind: string;
+    };
+    const second = (await captured.preStep?.(
+      { agent: {}, messages: [userMessage], turn: 2 },
+      next,
+    )) as {
+      kind: string;
+    };
+    expect(first?.kind).toBe("enter");
+    expect(second?.kind).toBe("enter");
+  });
+
+  it("pre-step passes through untouched when the kill switch is set", async () => {
+    writeConfig(directory, "profile: off\n");
+    const { ctx, captured } = stubContext();
+    apply(ctx);
+    const passthrough = { kind: "enter", messages: [userMessage] };
+    const next = async () => passthrough;
+    const decision = await captured.preStep?.(
+      { agent: {}, messages: [userMessage], turn: 1 },
+      next,
+    );
+    expect(decision).toBe(passthrough);
+  });
+
+  it("df-goal creates a verified host goal", async () => {
+    writeConfig(directory, "profile: standard\n");
+    const { ctx, captured } = stubContext();
+    apply(ctx);
+    const goal = captured.registered.find((r) => r.name === "df-goal");
+    expect(goal).toBeDefined();
+    const decision = (await goal?.handler({ agent: {}, rawInput: "Ship the thing" })) as {
+      kind: string;
+      text: string;
+    };
+    expect(decision.kind).toBe("success");
+    expect(captured.goalsCreated).toHaveLength(1);
+    expect(captured.goalsCreated[0]?.objective).toContain("Ship the thing");
+    expect(captured.goalsCreated[0]?.objective).toContain("dev_framework_verify");
+  });
+
+  it("df-goal rejects an empty objective without touching the host", async () => {
+    writeConfig(directory, "profile: standard\n");
+    const { ctx, captured } = stubContext();
+    apply(ctx);
+    const goal = captured.registered.find((r) => r.name === "df-goal");
+    const decision = (await goal?.handler({ agent: {}, rawInput: "   " })) as {
+      kind: string;
+      text: string;
+    };
+    expect(decision.kind).toBe("error");
+    expect(decision.text).toMatch(/objective/i);
+    expect(captured.goalsCreated).toHaveLength(0);
+  });
+
+  it("df-goal fails closed when native /goal is missing", async () => {
+    writeConfig(directory, "profile: standard\n");
+    const { ctx, captured } = stubContext(undefined, []);
+    apply(ctx);
+    const goal = captured.registered.find((r) => r.name === "df-goal");
+    const decision = (await goal?.handler({ agent: {}, rawInput: "Ship the thing" })) as {
+      kind: string;
+      text: string;
+    };
+    expect(decision.kind).toBe("error");
+    expect(decision.text).toContain("native /goal");
+    expect(captured.goalsCreated).toHaveLength(0);
+  });
+
+  it("df-verify reports the gate summary", async () => {
+    writeConfig(directory, "profile: standard\n");
+    const { ctx, captured } = stubContext();
+    apply(ctx);
+    const verify = captured.registered.find((r) => r.name === "df-verify");
+    const decision = (await verify?.handler({ agent: {}, rawInput: "" })) as {
+      kind: string;
+      text: string;
+    };
+    expect(decision.kind).toBe("success");
+    expect(decision.text).toContain("DEV_FRAMEWORK_VERDICT");
+  });
+
+  it("df-profile switches profile and rejects unknown names", async () => {
+    writeConfig(directory, "profile: standard\n");
+    const { ctx, captured } = stubContext();
+    apply(ctx);
+    const profile = captured.registered.find((r) => r.name === "df-profile");
+    const ok = (await profile?.handler({ agent: {}, rawInput: "advisory" })) as {
+      kind: string;
+      text: string;
+    };
+    expect(ok.kind).toBe("success");
+    expect(ok.text).toContain("advisory");
+    const bad = (await profile?.handler({ agent: {}, rawInput: "bogus" })) as {
+      kind: string;
+      text: string;
+    };
+    expect(bad.kind).toBe("error");
+    expect(bad.text).toContain("Unknown profile");
+  });
+
+  it("df-init scaffolds an empty project and hands the brief via followup", async () => {
+    const { ctx, captured } = stubContext();
+    apply(ctx);
+    const init = captured.registered.find((r) => r.name === "df-init");
+    const followup = vi.fn();
+    const decision = (await init?.handler({ agent: { followup }, rawInput: "" })) as {
+      kind: string;
+      text: string;
+    };
+    expect(decision.kind).toBe("success");
+    expect(followup).toHaveBeenCalledTimes(1);
+    expect(existsSync(join(directory, ".opencode-dev-framework.yml"))).toBe(true);
+  });
+
+  it("pre-step keys injection by session identity, not just turn", async () => {
+    writeFileSync(join(directory, "TEAM.md"), "# Team Rules\nDo the thing.");
+    writeConfig(directory, 'profile: standard\nrules:\n  - "TEAM.md"\n');
+    const { ctx, captured } = stubContext();
+    apply(ctx);
+    const next = async () => ({ kind: "enter", messages: [userMessage] });
+    const sessionA = { session: { header: { id: "session-A" } } };
+    const sessionB = { session: { header: { id: "session-B" } } };
+    const first = (await captured.preStep?.(
+      { agent: sessionA, messages: [userMessage], turn: 1 },
+      next,
+    )) as { kind: string; messages: unknown[] };
+    // Same session id, later turn: pass through (already injected).
+    const again = await captured.preStep?.(
+      { agent: sessionA, messages: [userMessage], turn: 2 },
+      next,
+    );
+    // Different session id: inject again.
+    const other = (await captured.preStep?.(
+      { agent: sessionB, messages: [userMessage], turn: 1 },
+      next,
+    )) as { kind: string; messages: unknown[] };
+    expect(first?.kind).toBe("enter");
+    expect(first.messages.length).toBeGreaterThan(1);
+    expect((again as { messages: unknown[] }).messages).toHaveLength(1);
+    expect(other?.kind).toBe("enter");
+    expect(other.messages.length).toBeGreaterThan(1);
+  });
+
+  it("df-init reports an error when the agent has no followup seam", async () => {
+    const { ctx, captured } = stubContext();
+    apply(ctx);
+    const init = captured.registered.find((r) => r.name === "df-init");
+    const decision = (await init?.handler({ agent: {}, rawInput: "" })) as {
+      kind: string;
+      text: string;
+    };
+    // Scaffold may succeed, but the brief is lost without a handoff —
+    // that must be an error, never a false success claim.
+    expect(decision.kind).toBe("error");
+    expect(decision.text).toMatch(/followup|handoff/i);
+  });
+
+  it("df-update reports current templates without a handoff", async () => {
+    const { ctx, captured } = stubContext();
+    apply(ctx);
+    // First scaffold so there is something current to check.
+    const init = captured.registered.find((r) => r.name === "df-init");
+    const followup = vi.fn();
+    await init?.handler({ agent: { followup }, rawInput: "" });
+    followup.mockClear();
+    const update = captured.registered.find((r) => r.name === "df-update");
+    const decision = (await update?.handler({ agent: { followup }, rawInput: "" })) as {
+      kind: string;
+      text: string;
+    };
+    expect(decision.kind).toBe("success");
+    expect(decision.text).toMatch(/current|nothing to do/i);
+    expect(followup).not.toHaveBeenCalled();
+  });
+
+  it("df-update hands the refresh list via followup when drift is detected", async () => {
+    const { ctx, captured } = stubContext();
+    apply(ctx);
+    const init = captured.registered.find((r) => r.name === "df-init");
+    const followup = vi.fn();
+    await init?.handler({ agent: { followup }, rawInput: "" });
+    // Corrupt a deployed template file so drift is detected.
+    const deployed = join(directory, ".opencode", "opencode-dev-framework", "review.md");
+    if (existsSync(deployed)) {
+      writeFileSync(deployed, "drifted content");
+    } else {
+      rmSync(join(directory, ".opencode"), { recursive: true, force: true });
+    }
+    followup.mockClear();
+    const update = captured.registered.find((r) => r.name === "df-update");
+    const decision = (await update?.handler({ agent: { followup }, rawInput: "" })) as {
+      kind: string;
+      text: string;
+    };
+    expect(decision.kind).toBe("success");
+    expect(followup).toHaveBeenCalledTimes(1);
+    expect(decision.text).toMatch(/drift|refresh/i);
   });
 });

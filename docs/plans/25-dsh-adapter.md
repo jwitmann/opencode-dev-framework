@@ -140,7 +140,7 @@ identity, redirect-target coverage. No further work.
 | Constitution injection (context/generate/compaction/title hooks) | missing (`state.constitution` stays `null`; the reload path maintains a value nothing reads) | `agent/pre-step` replace-messages, once per session |
 | Duty roster (`renderDutyRoster` per request) | missing | fold into the same once-per-session prepend |
 | Startup drift mention (`driftMentionLine`, once per session) | missing | same prepend when drift detected |
-| Weakening detection (`snapshotEnforceable` vs live config) | half: snapshot taken at mount, never compared | compare on reload, warn on weaken |
+| Weakening detection (`snapshotEnforceable` vs live config) | DONE (inherited: `runCompletion` passes `initialEnforceable` as the gate baseline) | — |
 
 ### Tools (agent-invokable) — GAP (all portable)
 
@@ -197,8 +197,9 @@ action).
 ## Phase 43 — DSH parity completion (plan)
 
 - 43.1 Instruction pillar: pre-step once-per-session
-  constitution + roster + drift-mention prepend; weakening compare on
-  reload. Full battery (product code).
+  constitution + roster + drift-mention prepend. Full battery
+  (product code). Weakening already inherited via `runCompletion` —
+  audit corrected, no work.
 - 43.2 Agent tools: the four `dev_framework_*` tools via
   `ctx.tools.register(defineTool)`. Full battery.
 - 43.3 Commands: `df-goal` (goals seam), `df-verify`, `df-profile`,

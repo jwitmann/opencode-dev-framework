@@ -835,10 +835,21 @@ Dogfood the fork's V2 pre-terminal hook (upstream PR
   task said "Done", gate blocked on the missing review, turn 1
   continued 13 more steps — agent ran the review loop named by the
   steer message, wrote the artifact, turn ended. Same turn throughout,
-  no re-prompt. Composition proven via `--dump-config` (no model
-  call). Killed-session resume is impossible (persisted state
-  corrupts on kill mid-flush — documented). The live runs needed
-  explicit model approval — standing rule, not waived.
+  no re-prompt. Docs updated with the evidence (`dsh.md` rows +
+  banner). The live runs needed explicit model approval — standing
+  rule, not waived.
+- [x] 43.1 Instruction pillar (same session): pre-step
+  once-per-session constitution + roster + drift-mention prepend
+  (config-identity reset on reload); weakening confirmed inherited
+  via `runCompletion` baseline (audit corrected, no work). 4 new
+  tests green, fail-before proven by stash.
+- [x] 43.3 Commands (same session): `df-goal` (availability probe +
+  pure verified-objective build + `ctx.goals.create` delegation),
+  `df-verify` (`verifyGate` + tracker snapshot, text result),
+  `df-profile` (`changeProfile` + validation), `df-init`/`df-update`
+  (core run*Command with `followup` handoff — operator-memory
+  init pattern). 7 new tests green, fail-before proven by stash.
+  40 adapter tests total; full suite 549.
 
 ## Peer-review gate (mandatory after EVERY phase 21–27)
 

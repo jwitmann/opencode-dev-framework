@@ -17,16 +17,26 @@
  * the `cwd` for every subprocess.
  */
 
+import { stat } from "node:fs/promises";
+import { join } from "node:path";
 import { createBlockStore, createStuckSnapshotStore } from "../../core/block-store.js";
-import { loadConfig } from "../../core/config.js";
+
+import { changeProfile, verifyGate } from "../../core/commands.js";
+import { clearConfigCache, loadConfig } from "../../core/config.js";
 import { renderStatus } from "../../core/format-status.js";
 import { createChangedFileTracker } from "../../core/gate.js";
+import {
+  buildVerifiedObjective,
+  checkGoalAvailability,
+  isNativeGoalListed,
+} from "../../core/goal.js";
 import {
   artifactState,
   createPassCache,
   PREFLIGHT_ARTIFACT_REL,
   preflightBlockReason,
 } from "../../core/harness.js";
+import { runInitCommand } from "../../core/init.js";
 import {
   createLintLimiter,
   detectPreCommitAvailability,
@@ -45,6 +55,8 @@ import {
   extractRedirectTargets,
   type GuardResult,
 } from "../../core/protect.js";
+import { renderDutyRoster } from "../../core/roster.js";
+import { loadConstitution } from "../../core/rules.js";
 import {
   actOnVerdict,
   getFallbackLog,
@@ -56,6 +68,7 @@ import {
   setFallbackLog,
 } from "../../core/run-hooks.js";
 import type { Profile, ResolvedConfig } from "../../core/types.js";
+import { checkTemplateUpdates, driftMentionLine, runUpdateCommand } from "../../core/update.js";
 import { snapshotEnforceable } from "../../core/weakening.js";
 import { type DshExec, extractDshCommand, extractDshPaths } from "./extract.js";
 
@@ -152,14 +165,35 @@ export type DshPostDecision =
       additionalContexts?: DshUserMessage[];
     };
 
+/** `agent/pre-step` decision: reject the step or let edited messages enter. */
+export type DshPreStepDecision = { kind: "reject" } | { kind: "enter"; messages: DshUserMessage[] };
+
+/** What a DSH command handler receives: the invoking agent, raw input, abort. */
+export interface DshCommandInvocation {
+  readonly agent: DshAgent;
+  readonly rawInput: string;
+  readonly signal?: AbortSignal;
+}
+
+/** What a DSH command handler returns: text rendered by the dispatching UI. */
+export type DshCommandResult = { kind: "success"; text?: string } | { kind: "error"; text: string };
+
+/** Host goal service (`ctx.goals`), used only by `df-goal`. */
+export interface DshGoals {
+  create(agent: DshAgent, request: { objective: string }): unknown;
+}
+
 export interface DshCommands {
   register(def: {
     name: string;
     description: string;
-    handler: () =>
-      | { kind: "success" | "error"; text: string }
-      | Promise<{ kind: "success" | "error"; text: string }>;
+    input?: { hint?: string };
+    handler: (invocation: DshCommandInvocation) => DshCommandResult | Promise<DshCommandResult>;
   }): void;
+  /** Optional: present on hosts that expose the command list (used to probe for native `/goal`). */
+  list?: (
+    agent: DshAgent,
+  ) => ReadonlyArray<{ name: string }> | Promise<ReadonlyArray<{ name: string }>>;
 }
 
 export interface DshToolResult {
@@ -171,6 +205,7 @@ export interface DshContext {
   readonly subprocess: DshSubprocess;
   readonly logger: DshLogger;
   readonly commands: DshCommands;
+  readonly goals?: DshGoals;
   on(
     event: "tools/pre-execute",
     listener: (exec: DshExec, next: () => Promise<DshPreDecision>) => Promise<DshPreDecision>,
@@ -192,6 +227,22 @@ export interface DshContext {
       turn: unknown;
       signal?: AbortSignal;
     }) => Promise<void> | void,
+  ): void;
+  on(
+    event: "agent/pre-step",
+    // Constitution injection point: replace the entering messages once
+    // per session so the agent works under the framework contract from
+    // its first step (mirror of the OpenCode context-hook injection).
+    listener: (
+      payload: {
+        agent: DshAgent;
+        messages: DshUserMessage[];
+        turn: unknown;
+        step?: unknown;
+        signal?: AbortSignal;
+      },
+      next: () => Promise<DshPreStepDecision>,
+    ) => Promise<DshPreStepDecision>,
   ): void;
 }
 
@@ -434,6 +485,16 @@ export function apply(ctx: DshContext): void {
   // Re-entrancy guard: `formatFile` mutates, so it re-fires `post-execute`.
   // The guard lives here, never in core (plan 25 §Risks).
   const inflight = new Set<string>();
+
+  // Sessions that already received the constitution prepend, mapped to the
+  // config mtime it was built from: a mid-session config change refreshes
+  // the injection on the next step (mirror of the OpenCode per-request
+  // injection; history already admitted keeps the old text on both hosts).
+  // The marker is a number, never a config reference, so old configs are
+  // not pinned in memory for the host's lifetime. Keys come from
+  // `sessionOf`: stable host ids in production, turn-number fallback in
+  // id-less contexts (test stubs).
+  const injectedSessions = new Map<string, number | undefined>();
 
   ctx.on("tools/pre-execute", async (exec, next) => {
     try {
@@ -680,6 +741,74 @@ export function apply(ctx: DshContext): void {
     return next();
   });
 
+  ctx.on("agent/pre-step", async ({ agent, messages, turn }, next) => {
+    try {
+      await reloadConfigIfChanged(state);
+      // Fully off means no instruction either — mirroring the OpenCode
+      // context hook, which returns before touching the system prompt.
+      if (isProfileOff(state)) {
+        return next();
+      }
+      // Nothing proposed, nothing to prepend to (mirror of the Codex
+      // pre-step guard in the host tree).
+      if (messages.length === 0) {
+        return next();
+      }
+      const key = sessionOf(agent, turn);
+      // Already injected under the current config: pass through (the
+      // once-per-session rule; admitted history keeps its copy, exactly
+      // like system text already admitted on the OpenCode side).
+      if (injectedSessions.get(key) === state.configMtime) {
+        return next();
+      }
+      if (state.constitution === null) {
+        const loaded = await loadConstitution(state.config, state.directory);
+        state.constitution = loaded.constitution;
+        if (loaded.warning !== undefined) {
+          await safeLog(state, "warn", loaded.warning);
+        }
+      }
+      const prepend: DshUserMessage[] = [];
+      if (state.constitution !== null) {
+        prepend.push(dshUserMessage(state.constitution));
+      }
+      const roster = renderDutyRoster(state.config);
+      if (roster !== null) {
+        prepend.push(dshUserMessage(roster));
+        await safeLog(state, "debug", "duty roster prepended at session start");
+      }
+      // Startup template-drift mention — once per session, best-effort.
+      // First pre-step of a session is session startup (mount has no
+      // session to mention into). Never throws into step assembly.
+      try {
+        const line = driftMentionLine(await checkTemplateUpdates(state.directory));
+        if (line !== null) {
+          prepend.push(dshUserMessage(line));
+          await safeLog(state, "debug", "template drift mentioned at session startup");
+        }
+      } catch (error) {
+        await safeLog(state, "debug", "startup drift check failed silently", {
+          error: String(error),
+        });
+      }
+      if (prepend.length === 0) {
+        return next();
+      }
+      injectedSessions.set(key, state.configMtime);
+      await safeLog(state, "info", "constitution injected at session start");
+      return { kind: "enter", messages: [...prepend, ...messages] };
+    } catch (error) {
+      // Injection is advisory by nature (the gates still enforce): never
+      // let a load failure break step assembly.
+      await safeLog(
+        state,
+        "warn",
+        `pre-step inject error (fail-open): ${(error as Error)?.message ?? error}`,
+      );
+      return next();
+    }
+  });
+
   ctx.on("agent/turn-stopping", async ({ agent, turn, signal }) => {
     try {
       await reloadConfigIfChanged(state);
@@ -746,5 +875,211 @@ export function apply(ctx: DshContext): void {
     name: "odf-status",
     description: "Show opencode-dev-framework gate status (profile, config, enforcement level).",
     handler: () => ({ kind: "success", text: renderStatus(state.config, state) }),
+  });
+
+  // Verified goal: availability check + pure verified-objective build, then
+  // delegate to the host goal service (`ctx.goals.create`, the DSH-native
+  // equivalent of opencode's `session.command` delegation). Same contract
+  // as opencode's `/df-goal`: blocking profile required, native goal
+  // required, objective wrapped exactly once, no unverified fallback.
+  ctx.commands.register({
+    name: "df-goal",
+    description:
+      "Start a verified native goal: appends a dev_framework_verify contract to the objective and creates the host goal exactly once. Requires native /goal and a blocking profile.",
+    input: { hint: "<objective>" },
+    handler: async (invocation) => {
+      try {
+        invocation.signal?.throwIfAborted();
+        await reloadConfigIfChanged(state);
+        const objective = invocation.rawInput.trim();
+        let nativeGoalAvailable = false;
+        try {
+          // Core tolerates bare-array and `{data: [...]}`-wrapped
+          // listings alike; anything unrecognized fails closed.
+          nativeGoalAvailable =
+            typeof ctx.commands.list === "function"
+              ? isNativeGoalListed(await ctx.commands.list(invocation.agent))
+              : false;
+        } catch {
+          nativeGoalAvailable = false;
+        }
+        const availability = checkGoalAvailability(state.config, nativeGoalAvailable);
+        if (!availability.ok) {
+          return { kind: "error", text: availability.error };
+        }
+        const built = buildVerifiedObjective(objective);
+        if (!built.ok) {
+          return { kind: "error", text: built.error };
+        }
+        if (typeof ctx.goals?.create !== "function") {
+          return {
+            kind: "error",
+            text: "Cannot start a verified goal: the host goal service is not available on this core. Run the objective without verification where a goal service exists.",
+          };
+        }
+        await ctx.goals.create(invocation.agent, { objective: built.text });
+        return {
+          kind: "success",
+          text:
+            `Verified goal created via native /goal${built.alreadyWrapped ? " (objective already wrapped, reused verbatim)" : ""}.\n` +
+            `Objective (with verification contract):\n${built.text}`,
+        };
+      } catch (error) {
+        return { kind: "error", text: `df-goal failed: ${(error as Error)?.message ?? error}` };
+      }
+    },
+  });
+
+  // On-demand gate: same full completion contract as the turn-stopping gate,
+  // run when asked instead of at the boundary. Fills the slot the missing
+  // TUI `/df-verify` leaves on DSH.
+  ctx.commands.register({
+    name: "df-verify",
+    description:
+      "Run the full completion gate on demand (typecheck, tests, lint, review state) and report PASS/FAIL. Side-effect-free: never retries, never steers.",
+    handler: async () => {
+      try {
+        await reloadConfigIfChanged(state);
+        const result = await verifyGate(
+          run,
+          state.directory,
+          state.config,
+          state.tracker.getChangedFiles(),
+        );
+        return { kind: "success", text: result.summary };
+      } catch (error) {
+        return { kind: "error", text: `df-verify failed: ${(error as Error)?.message ?? error}` };
+      }
+    },
+  });
+
+  // Profile switch: same `changeProfile` core as the TUI modal and the
+  // `dev_framework_set_profile` custom tool on OpenCode. The adapter
+  // picks the new profile up on the next tool call / gate run.
+  ctx.commands.register({
+    name: "df-profile",
+    description: "Change the enforcement profile (off, advisory, standard, strict).",
+    input: { hint: "<off|advisory|standard|strict>" },
+    handler: async (invocation) => {
+      try {
+        const raw = invocation.rawInput.trim().toLowerCase();
+        if (raw !== "off" && raw !== "advisory" && raw !== "standard" && raw !== "strict") {
+          return {
+            kind: "error",
+            text: `Unknown profile "${invocation.rawInput.trim()}". Use one of: off, advisory, standard, strict.`,
+          };
+        }
+        await reloadConfigIfChanged(state);
+        const text = await changeProfile(state.directory, raw);
+        return { kind: "success", text };
+      } catch (error) {
+        return { kind: "error", text: `df-profile failed: ${(error as Error)?.message ?? error}` };
+      }
+    },
+  });
+
+  // Project setup: deterministic half in code (scaffold templates,
+  // detected config, trial-run, wizard brief), judgment half handed to
+  // the agent via `followup` — the DSH-native shape of opencode's
+  // `session.prompt` handoff (same pattern as operator-memory's
+  // `operator-project-init`). Safe to re-run; reports status when
+  // already configured.
+  ctx.commands.register({
+    name: "df-init",
+    description:
+      "Set up opencode-dev-framework for the current project: scaffold templates, write the detected config, trial-run it, and hand the brief to the agent. Safe to re-run; reports status when already configured.",
+    handler: async (invocation) => {
+      try {
+        invocation.signal?.throwIfAborted();
+        await reloadConfigIfChanged(state);
+        const delivered = await runInitCommand({
+          directory: state.directory,
+          run,
+          delivery: undefined,
+          checkAlive: () => invocation.signal?.throwIfAborted(),
+          reload: async () => {
+            clearConfigCache();
+            const newConfig = loadConfig(state.directory);
+            const { constitution: newConstitution } = await loadConstitution(
+              newConfig,
+              state.directory,
+            );
+            state.config = newConfig;
+            state.constitution = newConstitution;
+            for (const name of [".opencode-dev-framework.yml", ".dev-framework.yml"]) {
+              try {
+                state.configMtime = (await stat(join(state.directory, name))).mtimeMs;
+                break;
+              } catch {
+                // continue to fallback name
+              }
+            }
+          },
+          deliver: async (text) => {
+            const followup = invocation.agent.followup;
+            if (typeof followup !== "function") {
+              // Core converts a delivery throw into a precise
+              // scaffold-succeeded-but-handoff-failed error (init.ts).
+              throw new Error(
+                "df-init: the host agent has no followup seam; setup brief could not be handed off",
+              );
+            }
+            followup(dshUserMessage(text));
+          },
+          note: async (level, message, extra) => {
+            await safeLog(state, level, message, extra);
+          },
+        });
+        if (!delivered) {
+          return { kind: "success", text: "df-init: project already configured and clean." };
+        }
+        return {
+          kind: "success",
+          text: "df-init: scaffold complete; setup brief handed to the session.",
+        };
+      } catch (error) {
+        return { kind: "error", text: `df-init failed: ${(error as Error)?.message ?? error}` };
+      }
+    },
+  });
+
+  // Template refresh: drift check (read-only), handoff when drift needs
+  // an agent. Mirrors opencode's `/df-update` with a `followup` handoff
+  // instead of `session.prompt`.
+  ctx.commands.register({
+    name: "df-update",
+    description:
+      "Check for template drift between the deployed project files and the shipped set; hands the refresh list to the agent when drift needs attention. Read-only; safe to re-run.",
+    handler: async (invocation) => {
+      try {
+        invocation.signal?.throwIfAborted();
+        await reloadConfigIfChanged(state);
+        const delivered = await runUpdateCommand({
+          directory: state.directory,
+          delivery: undefined,
+          checkAlive: () => invocation.signal?.throwIfAborted(),
+          deliver: async (text) => {
+            const followup = invocation.agent.followup;
+            if (typeof followup !== "function") {
+              // Core converts a delivery throw into a precise
+              // refreshed-but-handoff-failed error (update.ts).
+              throw new Error(
+                "df-update: the host agent has no followup seam; refresh handoff could not be delivered",
+              );
+            }
+            followup(dshUserMessage(text));
+          },
+        });
+        if (!delivered) {
+          return { kind: "success", text: "df-update: templates current, nothing to do." };
+        }
+        return {
+          kind: "success",
+          text: "df-update: drift detected; refresh list handed to the session.",
+        };
+      } catch (error) {
+        return { kind: "error", text: `df-update failed: ${(error as Error)?.message ?? error}` };
+      }
+    },
   });
 }

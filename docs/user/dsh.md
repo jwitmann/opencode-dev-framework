@@ -1,13 +1,13 @@
 # DSH adapter
 
-> Status: implemented and unit-tested (29 adapter tests, full suite
-> green). Live-fire 2026-11-16 on stock `headless`
+> Status: implemented (40 adapter tests, full suite green);
+> enforcement live-proven 2026-11-16 on stock `headless`
 > (sessions `931700f5` + `9487c152`, model
-> `muse-spark-1.3-contributor`) proved all three mechanisms end to
-> end — guard deny, post-execute `block`, and pre-terminal same-turn
-> gate steering (details in the table). Full support still requires
-> the `./dsh` export entry (present), this doc (present), and a
-> deliberate release.
+> `muse-spark-1.3-contributor`). Instruction pillar
+> (`agent/pre-step` constitution prepend) and commands
+> (`df-goal`, `df-verify`, `df-profile`, `df-init`, `df-update`) are
+> wired and unit-proven; their live-fire runs next. Deliberate
+> release still pending.
 
 Same core (`src/core/`), different wiring: the DSH adapter registers
 the ODF gates on a DeepSeek Harness Cordis context instead of OpenCode.
@@ -54,6 +54,25 @@ identity, abort-aware steering, redirect-target guard coverage.
 Identical where the hosts agree: pre-execute deny hardness,
 warn→allow-with-log, pre-flight ordering and semantics, block
 budgeting, `protect_off` scope.
+
+## Instruction and commands
+
+- **Constitution**: `agent/pre-step` prepends the constitution, the
+  duty roster, and any startup drift mention once per session, so the
+  agent works under the contract from its first step (mirror of the
+  OpenCode context-hook injection; refreshes when the config
+  changes). Advisory-warn on load failure — the gates still enforce.
+- **`df-goal <objective>`**: checks native `/goal` and the profile,
+  wraps the objective with the verification contract exactly once,
+  and creates the host goal — the DSH-native shape of `/df-goal`.
+- **`df-verify`**: runs the full completion gate on demand and
+  reports PASS/FAIL (side-effect-free: never retries, never steers).
+- **`df-profile <off|advisory|standard|strict>`**: switches profile
+  (same core as the OpenCode modal/tool); invalid names rejected.
+- **`df-init` / `df-update`**: deterministic scaffold/drift-check in
+  code, judgment half handed to the agent via `followup` (the
+  operator-memory `operator-project-init` pattern). Safe to re-run.
+- **`odf-status`**: live gate status (profile, config, level).
 
 ## Troubleshooting
 
