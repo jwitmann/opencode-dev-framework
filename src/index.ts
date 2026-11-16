@@ -77,234 +77,24 @@ import {
 } from "./registry.js";
 import { findRosterIndex, renderDutyRoster, rosterPresent } from "./roster.js";
 import { constitutionPresent, loadConstitution } from "./rules.js";
+import {
+  activeState,
+  actOnVerdict,
+  type HookState,
+  reloadConfigIfChanged,
+  runCompletion,
+  runPerEditLint,
+  safeLog,
+  setActiveState,
+  setFallbackLog,
+  stampIdleHandled,
+  stampRuntimeStatus,
+  wasIdleHandledRecently,
+} from "./run-hooks.js";
 import { type IdleHookVia, type TemplateState, writeRuntimeStatus } from "./runtime-status.js";
 import type { ResolvedConfig } from "./types.js";
 import { checkTemplateUpdates, driftMentionLine, summarizeDrift } from "./update.js";
 import { type EnforceableSnapshot, snapshotEnforceable } from "./weakening.js";
-
-// ---------------------------------------------------------------------------
-// Internal state — single plugin instance per location.directory.
-// HookState is kept in module scope, not in a registry keyed by directory,
-// because V2 Context is already per-location. The map is still used for
-// legacy test helpers (buildHooks) that inject a fake directory.
-// ---------------------------------------------------------------------------
-
-export interface HookState {
-  directory: string;
-  config: ResolvedConfig;
-  /**
-   * Session-start enforceable snapshot (plan 17 §2). Compared against the
-   * live config at every gate evaluation so mid-session duty reductions
-   * surface in the verdict. Never re-baselined — including across
-   * `set_profile` — so a profile downgrade reads as the weakening it is.
-   */
-  initialEnforceable: EnforceableSnapshot;
-  log: LogFn;
-  run: RunCommand;
-  tracker: ChangedFileTracker;
-  constitution: string | null;
-  blockCounts: Map<string, number>;
-  /**
-   * Persistent block-count store over `ctx.storage`, write-through into
-   * `blockCounts` (which stays the live L1 cache for status rendering).
-   * Survives plugin reload / session_move / server restart.
-   * Note: this `HookState` is intentionally forked from `registry.ts`
-   * `HookState` (module state is per-location here, not registry-keyed);
-   * `format-status.ts` reads the `blockCounts` Map projection, which the
-   * store keeps live on every get/increment/clear.
-   */
-  blocks: BlockStore;
-  /**
-   * Last-blocked-evaluation snapshots for no-progress early stand-down
-   * (docs/plans/14-stuck-detection.md). Same storage-backed, best-effort pattern as `blocks`;
-   * memory-only here (no status projection needed).
-   */
-  stuckSnapshots: StuckSnapshotStore;
-  precommitAvailable?: boolean;
-  configMtime?: number;
-  /**
-   * Shared FIFO limiter bounding concurrent linter subprocesses across
-   * per-edit lints and gate lint steps.
-   */
-  lintLimiter: LintLimiter;
-  /** Fingerprint of the last clean gate pass; skips redundant suites. */
-  passCache: PassCache;
-  /**
-   * `Date.now()` of the last config-mtime check. Hook fires are far more
-   * frequent than config edits, so mtime stats are throttled to a 1s window.
-   */
-  lastConfigCheck: number;
-  /**
-   * Which lever completed a gate evaluation most recently in this process:
-   * `"idle"` once the `experimental.idle` hook has (same-execution
-   * continuation active), `"fallback"` when only the `event.subscribe`
-   * idle re-prompt net has. Absent until either fires. Memory-only: a
-   * reload re-derives it on the next idle boundary. `/df-status` renders
-   * the active level.
-   */
-  continuationLevel?: "idle" | "fallback";
-  /**
-   * Dedup map for the idle-first cutover: sessionID → `Date.now()` at the
-   * last COMPLETED hook evaluation (pass, blocked-admitted, and standdown
-   * all stamp; throw/early-return do not). The `event.subscribe` idle net
-   * skips when the stamp is fresh so one boundary never runs the gate
-   * twice. Memory-only; worst case on reload is one extra suite run.
-   */
-  lastIdleHandled: Map<string, number>;
-}
-
-let activeState: HookState | null = null;
-let fallbackLog: LogFn = async () => {};
-
-/**
- * Minimum interval between config-mtime checks. Every hook fire calls
- * `reloadConfigIfChanged`, but the config file almost never changes
- * mid-session, so a 1s staleness window is invisible.
- */
-const CONFIG_RELOAD_MIN_INTERVAL_MS = 1000;
-
-function safeLog(
-  state: HookState | null,
-  level: LogLevel,
-  message: string,
-  extra?: Record<string, unknown>,
-): Promise<void> {
-  const fn = state && typeof state.log === "function" ? state.log : fallbackLog;
-  return fn(level, message, extra);
-}
-
-async function reloadConfigIfChanged(state: HookState): Promise<void> {
-  // Throttle mtime checks: every hook fire calls this, but the config file
-  // almost never changes mid-session. A 1s staleness window is invisible.
-  const now = Date.now();
-  if (now - state.lastConfigCheck < CONFIG_RELOAD_MIN_INTERVAL_MS) {
-    return;
-  }
-  state.lastConfigCheck = now;
-  const primary = join(state.directory, ".opencode-dev-framework.yml");
-  const fallback = join(state.directory, ".dev-framework.yml");
-  // check both names; stat whichever exists
-  let configPath: string | null = null;
-  let mtime: number | undefined;
-  for (const p of [primary, fallback]) {
-    try {
-      const s = await stat(p);
-      configPath = p;
-      mtime = s.mtimeMs;
-      break;
-    } catch {
-      // continue
-    }
-  }
-  if (!configPath || mtime === undefined) {
-    return;
-  }
-  if (state.configMtime !== undefined && state.configMtime === mtime) {
-    return;
-  }
-  try {
-    clearConfigCache();
-    const next = loadConfig(state.directory);
-    const { constitution } = await loadConstitution(next, state.directory);
-    state.config = next;
-    state.constitution = constitution;
-    state.configMtime = mtime;
-  } catch {
-    // keep current state on read failure
-  }
-}
-
-/**
- * Turn a completion verdict into the continuation message fed back to the
- * agent when blocked. Shared by the `experimental.idle` hook (same
- * execution, via synthetic) and the `event.subscribe` idle re-prompt
- * fallback so wording (and block counting) is identical on every
- * enforcement level.
- */
-function continuationMessage(verdict: Extract<CompletionVerdict, { decision: "blocked" }>): string {
-  const why =
-    verdict.reason === "review"
-      ? "the peer-review requirement is unmet"
-      : verdict.reason === "weakened"
-        ? "the completion contract was weakened mid-session"
-        : "the repo's checks are failing";
-  return (
-    `opencode-dev-framework completion gate blocked you from finishing because ${why} ` +
-    `(block ${verdict.blockCount}/${verdict.maxBlocks}).\n\n${verdict.summary}\n\n` +
-    `Fix the underlying cause and continue. Do NOT disable, skip, or weaken these checks to ` +
-    `get past the gate. If a failure is pre-existing and unrelated to your work, prove it ` +
-    `(show it fails on a clean tree) and report it to the user.`
-  );
-}
-
-/** Log pass/standdown verdicts; returns the continuation message when blocked. */
-async function actOnVerdict(state: HookState, verdict: CompletionVerdict): Promise<string | null> {
-  if (verdict.decision === "pass") {
-    if (verdict.note) {
-      await safeLog(state, "info", verdict.note, { changedFiles: verdict.changedFiles });
-    }
-    return null;
-  }
-  if (verdict.decision === "standdown") {
-    // evaluateCompletion already logged the stand-down loudly.
-    return null;
-  }
-  return continuationMessage(verdict);
-}
-
-/**
- * Per-edit lint flow, shared by the `execute.after` hook (primary) and the
- * `filesystem.changed` fallback. Skipped files log at debug; passes at info;
- * failures log loudly at error (the edit already landed, so unlike
- * `execute.before` this never throws — it only reports).
- */
-async function runPerEditLint(state: HookState, filePath: string): Promise<void> {
-  if (!state.config.on_edit.lint) return;
-  if (state.config.precommit === "auto" && state.precommitAvailable === undefined) {
-    state.precommitAvailable = await detectPreCommitAvailability(state.run, state.directory);
-  }
-  const outcome = await state.lintLimiter.run(() =>
-    lintFile(state.run, state.config, filePath, {
-      cwd: state.directory,
-      timeout: state.config.gate?.timeout,
-      precommitAvailable: state.precommitAvailable,
-    }),
-  );
-  if (outcome.skipped) {
-    await safeLog(state, "debug", summarizeLint(outcome), {
-      filePath,
-      reason: outcome.reason,
-    });
-    return;
-  }
-  if (!isLintFailure(outcome)) {
-    await safeLog(state, "info", summarizeLint(outcome), { filePath });
-    return;
-  }
-  await safeLog(state, "error", summarizeLint(outcome), {
-    filePath,
-    command: outcome.command?.join(" "),
-    stdout: outcome.result?.stdout,
-    stderr: outcome.result?.stderr,
-  });
-}
-
-/** Assemble the completion verdict with the state's live dependencies. */
-function runCompletion(state: HookState, sessionID: string): Promise<CompletionVerdict> {
-  return evaluateCompletion({
-    run: state.run,
-    config: state.config,
-    directory: state.directory,
-    sessionID,
-    tracker: state.tracker,
-    blockCounts: state.blocks,
-    stuckSnapshots: state.stuckSnapshots,
-    lintLimiter: state.lintLimiter,
-    passCache: state.passCache,
-    baseline: state.initialEnforceable,
-    log: (level, message, extra) => safeLog(state, level, message, extra),
-  });
-}
 
 /**
  * Build the host session lookup for child detection, defensively: older
@@ -323,46 +113,6 @@ function childSessionGetter(
   // Called as a method so the receiver is preserved (a detached `get`
   // could throw on `this`-dependent adapters and fail open to top-level).
   return (id: string) => session.get({ sessionID: id });
-}
-
-/**
- * Record a completed idle-hook evaluation for the dedup map. Stamp ONLY on
- * the completed-evaluation paths (pass, blocked-admitted, standdown);
- * throw/early-return paths must not stamp so the subscriber net retries.
- */
-function stampIdleHandled(state: HookState, sessionID: string): void {
-  state.lastIdleHandled.set(sessionID, Date.now());
-}
-
-/**
- * Best-effort runtime snapshot for `/df-runtime`: hook state plus template
- * drift, fire-and-forget (never throws, never blocks the caller).
- */
-function stampRuntimeStatus(
-  directory: string,
-  idleHookVia: IdleHookVia,
-  continuation: "idle" | "fallback" | "armed",
-): void {
-  void (async () => {
-    let templates: TemplateState | undefined;
-    try {
-      templates = summarizeDrift(await checkTemplateUpdates(directory));
-    } catch {
-      // Best-effort: the snapshot renders without template state.
-    }
-    await writeRuntimeStatus(directory, { idleHookVia, continuation, templates });
-  })();
-}
-
-/**
- * True when the idle hook completed an evaluation for this session inside
- * `windowMs`. The hook itself uses a short window (same-boundary
- * double-fire guard for the dual key registration below); the subscriber
- * net uses the full window (one boundary, one gate run).
- */
-function wasIdleHandledRecently(state: HookState, sessionID: string, windowMs = 5_000): boolean {
-  const at = state.lastIdleHandled.get(sessionID);
-  return at !== undefined && Date.now() - at < windowMs;
 }
 
 // Helpers to normalize V2 event shapes (data vs properties vs direct)
@@ -424,7 +174,7 @@ const plugin = Plugin.define({
   id: "opencode-dev-framework",
   async setup(ctx: Context) {
     const log = createLogger();
-    fallbackLog = log;
+    setFallbackLog(log);
 
     const directory = ctx.location.directory as string;
     let config: ResolvedConfig;
@@ -474,7 +224,7 @@ const plugin = Plugin.define({
       lastConfigCheck: 0,
       lastIdleHandled: new Map<string, number>(),
     };
-    activeState = state;
+    setActiveState(state);
     // Child-session detection for the review-duty guard (plan 23 phase 1):
     // one cached host lookup per session lifetime; undefined on older
     // cores, where every session reads as top-level (behavior unchanged).
@@ -1506,7 +1256,7 @@ const plugin = Plugin.define({
       // Only clear the singleton if it is still ours; a newer setup() may
       // already have replaced it (reload race).
       if (activeState === state) {
-        activeState = null;
+        setActiveState(null);
       }
     };
   },
