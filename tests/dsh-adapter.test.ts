@@ -261,6 +261,10 @@ describe("DSH adapter (plan 25 slice 4)", () => {
     );
     expect(blocked.kind).toBe("deny");
     expect((blocked as { reason: string }).reason).toContain("pre-flight");
+    expect((blocked as { info?: { name: string; code: string } }).info).toEqual({
+      name: "opencode-dev-framework",
+      code: "preflight-deny",
+    });
     // The artifact itself stays writable so the session can comply.
     const artifactDecision = await captured.pre(
       {
@@ -486,6 +490,17 @@ describe("DSH adapter (plan 25 slice 4)", () => {
         },
       ]),
     ).toEqual(["lint failed for e.ts (exit 2):\n(no output)"]);
+    // Long linter output is capped, not dumped unbounded into context.
+    const long = lintBlockLines([
+      {
+        skipped: false,
+        filePath: "f.ts",
+        result: { stdout: "x".repeat(5000), stderr: "", exitCode: 1, timedOut: false },
+      },
+    ]);
+    expect(long).toHaveLength(1);
+    expect(long[0]).toContain("(truncated)");
+    expect(long[0].length).toBeLessThan(5000);
   });
 
   it("turn-stopping drops the steer when the turn already aborted", async () => {
