@@ -2,8 +2,8 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { clearConfigCache } from "../src/config";
-import plugin from "../src/index";
+import plugin from "../src/adapters/opencode/index";
+import { clearConfigCache } from "../src/core/config";
 
 describe("Phase 24: per-edit lint via tool.hook(execute.after)", () => {
   let directory: string;

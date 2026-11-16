@@ -15,9 +15,9 @@ import {
   statusTemplates,
   trialRunDetectedCommands,
   writeDetectedConfig,
-} from "../dist/installer.js";
-import { detectProject } from "../dist/detect.js";
-import { runCommand } from "../dist/host.js";
+} from "../dist/core/installer.js";
+import { detectProject } from "../dist/core/detect.js";
+import { runCommand } from "../dist/core/host.js";
 
 async function getVersion() {
   const packagePath = join(dirname(fileURLToPath(import.meta.url)), "..", "package.json");

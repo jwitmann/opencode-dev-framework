@@ -2,13 +2,13 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { renderRuntimeStatus } from "../src/format-status";
+import { renderRuntimeStatus } from "../src/core/format-status";
 import {
   type RuntimeStatus,
   readRuntimeStatus,
   snapshotPath,
   writeRuntimeStatus,
-} from "../src/runtime-status";
+} from "../src/core/runtime-status";
 
 describe("runtime status snapshot", () => {
   let dir: string;

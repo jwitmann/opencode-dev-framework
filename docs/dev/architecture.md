@@ -5,9 +5,10 @@ host I/O behind an injectable seam so unit tests never shell out.
 
 ## Entry points
 
-- `src/index.ts` — the only OpenCode-facing module: `Plugin.define`,
+- `src/adapters/opencode/index.ts` — the only OpenCode-facing module: `Plugin.define`,
   hook wiring, and custom tool/command registration. Everything else is
-  pure logic plus a `RunCommand`.
+  pure logic plus a `RunCommand`. The DSH-facing counterpart is
+  `src/adapters/dsh/index.ts` (Cordis wiring over the same `src/core/`).
 - `tui.tsx` — TUI companion (Solid): `/df-status`, `/df-help`,
   `/df-profile`, `/df-verify` modals. Resolved through `package.json`
   `exports` from the repo root; one `plugins` entry loads server + TUI.

@@ -1,13 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { resolveConfig } from "../src/config";
+import { resolveConfig } from "../src/core/config";
 import {
   findRosterIndex,
   MAX_ROSTER_ACCEPTANCE,
   ROSTER_MARKER,
   renderDutyRoster,
   rosterPresent,
-} from "../src/roster";
-import type { Config } from "../src/types";
+} from "../src/core/roster";
+import type { Config } from "../src/core/types";
 
 function resolve(raw: Config) {
   return resolveConfig(raw, "/project/.opencode-dev-framework.yml");

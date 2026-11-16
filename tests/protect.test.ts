@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { resolveConfig } from "../src/config";
+import { resolveConfig } from "../src/core/config";
 import {
   checkToolCall,
   extractCommand,
@@ -7,8 +7,8 @@ import {
   extractRedirectTargets,
   matchDangerousCommand,
   matchProtectedPath,
-} from "../src/protect";
-import type { Config } from "../src/types";
+} from "../src/core/protect";
+import type { Config } from "../src/core/types";
 
 function resolve(raw: Config) {
   return resolveConfig(raw, "/project/.opencode-dev-framework.yml");

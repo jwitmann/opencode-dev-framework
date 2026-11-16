@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import plugin from "../src/index";
+import plugin from "../src/adapters/opencode/index";
 
 describe("plugin entry point (V2)", () => {
   it("exports a V2 plugin with id and setup", () => {

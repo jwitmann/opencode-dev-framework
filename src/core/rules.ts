@@ -11,6 +11,7 @@ import type { ResolvedConfig } from "./types.js";
 export const BUNDLED_CONSTITUTION_DIR = join(
   dirname(fileURLToPath(import.meta.url)),
   "..",
+  "..",
   "rules",
 );
 

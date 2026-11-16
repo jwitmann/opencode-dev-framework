@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { normalizeCommandMap, splitCommand, toAbsolutePath } from "../src/command-utils";
+import { normalizeCommandMap, splitCommand, toAbsolutePath } from "../src/core/command-utils";
 
 describe("splitCommand", () => {
   it("splits a simple command into tokens", () => {

@@ -1,12 +1,12 @@
 /** @jsxImportSource @opentui/solid */
 
 import { Plugin } from "@opencode/plugin/tui";
-import { changeProfile, verifyGate } from "./dist/commands.js";
-import { loadConfig } from "./dist/config.js";
-import { runCommand } from "./dist/host.js";
-import { renderConfigStatus, renderHelp, renderRuntimeStatus } from "./dist/format-status.js";
-import { readRuntimeStatus } from "./dist/runtime-status.js";
-import type { Profile } from "./dist/types.js";
+import { changeProfile, verifyGate } from "./dist/core/commands.js";
+import { loadConfig } from "./dist/core/config.js";
+import { runCommand } from "./dist/core/host.js";
+import { renderConfigStatus, renderHelp, renderRuntimeStatus } from "./dist/core/format-status.js";
+import { readRuntimeStatus } from "./dist/core/runtime-status.js";
+import type { Profile } from "./dist/core/types.js";
 
 const PROFILES: Profile[] = ["off", "advisory", "standard", "strict"];
 

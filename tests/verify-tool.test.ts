@@ -2,8 +2,8 @@ import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { clearConfigCache } from "../src/config";
-import plugin from "../src/index";
+import plugin from "../src/adapters/opencode/index";
+import { clearConfigCache } from "../src/core/config";
 
 describe("Phase 26.1: dev_framework_verify tool (server-side gate, reshaped ship)", () => {
   let directory: string;

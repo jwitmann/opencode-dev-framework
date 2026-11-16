@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { resolveConfig } from "../src/config";
+import { resolveConfig } from "../src/core/config";
 import {
   BUNDLED_CONSTITUTION_DIR,
   CONSTITUTION_PREFIX_LENGTH,
@@ -10,8 +10,8 @@ import {
   injectConstitution,
   LOCAL_RULES_DIR,
   loadConstitution,
-} from "../src/rules";
-import type { Config, ResolvedConfig } from "../src/types";
+} from "../src/core/rules";
+import type { Config, ResolvedConfig } from "../src/core/types";
 
 const CONFIG_PATH = "/project/.opencode-dev-framework.yml";
 

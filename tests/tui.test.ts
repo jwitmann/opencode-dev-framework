@@ -90,7 +90,7 @@ describe("TUI plugin module", () => {
     const { mkdtempSync, rmSync } = await import("node:fs");
     const { tmpdir } = await import("node:os");
     const { join } = await import("node:path");
-    const { writeRuntimeStatus } = await import("../src/runtime-status");
+    const { writeRuntimeStatus } = await import("../src/core/runtime-status");
     const dir = mkdtempSync(join(tmpdir(), "df-tui-runtime-"));
     try {
       await writeRuntimeStatus(dir, { idleHookVia: "experimental.idle", continuation: "armed" });

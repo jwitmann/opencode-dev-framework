@@ -2,17 +2,17 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { resolveConfig } from "../src/config";
+import { resolveConfig } from "../src/core/config";
 import {
   createChangedFileTracker,
   DEFAULT_GATE_TIMEOUT_SECONDS,
   runGate,
   substituteFiles,
   summarizeGate,
-} from "../src/gate";
-import type { CommandResult, RunCommand, RunCommandOptions } from "../src/host";
-import { createLintLimiter } from "../src/lint";
-import type { Config } from "../src/types";
+} from "../src/core/gate";
+import type { CommandResult, RunCommand, RunCommandOptions } from "../src/core/host";
+import { createLintLimiter } from "../src/core/lint";
+import type { Config } from "../src/core/types";
 
 function resolve(raw: Config) {
   return resolveConfig(raw, "/project/.opencode-dev-framework.yml");

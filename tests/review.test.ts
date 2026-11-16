@@ -2,12 +2,12 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { createBlockStore, createStuckSnapshotStore } from "../src/block-store";
-import { resolveConfig } from "../src/config";
-import { createChangedFileTracker } from "../src/gate";
-import { evaluateCompletion, inspectCompletion, REVIEW_ARTIFACT_REL } from "../src/harness";
-import type { CommandResult, RunCommand } from "../src/host";
-import type { LogFn, LogLevel } from "../src/logger";
+import { createBlockStore, createStuckSnapshotStore } from "../src/core/block-store";
+import { resolveConfig } from "../src/core/config";
+import { createChangedFileTracker } from "../src/core/gate";
+import { evaluateCompletion, inspectCompletion, REVIEW_ARTIFACT_REL } from "../src/core/harness";
+import type { CommandResult, RunCommand } from "../src/core/host";
+import type { LogFn, LogLevel } from "../src/core/logger";
 import {
   assessReviewContent,
   findUncoveredFiles,
@@ -17,8 +17,8 @@ import {
   staleReviewMessage,
   templateReviewMessage,
   thinReviewMessage,
-} from "../src/review";
-import type { Config } from "../src/types";
+} from "../src/core/review";
+import type { Config } from "../src/core/types";
 
 function resolve(raw: Config) {
   return resolveConfig(raw, "/project/.opencode-dev-framework.yml");

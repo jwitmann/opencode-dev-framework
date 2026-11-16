@@ -2,7 +2,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { installTemplates, listTemplateFiles } from "../src/installer";
+import { installTemplates, listTemplateFiles } from "../src/core/installer";
 import {
   checkTemplateUpdates,
   composeUpdatePrompt,
@@ -10,7 +10,7 @@ import {
   needsAgentHandoff,
   runUpdateCommand,
   summarizeDrift,
-} from "../src/update";
+} from "../src/core/update";
 
 let dir: string;
 

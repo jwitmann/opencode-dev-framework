@@ -1,6 +1,7 @@
 # Plan 25 — DSH adapter (shared core + per-harness adapters)
 
-Status: design, agreed 2026-11-16. Not built. Predecessor: dsh-migration
+Status: built 2026-11-16 on `feat/dsh-adapter` (option B, in-place split:
+`src/core/*` + `src/adapters/{opencode,dsh}/`). Predecessor: dsh-migration
 assessment (`~/dsh-migration/README.md` — seam reference, provider decision,
 review consolidation, model-first, format-runner scope). DSH upstream:
 `~/deepseek-harness` @ `39163dd` (`0.2.2-rc.3`, verified seam source).
@@ -74,6 +75,21 @@ Nothing below is new machinery. The codebase already isolates host contact:
    `src/adapters/*` vs standalone DSH package depending on the published
    core. Decide on evidence from slice 3, not before. Includes the DSH-side
    test story (vitest + `test-support` fakes; core unit tests stay shared).
+   DECIDED 2026-11-16 on dogfood evidence: option B, in-place split
+   (`src/core/*` harness-agnostic + `src/adapters/opencode/` thin
+   registration + `src/adapters/dsh/` Cordis wiring). Rationale: the
+   dogfood proved the seam is already clean (8 core modules imported, zero
+   friction) — no package walls needed; single-maintainer repo keeps one
+   npm flow. Promotion fixes from the spike review ride along
+   (`checkToolCall` delegation via the `decideFileGuard`/`decideShellGuard`
+   seam, core reason text, core block-store budget instead of an adapter
+   counter, `renderStatus` reuse). Known intentional asymmetry (not a fork):
+   DSH pre-execute also guard-checks shell redirect targets
+   (`extractRedirectTargets` → `decideFileGuard`) while OpenCode's
+   `checkToolCall` checks only dangerous commands — same policy, wider
+   coverage on the new wiring. Extending the shared path is a follow-up,
+   not slice 4. Likewise out of scope for slice 4: child-session
+   review-duty guard and pre-flight enforcement on DSH.
 5. **Docs.** Update `05-implementation-checklist.md` per done slice;
    `README.md` + `AGENTS.md` only if the user-facing contract changes
    (packaging does; slices 1–3 don't).

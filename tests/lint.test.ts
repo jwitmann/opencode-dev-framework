@@ -2,8 +2,8 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { resolveConfig } from "../src/config";
-import type { CommandResult, RunCommand, RunCommandOptions } from "../src/host";
+import { resolveConfig } from "../src/core/config";
+import type { CommandResult, RunCommand, RunCommandOptions } from "../src/core/host";
 import {
   createLintLimiter,
   DEFAULT_LINT_TIMEOUT_SECONDS,
@@ -14,8 +14,8 @@ import {
   resolveLintCommand,
   resolvePreCommitCommand,
   summarizeLint,
-} from "../src/lint";
-import type { Config } from "../src/types";
+} from "../src/core/lint";
+import type { Config } from "../src/core/types";
 
 function resolve(raw: Config) {
   return resolveConfig(raw, "/project/.opencode-dev-framework.yml");

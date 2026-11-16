@@ -9,7 +9,7 @@ import type { CommandResult, RunCommand } from "./host.js";
 import type { CommandsConfig, Profile } from "./types.js";
 
 /** Directory containing the project templates shipped with the package. */
-export const TEMPLATES_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "templates");
+export const TEMPLATES_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "templates");
 
 export type OverwriteDecision = "overwrite" | "skip" | "overwrite-all" | "skip-all";
 

@@ -5,7 +5,7 @@ import {
   createStuckSnapshotStore,
   STUCK_SNAPSHOT_KEY_PREFIX,
   type StorageLike,
-} from "../src/block-store";
+} from "../src/core/block-store";
 
 /** In-memory ctx.storage stub that records every key it sees. */
 function stubStorage() {

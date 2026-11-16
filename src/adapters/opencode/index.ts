@@ -30,10 +30,10 @@ import { stat } from "node:fs/promises";
 import { join } from "node:path";
 import { Plugin } from "@opencode/plugin";
 import type { Context } from "@opencode/plugin/promise/plugin";
-import { createBlockStore, createStuckSnapshotStore } from "./block-store.js";
-import { loadConfig } from "./config.js";
-import { createChangedFileTracker } from "./gate.js";
-import type { GoalDelegate } from "./goal.js";
+import { createBlockStore, createStuckSnapshotStore } from "../../core/block-store.js";
+import { loadConfig } from "../../core/config.js";
+import { createChangedFileTracker } from "../../core/gate.js";
+import type { GoalDelegate } from "../../core/goal.js";
 import {
   artifactState,
   childArtifactDenial,
@@ -41,10 +41,10 @@ import {
   isReviewArtifact,
   PREFLIGHT_ARTIFACT_REL,
   preflightBlockReason,
-} from "./harness.js";
-import { runCommand } from "./host.js";
-import { createLintLimiter } from "./lint.js";
-import { createLogger } from "./logger.js";
+} from "../../core/harness.js";
+import { runCommand } from "../../core/host.js";
+import { createLintLimiter } from "../../core/lint.js";
+import { createLogger } from "../../core/logger.js";
 import {
   checkToolCall,
   extractCommand,
@@ -53,15 +53,15 @@ import {
   FILE_TOOLS,
   SHELL_TOOLS,
   toPermissionGuard,
-} from "./protect.js";
+} from "../../core/protect.js";
 import {
   clearSessionDirectory,
   hasSeenSessionStart,
   markSessionStartSeen,
   resolveChildSession,
-} from "./registry.js";
-import { findRosterIndex, renderDutyRoster, rosterPresent } from "./roster.js";
-import { constitutionPresent, loadConstitution } from "./rules.js";
+} from "../../core/registry.js";
+import { findRosterIndex, renderDutyRoster, rosterPresent } from "../../core/roster.js";
+import { constitutionPresent, loadConstitution } from "../../core/rules.js";
 import {
   actOnVerdict,
   getActiveState,
@@ -75,11 +75,11 @@ import {
   stampIdleHandled,
   stampRuntimeStatus,
   wasIdleHandledRecently,
-} from "./run-hooks.js";
-import type { IdleHookVia } from "./runtime-status.js";
-import type { ResolvedConfig } from "./types.js";
-import { checkTemplateUpdates, driftMentionLine } from "./update.js";
-import { snapshotEnforceable } from "./weakening.js";
+} from "../../core/run-hooks.js";
+import type { IdleHookVia } from "../../core/runtime-status.js";
+import type { ResolvedConfig } from "../../core/types.js";
+import { checkTemplateUpdates, driftMentionLine } from "../../core/update.js";
+import { snapshotEnforceable } from "../../core/weakening.js";
 
 /**
  * Build the host session lookup for child detection, defensively: older
@@ -738,7 +738,7 @@ const plugin = Plugin.define({
             additionalProperties: false,
           },
           async execute(input: unknown) {
-            const { runInitScaffold, scaffoldReportLines } = await import("./init.js");
+            const { runInitScaffold, scaffoldReportLines } = await import("../../core/init.js");
             const args = input as { directory?: string; overwrite?: boolean; wizard?: boolean };
             const targetDir = args.directory ?? directory;
             const scaffold = await runInitScaffold(targetDir, state.run, {
@@ -769,9 +769,9 @@ const plugin = Plugin.define({
             additionalProperties: false,
           },
           async execute(input: unknown) {
-            const { clearConfigCache: ccc, loadConfig: lc } = await import("./config.js");
-            const { changeProfile } = await import("./commands.js");
-            const { loadConstitution: lc2 } = await import("./rules.js");
+            const { clearConfigCache: ccc, loadConfig: lc } = await import("../../core/config.js");
+            const { changeProfile } = await import("../../core/commands.js");
+            const { loadConstitution: lc2 } = await import("../../core/rules.js");
             const args = input as { profile: string; directory?: string };
             const targetDir = args.directory ?? directory;
             const profile = args.profile.trim().toLowerCase() as ResolvedConfig["profile"];
@@ -813,7 +813,7 @@ const plugin = Plugin.define({
             additionalProperties: false,
           },
           async execute(input: unknown) {
-            const { verifyGate } = await import("./commands.js");
+            const { verifyGate } = await import("../../core/commands.js");
             const args = input as { directory?: string };
             const targetDir = args.directory ?? directory;
             const liveState = getActiveState();
@@ -844,7 +844,7 @@ const plugin = Plugin.define({
             additionalProperties: false,
           },
           async execute(input: unknown) {
-            const { renderStatus } = await import("./format-status.js");
+            const { renderStatus } = await import("../../core/format-status.js");
             const args = input as { directory?: string };
             const targetDir = args.directory ?? directory;
             const liveState = getActiveState();
@@ -887,7 +887,7 @@ const plugin = Plugin.define({
               }
               await reloadConfigIfChanged(state);
               const { extractObjectiveText, isNativeGoalListed, runGoalCommand } = await import(
-                "./goal.js"
+                "../../core/goal.js"
               );
               let nativeGoalAvailable = false;
               try {
@@ -956,7 +956,7 @@ const plugin = Plugin.define({
                     "(teardown or reload raced the command); retry /df-init.",
                 );
               }
-              const { runInitCommand } = await import("./init.js");
+              const { runInitCommand } = await import("../../core/init.js");
               const delivered = await runInitCommand({
                 directory: state.directory,
                 run: state.run,
@@ -970,8 +970,10 @@ const plugin = Plugin.define({
                   }
                 },
                 reload: async () => {
-                  const { clearConfigCache: ccc, loadConfig: lc } = await import("./config.js");
-                  const { loadConstitution: lc2 } = await import("./rules.js");
+                  const { clearConfigCache: ccc, loadConfig: lc } = await import(
+                    "../../core/config.js"
+                  );
+                  const { loadConstitution: lc2 } = await import("../../core/rules.js");
                   ccc();
                   const newConfig = lc(state.directory);
                   const { constitution: newConstitution } = await lc2(newConfig, state.directory);
@@ -1039,7 +1041,7 @@ const plugin = Plugin.define({
                     "(teardown or reload raced the command); retry /df-update.",
                 );
               }
-              const { runUpdateCommand } = await import("./update.js");
+              const { runUpdateCommand } = await import("../../core/update.js");
               const delivered = await runUpdateCommand({
                 directory: state.directory,
                 delivery: invocation.delivery,

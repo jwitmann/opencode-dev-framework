@@ -2,7 +2,8 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { clearConfigCache, resolveConfig } from "../src/config";
+import plugin from "../src/adapters/opencode/index";
+import { clearConfigCache, resolveConfig } from "../src/core/config";
 import {
   buildVerifiedObjective,
   checkGoalAvailability,
@@ -12,9 +13,8 @@ import {
   NATIVE_GOAL_LIMIT,
   runGoalCommand,
   VERIFICATION_ADDENDUM,
-} from "../src/goal";
-import plugin from "../src/index";
-import type { Config } from "../src/types";
+} from "../src/core/goal";
+import type { Config } from "../src/core/types";
 
 function resolve(raw: Config) {
   return resolveConfig(raw, "/project/.opencode-dev-framework.yml");

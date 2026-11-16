@@ -8,9 +8,10 @@
  * kickoff, state, reviewer, pause/resume/clear, and continuations; the
  * framework's idle gate stays the independent deterministic backstop.
  *
- * All policy here is pure (input -> data, no session I/O): `src/index.ts`
- * owns the `ctx.command.transform` registration, the `command.list()`
- * call, and the delegation call; the shape-tolerant listing predicate
+ * All policy here is pure (input -> data, no session I/O): the OpenCode
+ * adapter (`src/adapters/opencode/index.ts`) owns the
+ * `ctx.command.transform` registration, the `command.list()` call, and the
+ * delegation call; the shape-tolerant listing predicate
  * (`isNativeGoalListed`) lives here. Unit tests drive these functions
  * with a stub delegate.
  */

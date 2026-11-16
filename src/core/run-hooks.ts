@@ -4,9 +4,10 @@
  * (opencode `Plugin.define` registration, DSH Cordis bundle wiring) lives
  * in the adapters and calls into these flows with a populated `HookState`.
  *
- * This module was moved from `src/index.ts` (plan 25, slice 1) with
+ * This module was extracted from the OpenCode adapter
+ * (`src/adapters/opencode/index.ts`, formerly `src/index.ts`) with
  * relocation only — plus formatter line-breaks, added explicit types, and
- * a `blockCounts` doc comment. No behavior change; `index.ts` keeps
+ * a `blockCounts` doc comment. No behavior change; the adapter keeps
  * registration thin.
  */
 

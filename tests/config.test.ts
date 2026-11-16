@@ -12,7 +12,7 @@ import {
   mapFlatConfig,
   resolveConfig,
   splitGlobs,
-} from "../src/config";
+} from "../src/core/config";
 
 let dir: string;
 

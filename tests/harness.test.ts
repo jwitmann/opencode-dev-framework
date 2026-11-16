@@ -2,9 +2,9 @@ import { mkdir, mkdtemp, rm, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { createBlockStore, createStuckSnapshotStore } from "../src/block-store";
-import { resolveConfig } from "../src/config";
-import { createChangedFileTracker } from "../src/gate";
+import { createBlockStore, createStuckSnapshotStore } from "../src/core/block-store";
+import { resolveConfig } from "../src/core/config";
+import { createChangedFileTracker } from "../src/core/gate";
 import {
   artifactState,
   createPassCache,
@@ -15,10 +15,10 @@ import {
   PREFLIGHT_ARTIFACT_REL,
   preflightBlockReason,
   REVIEW_ARTIFACT_REL,
-} from "../src/harness";
-import type { CommandResult, RunCommand, RunCommandOptions } from "../src/host";
-import type { LogFn, LogLevel } from "../src/logger";
-import type { Config } from "../src/types";
+} from "../src/core/harness";
+import type { CommandResult, RunCommand, RunCommandOptions } from "../src/core/host";
+import type { LogFn, LogLevel } from "../src/core/logger";
+import type { Config } from "../src/core/types";
 
 function resolve(raw: Config) {
   return resolveConfig(raw, "/project/.opencode-dev-framework.yml");

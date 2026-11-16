@@ -20,7 +20,7 @@ entries — the API view is the one that tells the truth.)
 
 Point the entry at the repository **root**, not at `dist/` directly: a bare
 directory without `package.json`/`exports` resolves only the server part.
-One root entry loads every part (server via `dist/index.js`, TUI via
+One root entry loads every part (server via `dist/adapters/opencode/index.js`, TUI via
 `tui.tsx`, resolved through the `exports` map).
 
 ## Stale version after switching sources

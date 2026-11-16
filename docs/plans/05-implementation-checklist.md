@@ -766,6 +766,36 @@ Dogfood the fork's V2 pre-terminal hook (upstream PR
   `teardown.test.ts`) + peer-review skill gate. No full rewrite without
   spike + review.
 
+## Phase 42 — DSH adapter, slices 1–4 (plan 25, DONE 2026-11-16)
+
+- [x] 42.1 Slice 1: `HookState` + safeLog + config reload + verdict
+  messaging + `runPerEditLint` + `runCompletion` + idle dedup helpers moved
+  from `src/index.ts` to `src/core/run-hooks.ts` (pure move, in-place).
+  `src/adapters/opencode/index.ts` keeps registration thin.
+- [x] 42.2 Slice 2: shared `formatFile` runner in `src/core/lint.ts` mirroring
+  `lintFile` (same substitution, ghost-skip, TOCTOU re-probe, skip-vs-fail,
+  `summarizeFormat`) + `tests/format.test.ts`. Opencode adapter never calls
+  it (core formats natively) — the DSH adapter exercises it.
+- [x] 42.3 Slice 3: dogfood on a scratch adapter outside the repo
+  (`/tmp/opencode/odf-dogfood/`, core imported from `dist/`, stock
+  `headless` + `--patch`): pre-execute deny on both tiers, post-execute
+  format-then-lint via `additionalContexts`, turn-stopping counter, real
+  `loadConfig`. Exit met; gaps named as promotion requirements, not
+  failures. Port log: `~/dsh-migration/odf-dogfood-log.md`.
+- [x] 42.4 Slice 4: packaging (option B, in-place). `src/core/*` (24
+  modules, harness-agnostic; `@opencode/plugin` import removed from core —
+  `StorageLike` inlined in `block-store.ts`; `TEMPLATES_DIR` /
+  `BUNDLED_CONSTITUTION_DIR` re-rooted `../..`), `src/adapters/opencode/`
+  (thin registration, `../../core/` imports), `src/adapters/dsh/` (Cordis
+  wiring over core: `decideFileGuard`/`decideShellGuard` verdicts + core
+  reason text, format-then-lint post-execute with re-entrancy guard,
+  `runCompletion`/`actOnVerdict` turn-stopping with steer/followup, core
+  block-store budget, `renderStatus` slash command, `off`/`protect_off`
+  kill switches, memory-only stores). `package.json` main/exports point at
+  `dist/adapters/opencode/index.js`; `tui.tsx` + `bin/df` follow
+  `dist/core/*`. Full suite green (521).
+- [x] 42.5 Peer-review skill gate before commit; commit locally, never push.
+
 ## Peer-review gate (mandatory after EVERY phase 21–27)
 
 Run the **`peer-review` skill** (`templates/.opencode/skills/peer-review/SKILL.md`),

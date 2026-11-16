@@ -8,7 +8,7 @@ import {
   MAX_LOG_BYTES,
   resolveDefaultLogFile,
   rotateLogFile,
-} from "../src/logger";
+} from "../src/core/logger";
 
 function stubClient(implementation?: () => Promise<void>) {
   const calls: { level: string; message: string; extra?: Record<string, unknown> }[] = [];

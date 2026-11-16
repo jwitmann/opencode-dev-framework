@@ -2,7 +2,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { CommandResult, RunCommand, RunCommandOptions } from "../src/host";
+import type { CommandResult, RunCommand, RunCommandOptions } from "../src/core/host";
 import {
   buildWizardBrief,
   formatTrialRun,
@@ -13,7 +13,7 @@ import {
   statusTemplates,
   trialRunDetectedCommands,
   writeDetectedConfig,
-} from "../src/installer";
+} from "../src/core/installer";
 
 let dir: string;
 
@@ -244,7 +244,7 @@ describe("project-config skill pin (Phase 15)", () => {
   it("covers build truth, wrappers, acceptance, hardening draft, self-check, and review-only handoff", async () => {
     const { readFile } = await import("node:fs/promises");
     const { join } = await import("node:path");
-    const { TEMPLATES_DIR } = await import("../src/installer");
+    const { TEMPLATES_DIR } = await import("../src/core/installer");
     const content = await readFile(
       join(TEMPLATES_DIR, ".opencode/skills/project-config/SKILL.md"),
       "utf8",

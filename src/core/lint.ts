@@ -1,7 +1,8 @@
 /**
  * Per-edit lint: resolve the linter command for a changed file and run it
  * through an injectable command runner. Pure orchestration — the hook flows
- * live in `src/run-hooks.ts`, driven by thin registration in `src/index.ts`.
+ * live in `src/core/run-hooks.ts`, driven by thin registration in
+ * `src/adapters/opencode/index.ts`.
  */
 
 import { existsSync } from "node:fs";

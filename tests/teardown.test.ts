@@ -2,8 +2,8 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { clearConfigCache } from "../src/config";
-import plugin from "../src/index";
+import plugin from "../src/adapters/opencode/index";
+import { clearConfigCache } from "../src/core/config";
 
 // Hermetic stub: no child process ever spawns from this file. `setup()`
 // hardwires the real spawner (src/index.ts `run: runCommand`), so without
@@ -11,8 +11,8 @@ import plugin from "../src/index";
 // the only test file in the suite that did. `false` mimics /bin/false
 // (exit 1, gate-failing); `git` mimics "not a repo" so gitChangedFiles
 // fails fast to [] exactly as it does in these temp dirs.
-vi.mock("../src/host", async (importOriginal) => {
-  const original = await importOriginal<typeof import("../src/host")>();
+vi.mock("../src/core/host", async (importOriginal) => {
+  const original = await importOriginal<typeof import("../src/core/host")>();
   const runCommand: typeof original.runCommand = async (command) => {
     if (command[0] === "false") {
       return { stdout: "", stderr: "", exitCode: 1, timedOut: false };

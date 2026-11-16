@@ -1,7 +1,7 @@
 /**
  * Guardrail logic: match tool calls against protected paths and dangerous
  * shell commands. Pure functions — the OpenCode hook wiring lives in
- * src/index.ts.
+ * src/adapters/opencode/index.ts, the DSH wiring in src/adapters/dsh/.
  */
 
 import { basename, isAbsolute, relative } from "node:path";
@@ -240,6 +240,64 @@ function enforce(config: ResolvedConfig, reason: string, matchedPattern: string)
 }
 
 /**
+ * Decide a file-path guard without touching tool args (plan 25 slice 4).
+ * Harness-agnostic seam: the OpenCode adapter reaches it via `checkToolCall`,
+ * the DSH adapter calls it directly with its own envelope extraction
+ * (`file_path`, `apply_patch` headers). Same verdicts, same reason text —
+ * one logic, two wirings.
+ */
+export function decideFileGuard(
+  config: ResolvedConfig,
+  filePath: string,
+  directory?: string,
+  hostPermissions?: OpenCodePermission,
+  tool = "edit",
+): GuardResult {
+  if (config.profile === "off" || config.protect_off) {
+    return { decision: "allow" };
+  }
+  if (hostDenies(tool, hostPermissions)) {
+    return { decision: "allow" };
+  }
+  const pattern = matchProtectedPath(config, filePath, directory);
+  if (pattern !== undefined) {
+    return enforce(
+      config,
+      `${tool} on protected path "${filePath}" is blocked (matched "${pattern}")`,
+      pattern,
+    );
+  }
+  return { decision: "allow" };
+}
+
+/**
+ * Decide a shell-command guard without touching tool args (plan 25 slice 4).
+ * Same sharing contract as `decideFileGuard`.
+ */
+export function decideShellGuard(
+  config: ResolvedConfig,
+  command: string,
+  hostPermissions?: OpenCodePermission,
+  tool = "bash",
+): GuardResult {
+  if (config.profile === "off" || config.protect_off) {
+    return { decision: "allow" };
+  }
+  if (hostDenies(tool, hostPermissions)) {
+    return { decision: "allow" };
+  }
+  const dangerous = matchDangerousCommand(command);
+  if (dangerous !== undefined) {
+    return enforce(
+      config,
+      `${tool} command blocked: ${dangerous.reason}`,
+      dangerous.pattern.source,
+    );
+  }
+  return { decision: "allow" };
+}
+
+/**
  * Evaluate a tool call against the guardrail config.
  *
  * Returns `allow` when protection is disabled (`off` profile or
@@ -262,20 +320,7 @@ export function checkToolCall(
     if (filePath === undefined) {
       return { decision: "allow" };
     }
-    // If the host permission model already denies this tool, do not duplicate
-    // the block here.
-    if (hostDenies(tool, hostPermissions)) {
-      return { decision: "allow" };
-    }
-    const pattern = matchProtectedPath(config, filePath, directory);
-    if (pattern !== undefined) {
-      return enforce(
-        config,
-        `${tool} on protected path "${filePath}" is blocked (matched "${pattern}")`,
-        pattern,
-      );
-    }
-    return { decision: "allow" };
+    return decideFileGuard(config, filePath, directory, hostPermissions, tool);
   }
 
   if (SHELL_TOOLS.has(tool)) {
@@ -283,21 +328,15 @@ export function checkToolCall(
     if (command === undefined) {
       return { decision: "allow" };
     }
-    if (hostDenies(tool, hostPermissions)) {
-      return { decision: "allow" };
-    }
-    const dangerous = matchDangerousCommand(command);
-    if (dangerous !== undefined) {
-      return enforce(config, `bash command blocked: ${dangerous.reason}`, dangerous.pattern.source);
-    }
+    return decideShellGuard(config, command, hostPermissions, tool);
   }
 
   return { decision: "allow" };
 }
 
 /**
- * Phase 25: adapt a native `permission.evaluate` event to the guardrail
- * verdict. Maps the observed engine shapes (spike 25.1, OpenCode v2.0.26 —
+ * Phase 25 (permission spike, items 25.1/25.2): adapt a native
+ * `permission.evaluate` event to the guardrail verdict. Maps the observed engine shapes (spike 25.1, OpenCode v2.0.26 —
  * recorded in docs/plans/08-notes.md, never guessed):
  * - action `"edit"` (covers edit/write/patch tools) with `resources[0]` =
  *   the target file path (repo-relative).

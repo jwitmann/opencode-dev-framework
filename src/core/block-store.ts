@@ -23,10 +23,16 @@
  * that API; a stale key left by an older install is simply never read.
  */
 
-import type { Context } from "@opencode/plugin/promise/plugin";
-
-/** Minimal storage surface we need (subset of `Context["storage"]`). */
-export type StorageLike = Pick<Context["storage"], "get" | "set" | "remove">;
+/**
+ * Minimal storage surface we need. Structurally matches the host plugin's
+ * storage domain (`get`/`set`/`remove` over string keys); deliberately
+ * declared locally so core imports nothing host-specific (not even types).
+ */
+export interface StorageLike {
+  get(key: string): Promise<unknown>;
+  set(key: string, value: unknown): Promise<void>;
+  remove(key: string): Promise<void>;
+}
 
 export const BLOCK_COUNT_KEY_PREFIX = "df:blocks:";
 export const STUCK_SNAPSHOT_KEY_PREFIX = "df:stuck:";
