@@ -795,16 +795,20 @@ Dogfood the fork's V2 pre-terminal hook (upstream PR
   `dist/adapters/opencode/index.js`; `tui.tsx` + `bin/df` follow
   `dist/core/*`. Full suite green (521).
 - [x] 42.5 Peer-review skill gate before commit; commit locally, never push.
-- [x] 42.6 Contract-correction round (same session): code-reviewer + style
-  findings fixed — track-before-error on `isError` post-execute (partial
-  writes enter the gate), skip-noise kept out of `additionalContexts`,
-  shared limiter/pre-commit/timeout on the DSH lint path, caller tool
-  nouns in reasons; warn tier corrected to allow-with-log (`ask` denies
-  without an approval service); guard errors profile-dependent
-  (advisory allows, standard/strict deny); pre-flight enforced on DSH
-  pre-execute; `apply()` load failure error-logs + no-ops (no mount
-  throw); dead seam surface removed (`cancel`, `workingDirectory`).
-  22 adapter tests green; full suite 526.
+- [x] 42.6 Contract-correction round (same session): code-reviewer +
+  style findings fixed — track-before-error on `isError` post-execute
+  (partial writes enter the gate), skip-noise kept out of
+  `additionalContexts`, shared limiter/pre-commit/timeout on the DSH lint
+  path, caller tool nouns in reasons; warn tier corrected to
+  allow-with-log (`ask` denies without an approval service);
+  guard errors profile-dependent (advisory/off allow, standard/strict
+  deny); pre-flight enforced on DSH pre-execute (incl.
+  `apply_patch`→`patch` mapping, resolved-path artifact exemption,
+  `protect_off` still gated — parity with opencode); `apply()` load
+  failure error-logs + no-ops (no mount throw); dead seam surface
+  removed (`cancel`, `workingDirectory`). Kill-switch scope aligned:
+  only profile-off skips lint/gate; `protect_off` stands down
+  guardrails alone. 25 adapter tests green; full suite 533.
 
 ## Peer-review gate (mandatory after EVERY phase 21–27)
 

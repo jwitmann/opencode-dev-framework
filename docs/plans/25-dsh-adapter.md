@@ -88,15 +88,19 @@ Nothing below is new machinery. The codebase already isolates host contact:
    seam, core reason text, core block-store budget instead of an adapter
    counter, `renderStatus` reuse, profile-dependent guard-error handling
    (advisory allows, standard/strict deny — unknown = untrusted),
-   pre-flight enforcement on pre-execute, warn-tier allow-with-log
-   (`ask` never emitted: it denies without an approval service),
-   load-failure error-log + no-op (mirror of opencode setup behavior). Known intentional asymmetry (not a fork):
+   pre-flight enforcement on pre-execute (incl. `apply_patch`→`patch`
+   envelope mapping, artifact exemption by resolved path), warn-tier
+   allow-with-log (`ask` never emitted: it denies without an approval
+   service), load-failure error-log + no-op (mirror of opencode setup
+   behavior). `protect_off` scope mirrors opencode exactly: guardrails
+   stand down, pre-flight + lint + gate still fire. Known intentional
+   asymmetry (not a fork):
    DSH pre-execute also guard-checks shell redirect targets
    (`extractRedirectTargets` → `decideFileGuard`) while OpenCode's
    `checkToolCall` checks only dangerous commands — same policy, wider
    coverage on the new wiring. Extending the shared path is a follow-up,
-   not slice 4. Likewise out of scope for slice 4: child-session
-   review-duty guard and pre-flight enforcement on DSH.
+   not slice 4. Likewise out of scope for slice 4: the child-session
+   review-duty guard (needs a DSH child-session seam probe).
 5. **Docs.** Update `05-implementation-checklist.md` per done slice;
    `README.md` + `AGENTS.md` only if the user-facing contract changes
    (packaging does; slices 1–3 don't).

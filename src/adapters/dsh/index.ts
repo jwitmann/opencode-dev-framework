@@ -54,7 +54,7 @@ import {
   setActiveState,
   setFallbackLog,
 } from "../../core/run-hooks.js";
-import type { ResolvedConfig } from "../../core/types.js";
+import type { Profile, ResolvedConfig } from "../../core/types.js";
 import { snapshotEnforceable } from "../../core/weakening.js";
 import { type DshExec, extractDshCommand, extractDshPaths } from "./extract.js";
 
@@ -234,19 +234,20 @@ function toPreDecision(result: GuardResult): DshPreDecision {
     return { kind: "allow" };
   }
   // Fallback literal is unreachable armor: core `enforce()` always sets
-  // `reason` on deny/warn, so every non-allow result carries one.
+  // `reason` on deny, so the deny path carries one.
   return { kind: "deny", reason: result.reason ?? "blocked by guardrails" };
 }
 
 /**
  * What a guard *evaluation failure* (not a verdict — an exception) does.
- * Profile-dependent like every other enforcement decision: advisory
- * reports and allows; standard/strict fail closed (unknown = untrusted).
- * Pure for testability. (`off` never reaches evaluation — the kill switch
- * returns first.)
+ * Profile-dependent like every other enforcement decision: advisory and
+ * off report and allow; standard/strict fail closed (unknown =
+ * untrusted). Pure for testability. (`off` never reaches evaluation —
+ * the kill switch returns first — but mapping it to allow keeps the
+ * helper safe under any future call ordering.)
  */
-export function guardErrorDecision(profile: string): "allow" | "deny" {
-  return profile === "advisory" ? "allow" : "deny";
+export function guardErrorDecision(profile: Profile): "allow" | "deny" {
+  return profile === "advisory" || profile === "off" ? "allow" : "deny";
 }
 
 function dshUserMessage(text: string): DshUserMessage {
@@ -284,9 +285,9 @@ function sessionOf(agent: DshAgent, turn: unknown): string {
   return `turn-${typeof turn === "number" ? turn : "unknown"}`;
 }
 
-/** True when the kill switch stands protections down. */
-function isOff(state: HookState): boolean {
-  return state.config.profile === "off" || state.config.protect_off === true;
+/** True when the session is fully off (no gates of any kind). */
+function isProfileOff(state: HookState): boolean {
+  return state.config.profile === "off";
 }
 
 /**
@@ -346,7 +347,10 @@ export function apply(ctx: DshContext): void {
   ctx.on("tools/pre-execute", async (exec, next) => {
     try {
       await reloadConfigIfChanged(state);
-      if (isOff(state)) {
+      // Fully off means no gates of any kind. `protect_off` only stands
+      // down the *guardrails* — pre-flight below still fires under it,
+      // mirroring the OpenCode `execute.before` (bail on profile-off only).
+      if (isProfileOff(state)) {
         return next();
       }
       const paths = extractDshPaths(exec);
@@ -359,11 +363,21 @@ export function apply(ctx: DshContext): void {
       // pre-flight before guardrails, advisory warns and continues). Only
       // file-tool paths are gated — shell tools fall through to the guard
       // tiers below, exactly like `preflightBlockReason` returning null for
-      // non-file tools on the OpenCode side.
+      // non-file tools on the OpenCode side. DSH names its patch tool
+      // `apply_patch`; core knows it as `patch` — map the envelope
+      // vocabulary before calling in, the same normalization `extractDshPaths`
+      // already performs for paths.
       if (state.config.preflight.length > 0) {
+        const preflightTool = exec.name === "apply_patch" ? "patch" : exec.name;
         const artifact = await artifactState(state.directory, PREFLIGHT_ARTIFACT_REL);
         for (const filePath of paths) {
-          const reason = preflightBlockReason(state.config, exec.name, filePath, artifact);
+          const reason = preflightBlockReason(
+            state.config,
+            preflightTool,
+            filePath,
+            artifact,
+            state.directory,
+          );
           if (reason !== null) {
             if (state.config.profile === "advisory") {
               await safeLog(state, "warn", reason, { tool: exec.name, filePath });
@@ -373,6 +387,11 @@ export function apply(ctx: DshContext): void {
             }
           }
         }
+      }
+      // `protect_off` stands down the guardrails only — pre-flight above
+      // already fired. (Profile-off bailed at the top: no gates at all.)
+      if (state.config.protect_off === true) {
+        return next();
       }
       const command = extractDshCommand(exec);
       if (command !== undefined) {
@@ -433,7 +452,10 @@ export function apply(ctx: DshContext): void {
   ctx.on("tools/post-execute", async (exec, result, next) => {
     try {
       await reloadConfigIfChanged(state);
-      if (isOff(state)) {
+      // Only a fully-off profile skips tracking and lint: `protect_off`
+      // stands down guardrails, not the per-edit evidence the gate reads —
+      // mirroring the OpenCode `execute.after`.
+      if (isProfileOff(state)) {
         return next();
       }
       const command = extractDshCommand(exec);
@@ -536,7 +558,10 @@ export function apply(ctx: DshContext): void {
   ctx.on("agent/turn-stopping", async ({ agent, turn }) => {
     try {
       await reloadConfigIfChanged(state);
-      if (isOff(state)) {
+      // Only a fully-off profile skips the gate: `protect_off` stands
+      // down guardrails, not the completion contract — mirroring the
+      // OpenCode idle gate, which never consults `protect_off`.
+      if (isProfileOff(state)) {
         return;
       }
       const sessionID = sessionOf(agent, turn);

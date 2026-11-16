@@ -206,14 +206,24 @@ export function preflightBlockReason(
   toolName: string,
   targetFile: string | undefined,
   artifact: ArtifactState,
+  directory?: string,
 ): string | null {
   if (config.preflight.length === 0) return null;
   if (config.profile === "off") return null;
   if (artifact === "present") return null;
   const FILE_TOOLS = new Set(["edit", "write", "patch"]);
   if (!FILE_TOOLS.has(toolName)) return null;
-  if (targetFile !== undefined && targetFile.replace(/^\.\//, "") === PREFLIGHT_ARTIFACT_REL) {
-    return null;
+  // The artifact is always writable so the agent can comply — by
+  // project-relative or absolute spelling (mirrors `isReviewArtifact`:
+  // compare where the path resolves, not how it is spelled).
+  if (targetFile !== undefined) {
+    let candidate = targetFile;
+    if (directory !== undefined && isAbsolute(targetFile)) {
+      candidate = relative(directory, targetFile);
+    }
+    if (normalize(candidate) === normalize(PREFLIGHT_ARTIFACT_REL)) {
+      return null;
+    }
   }
   const tasks = config.preflight.map((t, i) => `${i + 1}. ${t}`).join("\n");
   return (

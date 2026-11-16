@@ -657,6 +657,7 @@ const plugin = Plugin.define({
             toolName,
             extractFilePath(input),
             artifact,
+            state.directory,
           );
           if (reason !== null) {
             const extra = { tool: toolName, sessionID, artifact: PREFLIGHT_ARTIFACT_REL };

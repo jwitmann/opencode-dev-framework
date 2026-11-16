@@ -163,7 +163,7 @@ describe("core guard seam (plan 25 slice 4)", () => {
     }
   });
 
-  it("warn mode maps to ask via the adapter", () => {
+  it("core seam still reports warn (adapter never blocks on it)", () => {
     const directory = mkdtempSync(join(tmpdir(), "odf-seam-"));
     try {
       writeConfig(directory, "profile: advisory\n");
@@ -249,14 +249,14 @@ describe("DSH adapter (plan 25 slice 4)", () => {
     expect(blocked.kind).toBe("deny");
     expect((blocked as { reason: string }).reason).toContain("pre-flight");
     // The artifact itself stays writable so the session can comply.
-    const artifact = await captured.pre(
+    const artifactDecision = await captured.pre(
       {
         name: "write",
         arguments: { file_path: ".opencode/opencode-dev-framework/preflight.md" },
       },
       next,
     );
-    expect(artifact).toEqual({ kind: "allow" });
+    expect(artifactDecision).toEqual({ kind: "allow" });
     // Completing the artifact stand downs the duty.
     mkdirSync(join(directory, ".opencode", "opencode-dev-framework"), { recursive: true });
     writeFileSync(
@@ -268,6 +268,50 @@ describe("DSH adapter (plan 25 slice 4)", () => {
       next,
     );
     expect(allowed).toEqual({ kind: "allow" });
+  });
+
+  it("enforces pre-flight on apply_patch envelopes too", async () => {
+    writeConfig(directory, 'profile: standard\npreflight:\n  - "Do the thing"\n');
+    const { ctx, captured } = stubContext();
+    apply(ctx);
+    const next = async (): Promise<DshPreDecision> => ({ kind: "allow" });
+    const blocked = await captured.pre(
+      {
+        name: "apply_patch",
+        arguments: { input: "*** Update File: src/old.ts\n@@ -1 +1 @@\n-old\n+new\n" },
+      },
+      next,
+    );
+    expect(blocked.kind).toBe("deny");
+    expect((blocked as { reason: string }).reason).toContain("pre-flight");
+  });
+
+  it("protect_off stands down guards but not lint or the gate", async () => {
+    writeConfig(
+      directory,
+      'profile: standard\nprotect_off: true\nprotect:\n  - ".env*"\n' +
+        'commands:\n  lint:\n    ".ts": "echo lint {file}"\n',
+    );
+    writeFileSync(join(directory, "work.ts"), "export const y = 2;\n");
+    const { ctx, captured, spawned } = stubContext();
+    apply(ctx);
+    const next = async (): Promise<DshPreDecision> => ({ kind: "allow" });
+    // Guards stand down: protected write allowed.
+    const allowed = await captured.pre({ name: "write", arguments: { file_path: ".env" } }, next);
+    expect(allowed).toEqual({ kind: "allow" });
+    // But per-edit lint still runs on the next write.
+    const postNext = async () => ({ kind: "accept" as const });
+    const decision = await captured.post?.(
+      { name: "write", arguments: { file_path: "work.ts" } },
+      { isError: false },
+      postNext,
+    );
+    expect(decision?.kind).toBe("accept");
+    expect(spawned.length).toBeGreaterThan(0);
+    // And the turn-stopping gate still fires (missing review blocks).
+    const steered = { steer: vi.fn(), followup: vi.fn() };
+    await captured.stopping?.({ agent: steered, turn: 1 });
+    expect(steered.steer).toHaveBeenCalledTimes(1);
   });
 
   it("pre-flight warns and continues in advisory", async () => {
@@ -290,6 +334,8 @@ describe("DSH adapter (plan 25 slice 4)", () => {
     expect(captured.pre).toBeUndefined();
     expect(captured.post).toBeUndefined();
     expect(captured.stopping).toBeUndefined();
+    // The odf-status command below the early return never registers either.
+    expect(captured.registered).toEqual([]);
   });
 
   it("no-ops every hook when the kill switch is set", async () => {

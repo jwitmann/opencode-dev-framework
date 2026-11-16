@@ -155,6 +155,12 @@ describe("preflightBlockReason", () => {
     expect(preflightBlockReason(config, "write", PREFLIGHT_ARTIFACT_REL, "missing")).toBeNull();
   });
 
+  it("allows the artifact by absolute spelling too", () => {
+    const abs = join("/project", PREFLIGHT_ARTIFACT_REL);
+    expect(preflightBlockReason(config, "write", abs, "missing", "/project")).toBeNull();
+    expect(preflightBlockReason(config, "write", "src/a.ts", "missing", "/project")).not.toBeNull();
+  });
+
   it("never blocks read-only tools", () => {
     for (const tool of ["read", "grep", "glob", "bash", "task"]) {
       expect(preflightBlockReason(config, tool, undefined, "missing")).toBeNull();
