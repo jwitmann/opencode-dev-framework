@@ -27,7 +27,7 @@ Nothing below is new machinery. The codebase already isolates host contact:
 
 - `lint.ts` (`lintFile(run, config, path)`) is pure orchestration over an
   injected runner — `formatFile` will be its mirror, same signature.
-- `HookState` (`registry.ts`) already carries `LogFn` + `RunCommand`
+- `HookState` (`src/run-hooks.ts`) already carries `LogFn` + `RunCommand`
   instead of a host context; only `index.ts` fills it from opencode APIs.
 - Only `index.ts` (+ `tui.tsx` UI half) imports `@opencode/plugin`. Every
   other module is host-agnostic (node builtins + injected fns).
@@ -59,7 +59,7 @@ Nothing below is new machinery. The codebase already isolates host contact:
    `lint.ts` (same `{file}`/`{dir}` substitution, `existsSync` probe +
    TOCTOU re-probe, skip-vs-fail semantics, `summarizeFormat`). Unit tests
    mirroring `lint` tests (ghost files skip, timeout fails, exclude wins).
-   Oponcode adapter does NOT call it (no-op preserved). Gate green.
+   Opencode adapter does NOT call it (no-op preserved). Gate green.
 3. **DSH adapter dogfood (outside this repo).** Scratch adapter package
    (private, e.g. under `/tmp` or `~/dsh-migration`) importing core source
    directly: `tools/pre-execute` deny (protect lists verbatim, warn→ask),

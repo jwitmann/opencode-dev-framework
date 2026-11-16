@@ -4,8 +4,10 @@
  * (opencode `Plugin.define` registration, DSH Cordis bundle wiring) lives
  * in the adapters and calls into these flows with a populated `HookState`.
  *
- * This module was extracted verbatim from `src/index.ts` (plan 25, slice 1):
- * no behavior change, only relocation. `index.ts` keeps registration thin.
+ * This module was moved from `src/index.ts` (plan 25, slice 1) with
+ * relocation only — plus formatter line-breaks, added explicit types, and
+ * a `blockCounts` doc comment. No behavior change; `index.ts` keeps
+ * registration thin.
  */
 
 import { stat } from "node:fs/promises";
@@ -33,8 +35,8 @@ import type { EnforceableSnapshot } from "./weakening.js";
 // ---------------------------------------------------------------------------
 // Internal state — single plugin instance per location.directory.
 // HookState is kept in module scope, not in a registry keyed by directory,
-// because V2 Context is already per-location. The map is still used for
-// legacy test helpers (buildHooks) that inject a fake directory.
+// because V2 Context is already per-location. The registry map is still
+// used for legacy test helpers (buildHooks) that inject a fake directory.
 // ---------------------------------------------------------------------------
 
 export interface HookState {
@@ -102,12 +104,25 @@ export interface HookState {
   lastIdleHandled: Map<string, number>;
 }
 
-export let activeState: HookState | null = null;
+/**
+ * Live hook state for stale-hook guards. Private binding — read it via
+ * `getActiveState()` (writes go through `setActiveState`), mirroring the
+ * `registry.ts` getter/setter idiom. Never exported mutable: an ESM live
+ * `let` binding would let any importer assign past the setter.
+ */
+let activeState: HookState | null = null;
+export function getActiveState(): HookState | null {
+  return activeState;
+}
 export function setActiveState(state: HookState | null): void {
   activeState = state;
 }
 
-export let fallbackLog: LogFn = async () => {};
+/** Fallback logger before any adapter registers one. Same idiom as above. */
+let fallbackLog: LogFn = async () => {};
+export function getFallbackLog(): LogFn {
+  return fallbackLog;
+}
 export function setFallbackLog(log: LogFn): void {
   fallbackLog = log;
 }

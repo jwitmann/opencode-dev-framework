@@ -30,36 +30,21 @@ import { stat } from "node:fs/promises";
 import { join } from "node:path";
 import { Plugin } from "@opencode/plugin";
 import type { Context } from "@opencode/plugin/promise/plugin";
-import {
-  type BlockStore,
-  createBlockStore,
-  createStuckSnapshotStore,
-  type StuckSnapshotStore,
-} from "./block-store.js";
-import { clearConfigCache, loadConfig } from "./config.js";
-import { type ChangedFileTracker, createChangedFileTracker } from "./gate.js";
+import { createBlockStore, createStuckSnapshotStore } from "./block-store.js";
+import { loadConfig } from "./config.js";
+import { createChangedFileTracker } from "./gate.js";
 import type { GoalDelegate } from "./goal.js";
 import {
   artifactState,
-  type CompletionVerdict,
   childArtifactDenial,
   createPassCache,
-  evaluateCompletion,
   isReviewArtifact,
-  type PassCache,
   PREFLIGHT_ARTIFACT_REL,
   preflightBlockReason,
 } from "./harness.js";
-import { type RunCommand, runCommand } from "./host.js";
-import {
-  createLintLimiter,
-  detectPreCommitAvailability,
-  isLintFailure,
-  type LintLimiter,
-  lintFile,
-  summarizeLint,
-} from "./lint.js";
-import { createLogger, type LogFn, type LogLevel } from "./logger.js";
+import { runCommand } from "./host.js";
+import { createLintLimiter } from "./lint.js";
+import { createLogger } from "./logger.js";
 import {
   checkToolCall,
   extractCommand,
@@ -78,8 +63,8 @@ import {
 import { findRosterIndex, renderDutyRoster, rosterPresent } from "./roster.js";
 import { constitutionPresent, loadConstitution } from "./rules.js";
 import {
-  activeState,
   actOnVerdict,
+  getActiveState,
   type HookState,
   reloadConfigIfChanged,
   runCompletion,
@@ -91,10 +76,10 @@ import {
   stampRuntimeStatus,
   wasIdleHandledRecently,
 } from "./run-hooks.js";
-import { type IdleHookVia, type TemplateState, writeRuntimeStatus } from "./runtime-status.js";
+import type { IdleHookVia } from "./runtime-status.js";
 import type { ResolvedConfig } from "./types.js";
-import { checkTemplateUpdates, driftMentionLine, summarizeDrift } from "./update.js";
-import { type EnforceableSnapshot, snapshotEnforceable } from "./weakening.js";
+import { checkTemplateUpdates, driftMentionLine } from "./update.js";
+import { snapshotEnforceable } from "./weakening.js";
 
 /**
  * Build the host session lookup for child detection, defensively: older
@@ -273,7 +258,7 @@ const plugin = Plugin.define({
     // 1) Constitution injection — per model request (V1: experimental.chat.system.transform -> V2: session.hook("context", ...))
     trackRegistration(
       await ctx.session.hook("context", async (event) => {
-        if (activeState !== state) return;
+        if (getActiveState() !== state) return;
         await reloadConfigIfChanged(state);
         if (state.config.profile === "off") return;
         const constitution = state.constitution;
@@ -328,7 +313,7 @@ const plugin = Plugin.define({
     for (const kind of ["generate", "compaction", "title"] as const) {
       trackRegistration(
         await ctx.session.hook(kind, async (event) => {
-          if (activeState !== state) return;
+          if (getActiveState() !== state) return;
           const constitution = state.constitution;
           if (state.config.profile === "off" || !constitution) return;
           // generate/compaction/title also have system — inject similarly if present
@@ -357,7 +342,7 @@ const plugin = Plugin.define({
     // key the core accepted, so the TUI can report the hook method.
     let idleHookVia: IdleHookVia = "none";
     const handleIdleContinuation = async (event: unknown): Promise<void> => {
-      if (activeState !== state) return;
+      if (getActiveState() !== state) return;
       if (event === null || typeof event !== "object") return;
       // Never let a gate failure escape into core: an uncaught throw fails
       // the drain (Failed terminal), it does NOT fail open to idle. So on
@@ -495,7 +480,7 @@ const plugin = Plugin.define({
     try {
       trackRegistration(
         await ctx.permission.hook("evaluate", async (event) => {
-          if (activeState !== state) return;
+          if (getActiveState() !== state) return;
           await reloadConfigIfChanged(state);
           if (state.config.profile === "off") return;
           const action = event.action;
@@ -615,8 +600,8 @@ const plugin = Plugin.define({
     // global is cleared between awaits. See issue #1.
     trackRegistration(
       await ctx.tool.hook("execute.before", async (event) => {
-        if (activeState !== state) {
-          if (activeState === null) {
+        if (getActiveState() !== state) {
+          if (getActiveState() === null) {
             await safeLog(
               null,
               "warn",
@@ -706,7 +691,7 @@ const plugin = Plugin.define({
     // The edit already landed, so this hook only reports — it never throws.
     trackRegistration(
       await ctx.tool.hook("execute.after", async (event) => {
-        if (activeState !== state) return;
+        if (getActiveState() !== state) return;
         await reloadConfigIfChanged(state);
         if (state.config.profile === "off") return;
         const filePath = extractFilePath(event.input);
@@ -804,9 +789,10 @@ const plugin = Plugin.define({
               state.config = newConfig;
               state.constitution = newConstitution;
             }
-            if (activeState && activeState !== state && activeState.directory === targetDir) {
-              activeState.config = newConfig;
-              activeState.constitution = newConstitution;
+            const liveState = getActiveState();
+            if (liveState && liveState !== state && liveState.directory === targetDir) {
+              liveState.config = newConfig;
+              liveState.constitution = newConstitution;
             }
             return { content: `${message} Change applied immediately.` };
           },
@@ -830,7 +816,8 @@ const plugin = Plugin.define({
             const { verifyGate } = await import("./commands.js");
             const args = input as { directory?: string };
             const targetDir = args.directory ?? directory;
-            const live = activeState && activeState.directory === targetDir ? activeState : null;
+            const liveState = getActiveState();
+            const live = liveState && liveState.directory === targetDir ? liveState : null;
             const own = state.directory === targetDir ? state : null;
             const holder = live ?? own;
             // Live tracker's changed files beat the TUI's empty default: a
@@ -860,7 +847,8 @@ const plugin = Plugin.define({
             const { renderStatus } = await import("./format-status.js");
             const args = input as { directory?: string };
             const targetDir = args.directory ?? directory;
-            const live = activeState && activeState.directory === targetDir ? activeState : null;
+            const liveState = getActiveState();
+            const live = liveState && liveState.directory === targetDir ? liveState : null;
             const own = state.directory === targetDir ? state : null;
             const cfg = (live ?? own)?.config ?? loadConfig(targetDir);
             // renderStatus expects HookState? pass live ?? own (may be null for other dirs)
@@ -891,7 +879,7 @@ const plugin = Plugin.define({
             description:
               "Start a verified native goal: appends a dev_framework_verify contract to the objective and delegates to native /goal exactly once. Requires native /goal, a blocking profile, and at least one configured completion check.",
             execute: async (invocation) => {
-              if (activeState !== state) {
+              if (getActiveState() !== state) {
                 throw new Error(
                   "Cannot start a verified goal: the plugin session state changed " +
                     "(teardown or reload raced the command); retry /df-goal.",
@@ -962,7 +950,7 @@ const plugin = Plugin.define({
             description:
               "Set up opencode-dev-framework for the current project: scaffold templates, write the detected config, trial-run it, and hand the brief to the agent. Safe to re-run; reports status when already configured.",
             execute: async (invocation) => {
-              if (activeState !== state) {
+              if (getActiveState() !== state) {
                 throw new Error(
                   "Cannot start project setup: the plugin session state changed " +
                     "(teardown or reload raced the command); retry /df-init.",
@@ -974,7 +962,7 @@ const plugin = Plugin.define({
                 run: state.run,
                 delivery: invocation.delivery,
                 checkAlive: () => {
-                  if (activeState !== state) {
+                  if (getActiveState() !== state) {
                     throw new Error(
                       "Project setup was superseded mid-scaffold (teardown or reload raced the command); " +
                         "retry /df-init — a re-run reports status without touching anything.",
@@ -1045,7 +1033,7 @@ const plugin = Plugin.define({
             description:
               "Check the project's installed templates against the shipped set and hand the drift to the agent: refresh differing files, add missing ones, each with user approval. Detection only, never writes.",
             execute: async (invocation) => {
-              if (activeState !== state) {
+              if (getActiveState() !== state) {
                 throw new Error(
                   "Cannot check for updates: the plugin session state changed " +
                     "(teardown or reload raced the command); retry /df-update.",
@@ -1056,7 +1044,7 @@ const plugin = Plugin.define({
                 directory: state.directory,
                 delivery: invocation.delivery,
                 checkAlive: () => {
-                  if (activeState !== state) {
+                  if (getActiveState() !== state) {
                     throw new Error(
                       "Update check was superseded mid-run (teardown or reload raced the command); " +
                         "retry /df-update — it only reads, never writes.",
@@ -1105,7 +1093,7 @@ const plugin = Plugin.define({
         for await (const rawEvent of ctx.event.subscribe({ signal: controller.signal })) {
           // Stale-loop guard: a previous setup's loop must exit rather than
           // hijack a newer setup's state (duplicate gate re-prompts / lint).
-          if (activeState !== state) return;
+          if (getActiveState() !== state) return;
           const event = rawEvent as { type: string; data?: unknown; properties?: unknown } & Record<
             string,
             unknown
@@ -1127,7 +1115,7 @@ const plugin = Plugin.define({
           }
 
           if (isFilesystemChangedEvent(type)) {
-            if (activeState !== state) return;
+            if (getActiveState() !== state) return;
             await reloadConfigIfChanged(state);
             if (state.config.profile === "off") continue;
             const filePath = getEventFilePath(event);
@@ -1150,7 +1138,7 @@ const plugin = Plugin.define({
           }
 
           if (isIdleEvent(event as { type: string; data?: unknown; properties?: unknown })) {
-            if (activeState !== state) return;
+            if (getActiveState() !== state) return;
             await reloadConfigIfChanged(state);
             if (state.config.profile === "off") continue;
             if (!state.config.gate) {
@@ -1244,7 +1232,7 @@ const plugin = Plugin.define({
       // Unregister every hook/transform registered by this setup() so a
       // teardown/reload (e.g. session_move into a worktree) does not leave
       // stale closures alive. Disposal failures are ignored — the
-      // stale-hook guard (`activeState !== state` → no-op / fail-open) keeps
+      // stale-hook guard (`getActiveState() !== state` → no-op / fail-open) keeps
       // the session usable regardless.
       for (const registration of registrations) {
         try {
@@ -1255,7 +1243,7 @@ const plugin = Plugin.define({
       }
       // Only clear the singleton if it is still ours; a newer setup() may
       // already have replaced it (reload race).
-      if (activeState === state) {
+      if (getActiveState() === state) {
         setActiveState(null);
       }
     };

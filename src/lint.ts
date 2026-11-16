@@ -1,7 +1,7 @@
 /**
  * Per-edit lint: resolve the linter command for a changed file and run it
- * through an injectable command runner. Pure orchestration — the OpenCode
- * hook wiring lives in src/index.ts.
+ * through an injectable command runner. Pure orchestration — the hook flows
+ * live in `src/run-hooks.ts`, driven by thin registration in `src/index.ts`.
  */
 
 import { existsSync } from "node:fs";
@@ -17,6 +17,12 @@ import type { ResolvedConfig } from "./types.js";
 
 /** Fallback per-lint timeout (seconds) when the config sets none. */
 export const DEFAULT_LINT_TIMEOUT_SECONDS = 60;
+
+/**
+ * Fallback per-format timeout (seconds). Same value as the lint default —
+ * a separate name so each concern can be tuned (and audited) independently.
+ */
+export const DEFAULT_FORMAT_TIMEOUT_SECONDS = 60;
 
 /** Cap on concurrent linter subprocesses; per-edit and gate lints share one limiter per session. */
 export const MAX_CONCURRENT_LINTS = 4;
@@ -229,8 +235,9 @@ export interface FormatOutcome {
 /**
  * Resolve the format command for a file: the per-extension override wins over
  * the default command. The `{file}` token is replaced with the file path and
- * `{dir}` with the file's directory; commands with neither token run as-is.
- * Returns undefined when no format command is configured at all.
+ * `{dir}` with the file's directory (same package-context rationale as lint —
+ * some formatters resolve config per directory); commands with neither token
+ * run as-is. Returns undefined when no format command is configured at all.
  */
 export function resolveFormatCommand(
   config: ResolvedConfig,
@@ -252,8 +259,9 @@ export function resolveFormatCommand(
  * formatter are skipped; everything else runs through the injected runner.
  * Files that no longer exist (deleted mid-session but still tracked) are
  * skipped with reason "file no longer exists" — never failed. Relative
- * `filePath` values resolve against `options.cwd`; both production callers
- * always set it.
+ * `filePath` values resolve against `options.cwd`; pass `cwd` at call
+ * sites (no production caller yet — the opencode adapter intentionally
+ * never calls `formatFile`; see plan 25).
  */
 export async function formatFile(
   run: RunCommand,
@@ -287,7 +295,7 @@ export async function formatFile(
 
   const result = await run(command, {
     cwd: options?.cwd,
-    timeout: options?.timeout ?? DEFAULT_LINT_TIMEOUT_SECONDS,
+    timeout: options?.timeout ?? DEFAULT_FORMAT_TIMEOUT_SECONDS,
   });
   if (result.timedOut || result.exitCode !== 0) {
     // TOCTOU safety net: the file may have vanished between the probe

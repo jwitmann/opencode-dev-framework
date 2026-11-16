@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { resolveConfig } from "../src/config";
 import type { CommandResult, RunCommand, RunCommandOptions } from "../src/host";
 import {
-  DEFAULT_LINT_TIMEOUT_SECONDS,
+  DEFAULT_FORMAT_TIMEOUT_SECONDS,
   formatFile,
   isFormatFailure,
   resolveFormatCommand,
@@ -139,7 +139,7 @@ describe("formatFile", () => {
 
     await formatFile(run, config, "main.ts", { cwd: dir });
 
-    expect(calls[0].options?.timeout).toBe(DEFAULT_LINT_TIMEOUT_SECONDS);
+    expect(calls[0].options?.timeout).toBe(DEFAULT_FORMAT_TIMEOUT_SECONDS);
   });
 
   it("treats a timed-out format as a failure", async () => {
