@@ -6,6 +6,17 @@ Generated from conventional commits (`scripts/changelog.sh`).
 Single source: CI publishes each version's section as the GitHub
 release notes, so this file and the release page never diverge.
 
+## [v1.9.5] - 2026-11-16
+
+### Documentation
+
+- DSH migration assessment; docs-only cadence is lint ([`d3965d8`](https://github.com/jwitmann/opencode-dev-framework/commit/d3965d871aafce91ac7b2561b6fc3130ccc3acbc))
+- relocate DSH migration assessment out of repo ([`a37aa27`](https://github.com/jwitmann/opencode-dev-framework/commit/a37aa27d497f2b7e5fa4ea85fd448a6e355d4467))
+
+### Other
+
+- single cached child walk, mkdir-once log writes, log level gate ([`0376839`](https://github.com/jwitmann/opencode-dev-framework/commit/037683901754c15baba53ddf7ad9f4e001a84ba4))
+
 ## [v1.9.4] - 2026-11-14
 
 ### Features
