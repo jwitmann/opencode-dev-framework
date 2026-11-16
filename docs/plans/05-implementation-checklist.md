@@ -821,6 +821,17 @@ Dogfood the fork's V2 pre-terminal hook (upstream PR
   Parity ceilings verified against host sources (warn→allow is the
   ceiling on headless: no `approval` provider, `ask` denies).
   29 adapter tests green (fail-before proven by stash).
+- [x] 42.8 DSH shippables (same session): `./dsh` export added
+  (types + import, mirrors the main entry); `docs/user/dsh.md` written
+  (mount, contract table, troubleshooting — status banner honest:
+  live-fire pending); README + `docs/README` map point at it.
+  Live-fire staged: real-artifact patch
+  (`/tmp/opencode/odf-livefire.patch.yml` → `dist/adapters/dsh/`),
+  model overlay, scratch project (`odf-live/`: standard profile,
+  `.env` protect, `odf-lint.sh` with pass/block/infra branches all
+  probe-verified), one task exercising deny + block + review-steer.
+  Composition proven via `--dump-config` (no model call). The live run
+  itself needs explicit model approval — standing rule, not waived.
 
 ## Peer-review gate (mandatory after EVERY phase 21–27)
 

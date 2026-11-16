@@ -175,6 +175,10 @@ The TUI commands open instantly and never feed the LLM; `/df-init`,
 - Guardrails add to OpenCode permissions, never replace them.
 - Formatters and linters are yours — the plugin runs them, it does not
   reimplement them.
+- The DSH adapter (same core, Cordis wiring: `opencode-dev-framework/dsh`)
+  goes further where its host allows — pre-terminal same-turn gate and
+  model-facing lint `block`s — but is still awaiting live-fire
+  validation: [`docs/user/dsh.md`](docs/user/dsh.md).
 
 Full story: [`docs/user/enforcement.md`](docs/user/enforcement.md).
 

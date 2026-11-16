@@ -11,6 +11,10 @@
       "types": "./dist/adapters/opencode/index.d.ts",
       "import": "./dist/adapters/opencode/index.js"
     },
+    "./dsh": {
+      "types": "./dist/adapters/dsh/index.d.ts",
+      "import": "./dist/adapters/dsh/index.js"
+    },
     "./tui": {
       "types": "./dist/tui.d.ts",
       "import": "./tui.tsx"
