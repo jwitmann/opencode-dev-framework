@@ -93,8 +93,20 @@ Nothing below is new machinery. The codebase already isolates host contact:
    allow-with-log (`ask` never emitted: it denies without an approval
    service), load-failure error-log + no-op (mirror of opencode setup
    behavior). `protect_off` scope mirrors opencode exactly: guardrails
-   stand down, pre-flight + lint + gate still fire. Known intentional
-   asymmetry (not a fork):
+   stand down, pre-flight + lint + gate still fire. Where the host allows
+   MORE than parity, the adapter takes it (not parity-cloned):
+   pre-terminal `turn-stopping` + `steer` continues the SAME turn
+   (host awaits listeners, then re-reads its inbox — no re-prompt
+   round-trip, unlike the opencode idle continuation), post-execute
+   `block` turns lint findings into a model-facing tool error in the
+   same turn (opencode `execute.after` can only log a landed edit),
+   structured `info` on every denial, abort-aware steer (dropped when
+   the turn is already dead), and shell redirect-target guard coverage.
+   The two parity ceilings are verified, not assumed: warn→allow+log
+   (nothing provides the `approval` service on headless, so `ask`
+   unconditionally denies) and pre-flight/pre-execute deny (both hosts
+   hard-block before the edit lands). Known intentional asymmetry
+   (not a fork):
    DSH pre-execute also guard-checks shell redirect targets
    (`extractRedirectTargets` → `decideFileGuard`) while OpenCode's
    `checkToolCall` checks only dangerous commands — same policy, wider

@@ -33,6 +33,7 @@ import {
   formatFile,
   isFormatFailure,
   isLintFailure,
+  type LintOutcome,
   lintFile,
   summarizeFormat,
   summarizeLint,
@@ -122,15 +123,34 @@ export interface DshAgent {
   followup?(message: DshUserMessage): void;
 }
 
+/** Structured error identity for denials, mirroring the host `ToolErrorInfo`. */
+export interface DshToolErrorInfo {
+  name: string;
+  code: string;
+  reason?: string;
+}
+
+/** Stable identity stamped on every ODF denial so host diagnostics can attribute it. */
+function odfInfo(
+  code: "guard-deny" | "guard-error" | "preflight-deny" | "lint-block",
+): DshToolErrorInfo {
+  return { name: "opencode-dev-framework", code };
+}
+
 export type DshPreDecision =
   | { kind: "allow" }
-  | { kind: "deny"; reason: string }
+  | { kind: "deny"; reason: string; info?: DshToolErrorInfo }
   | { kind: "cancel" }
   | { kind: "ask"; reason?: string };
 
 export type DshPostDecision =
   | { kind: "accept"; additionalContexts?: DshUserMessage[] }
-  | { kind: "block"; feedback: Array<{ type: "text"; text: string }> };
+  | {
+      kind: "block";
+      feedback: Array<{ type: "text"; text: string }>;
+      info?: DshToolErrorInfo;
+      additionalContexts?: DshUserMessage[];
+    };
 
 export interface DshCommands {
   register(def: {
@@ -165,8 +185,8 @@ export interface DshContext {
   ): void;
   on(
     event: "agent/turn-stopping",
-    // `signal` mirrors the host payload but is not wired yet: the core gate
-    // has no abort input (same as the OpenCode idle path). Follow-up, not drift.
+    // `signal` is honored: a gate block computed against an aborted turn
+    // drops its steer instead of waking a new turn with stale feedback.
     listener: (payload: {
       agent: DshAgent;
       turn: unknown;
@@ -235,7 +255,11 @@ function toPreDecision(result: GuardResult): DshPreDecision {
   }
   // Fallback literal is unreachable armor: core `enforce()` always sets
   // `reason` on deny, so the deny path carries one.
-  return { kind: "deny", reason: result.reason ?? "blocked by guardrails" };
+  return {
+    kind: "deny",
+    reason: result.reason ?? "blocked by guardrails",
+    info: odfInfo("guard-deny"),
+  };
 }
 
 /**
@@ -248,6 +272,41 @@ function toPreDecision(result: GuardResult): DshPreDecision {
  */
 export function guardErrorDecision(profile: Profile): "allow" | "deny" {
   return profile === "advisory" || profile === "off" ? "allow" : "deny";
+}
+
+/** Cap for model-facing lint feedback: corrective, not a full log dump. */
+const MAX_LINT_FEEDBACK_CHARS = 4000;
+
+/**
+ * Model-fault lint failures for a post-execute `block` decision.
+ * A finding (nonzero exit, no timeout) blames the edit, so the model sees
+ * it as a failed tool call and fixes it in the same turn — stronger than
+ * the OpenCode `execute.after`, which can only log after the edit lands.
+ * Timeouts and infra errors are NOT model faults: they stay accept +
+ * warn-log (the file is still tracked, so the gate re-checks). Pure for
+ * testability.
+ */
+export function lintBlockLines(outcomes: LintOutcome[]): string[] {
+  const lines: string[] = [];
+  for (const outcome of outcomes) {
+    if (outcome.skipped || outcome.result === undefined) {
+      continue;
+    }
+    if (outcome.result.timedOut || outcome.result.exitCode === 0) {
+      continue;
+    }
+    const output = [outcome.result.stdout, outcome.result.stderr]
+      .map((part) => part.trim())
+      .filter((part) => part !== "")
+      .join("\n");
+    const body = output === "" ? "(no output)" : output;
+    const capped =
+      body.length > MAX_LINT_FEEDBACK_CHARS
+        ? `${body.slice(0, MAX_LINT_FEEDBACK_CHARS - 1)}… (truncated)`
+        : body;
+    lines.push(`lint failed for ${outcome.filePath} (exit ${outcome.result.exitCode}):\n${capped}`);
+  }
+  return lines;
 }
 
 function dshUserMessage(text: string): DshUserMessage {
@@ -383,7 +442,11 @@ export function apply(ctx: DshContext): void {
               await safeLog(state, "warn", reason, { tool: exec.name, filePath });
             } else {
               await safeLog(state, "error", reason, { tool: exec.name, filePath });
-              return { kind: "deny", reason } satisfies DshPreDecision;
+              return {
+                kind: "deny",
+                reason,
+                info: odfInfo("preflight-deny"),
+              } satisfies DshPreDecision;
             }
           }
         }
@@ -442,7 +505,11 @@ export function apply(ctx: DshContext): void {
       const message = `pre-execute guard error: ${(error as Error)?.message ?? error}`;
       if (guardErrorDecision(state.config.profile) === "deny") {
         await safeLog(state, "error", message);
-        return { kind: "deny", reason: message } satisfies DshPreDecision;
+        return {
+          kind: "deny",
+          reason: message,
+          info: odfInfo("guard-error"),
+        } satisfies DshPreDecision;
       }
       await safeLog(state, "warn", message);
     }
@@ -484,6 +551,7 @@ export function apply(ctx: DshContext): void {
       }
       const timeout = state.config.gate?.timeout;
       const reports: string[] = [];
+      const lintOutcomes: LintOutcome[] = [];
       for (const filePath of paths) {
         if (inflight.has(filePath)) {
           continue;
@@ -524,6 +592,7 @@ export function apply(ctx: DshContext): void {
                 await safeLog(state, "debug", summarizeLint(linted), { filePath });
               } else {
                 reports.push(summarizeLint(linted));
+                lintOutcomes.push(linted);
               }
               if (!linted.skipped) {
                 await safeLog(
@@ -538,6 +607,28 @@ export function apply(ctx: DshContext): void {
         } finally {
           inflight.delete(filePath);
         }
+      }
+      // Model-fault lint findings fail the tool call itself (`block` turns
+      // the result into a model-facing error): the agent fixes its edit in
+      // the same turn instead of sailing on to be caught at the gate. The
+      // OpenCode `execute.after` cannot do this — a landed edit can only be
+      // logged. Advisory never blocks; format outcomes never block (the
+      // formatter is fix-up, and its nonzero exits are ambiguous infra).
+      const faults = lintBlockLines(lintOutcomes);
+      if (faults.length > 0 && state.config.profile !== "advisory") {
+        await safeLog(state, "error", `post-execute lint blocks ${paths.join(", ")}`, {
+          faults: faults.length,
+        });
+        return {
+          kind: "block",
+          feedback: [
+            {
+              type: "text",
+              text: `[odf post-execute] your edit introduced lint findings; fix them and retry:\n${faults.join("\n")}`,
+            },
+          ],
+          info: odfInfo("lint-block"),
+        };
       }
       if (reports.length > 0) {
         return {
@@ -555,7 +646,7 @@ export function apply(ctx: DshContext): void {
     return next();
   });
 
-  ctx.on("agent/turn-stopping", async ({ agent, turn }) => {
+  ctx.on("agent/turn-stopping", async ({ agent, turn, signal }) => {
     try {
       await reloadConfigIfChanged(state);
       // Only a fully-off profile skips the gate: `protect_off` stands
@@ -570,10 +661,28 @@ export function apply(ctx: DshContext): void {
       if (message === null) {
         return;
       }
-      // Blocked: steer the turn back with the gate summary. `steer` lands at
-      // the next step boundary; `followup` queues a turn when steering is
-      // unavailable. Budget exhaustion is already a core `standdown` verdict
-      // (no steer) — the adapter never counts blocks itself.
+      // The turn is already dead: steering now would wake a *new* turn
+      // carrying stale gate feedback (host `send` reroutes waking input
+      // after abort). Drop the steer; the log keeps the evidence.
+      if (signal?.aborted === true) {
+        await safeLog(
+          state,
+          "debug",
+          "turn-stopping gate blocked but turn aborted; steer dropped",
+          {
+            sessionID,
+          },
+        );
+        return;
+      }
+      // Blocked: steer the turn back with the gate summary. This is the
+      // superiority over the OpenCode idle gate: `turn-stopping` fires
+      // pre-terminal (the host awaits listeners, then re-reads its inbox —
+      // fresh steering runs another step of the SAME turn), so the turn
+      // never closes and no re-prompt round-trip is needed. `followup`
+      // queues a turn only when steering is unavailable. Budget exhaustion
+      // is already a core `standdown` verdict (no steer) — the adapter
+      // never counts blocks itself.
       const followup = dshUserMessage(message);
       try {
         if (typeof agent.steer === "function") {

@@ -6,10 +6,13 @@ import { extractDshCommand, extractDshPaths } from "../src/adapters/dsh/extract"
 import {
   apply,
   type DshContext,
+  type DshPostDecision,
   type DshPreDecision,
   guardErrorDecision,
+  lintBlockLines,
 } from "../src/adapters/dsh/index";
 import { clearConfigCache, loadConfig } from "../src/core/config";
+import type { LintOutcome } from "../src/core/lint";
 import { checkToolCall, decideFileGuard, decideShellGuard } from "../src/core/protect";
 
 function writeConfig(directory: string, body: string): void {
@@ -32,13 +35,18 @@ interface Captured {
     | ((payload: {
         agent: { steer?: (m: unknown) => void; followup?: (m: unknown) => void };
         turn: unknown;
+        signal?: AbortSignal;
       }) => Promise<void> | void)
     | undefined;
   registered: Array<{ name: string; description: string; handler: () => unknown }>;
   warns: string[];
 }
 
-function stubContext(): { ctx: DshContext; captured: Captured; spawned: string[][] } {
+function stubContext(spawn?: { exitCode?: number; stdout?: string; stderr?: string }): {
+  ctx: DshContext;
+  captured: Captured;
+  spawned: string[][];
+} {
   const captured = {
     pre: undefined,
     post: undefined,
@@ -52,10 +60,10 @@ function stubContext(): { ctx: DshContext; captured: Captured; spawned: string[]
       spawn: (spec: { argv: string[] }) => {
         spawned.push(spec.argv);
         return {
-          done: Promise.resolve({ exitCode: 0, signal: null }),
+          done: Promise.resolve({ exitCode: spawn?.exitCode ?? 0, signal: null }),
           collected: {
-            stdout: { readFrom: () => ({ text: "" }) },
-            stderr: { readFrom: () => ({ text: "" }) },
+            stdout: { readFrom: () => ({ text: spawn?.stdout ?? "" }) },
+            stderr: { readFrom: () => ({ text: spawn?.stderr ?? "" }) },
           },
         };
       },
@@ -207,6 +215,11 @@ describe("DSH adapter (plan 25 slice 4)", () => {
     );
     expect(bash.kind).toBe("deny");
     expect((bash as { reason: string }).reason).toContain("recursive force delete");
+    // Denials carry a structured identity for host diagnostics.
+    expect((bash as { info?: { name: string; code: string } }).info).toEqual({
+      name: "opencode-dev-framework",
+      code: "guard-deny",
+    });
     const env = await captured.pre({ name: "write", arguments: { file_path: ".env" } }, next);
     expect(env.kind).toBe("deny");
     expect((env as { reason: string }).reason).toContain('matched ".env*"');
@@ -382,6 +395,116 @@ describe("DSH adapter (plan 25 slice 4)", () => {
     // Format ran before lint (formatter rewrites must land first).
     expect(spawned[0].join(" ")).toContain("format");
     expect(spawned[1].join(" ")).toContain("lint");
+  });
+
+  it("blocks the tool call on lint findings in standard (model-facing feedback)", async () => {
+    writeConfig(
+      directory,
+      'profile: standard\ncommands:\n  lint:\n    ".ts": "echo LINT-BROKEN {file}; exit 1"\non_edit:\n  format: false\n  lint: true\n',
+    );
+    writeFileSync(join(directory, "bad.ts"), "export const x: number = 'nope';\n");
+    const { ctx, captured } = stubContext({ exitCode: 1, stdout: "LINT-BROKEN bad.ts" });
+    apply(ctx);
+    const postNext = async () => ({ kind: "accept" as const });
+    const decision = (await captured.post?.(
+      { name: "write", arguments: { file_path: "bad.ts" } },
+      { isError: false },
+      postNext,
+    )) as DshPostDecision | undefined;
+    expect(decision?.kind).toBe("block");
+    const blocked = decision as Extract<DshPostDecision, { kind: "block" }>;
+    expect(blocked.feedback[0].text).toContain("LINT-BROKEN bad.ts");
+    expect(blocked.feedback[0].text).toContain("bad.ts");
+    expect(blocked.info).toEqual({ name: "opencode-dev-framework", code: "lint-block" });
+    // The file is still tracked: the gate sees the edit even though the
+    // tool call failed, so the agent cannot sail past via the block itself.
+    const steered = { steer: vi.fn(), followup: vi.fn() };
+    await captured.stopping?.({ agent: steered, turn: 1 });
+    expect(steered.steer).toHaveBeenCalledTimes(1);
+  });
+
+  it("never blocks post-execute in advisory (accepts with contexts)", async () => {
+    writeConfig(
+      directory,
+      'profile: advisory\ncommands:\n  lint:\n    ".ts": "echo LINT-BROKEN {file}; exit 1"\non_edit:\n  format: false\n  lint: true\n',
+    );
+    writeFileSync(join(directory, "bad.ts"), "export const x = 1;\n");
+    const { ctx, captured } = stubContext({ exitCode: 1, stdout: "LINT-BROKEN bad.ts" });
+    apply(ctx);
+    const postNext = async () => ({ kind: "accept" as const });
+    const decision = await captured.post?.(
+      { name: "write", arguments: { file_path: "bad.ts" } },
+      { isError: false },
+      postNext,
+    );
+    expect(decision?.kind).toBe("accept");
+    expect(
+      (decision as { additionalContexts?: Array<{ content: Array<{ text: string }> }> })
+        .additionalContexts?.[0].content[0].text,
+    ).toContain("lint failed for bad.ts");
+    expect(captured.warns.length).toBe(0);
+  });
+
+  it("lintBlockLines blames findings, excuses timeouts/skips/passes", () => {
+    const finding: LintOutcome = {
+      skipped: false,
+      filePath: "a.ts",
+      command: ["eslint", "a.ts"],
+      result: { stdout: "no-unused-vars", stderr: "", exitCode: 1, timedOut: false },
+    };
+    const lines = lintBlockLines([finding]);
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toContain("lint failed for a.ts (exit 1)");
+    expect(lines[0]).toContain("no-unused-vars");
+    // Timeouts are infra unknowns, not model faults — never block lines.
+    expect(
+      lintBlockLines([
+        {
+          skipped: false,
+          filePath: "b.ts",
+          result: { stdout: "", stderr: "", exitCode: 1, timedOut: true },
+        },
+      ]),
+    ).toEqual([]);
+    // Skips, passes, and empty findings stay silent.
+    expect(lintBlockLines([{ skipped: true, filePath: "c.ts", reason: "ghost" }])).toEqual([]);
+    expect(
+      lintBlockLines([
+        {
+          skipped: false,
+          filePath: "d.ts",
+          result: { stdout: "", stderr: "", exitCode: 0, timedOut: false },
+        },
+      ]),
+    ).toEqual([]);
+    expect(
+      lintBlockLines([
+        {
+          skipped: false,
+          filePath: "e.ts",
+          result: { stdout: "", stderr: "", exitCode: 2, timedOut: false },
+        },
+      ]),
+    ).toEqual(["lint failed for e.ts (exit 2):\n(no output)"]);
+  });
+
+  it("turn-stopping drops the steer when the turn already aborted", async () => {
+    writeConfig(directory, "profile: standard\n");
+    writeFileSync(join(directory, "work.ts"), "export const y = 2;\n");
+    const { ctx, captured } = stubContext();
+    apply(ctx);
+    const postNext = async () => ({ kind: "accept" as const });
+    await captured.post?.(
+      { name: "write", arguments: { file_path: "work.ts" } },
+      { isError: false },
+      postNext,
+    );
+    // Gate blocks (missing review) but the turn is dead: steering would wake
+    // a *new* turn with stale feedback, so neither seam fires.
+    const dead = { steer: vi.fn(), followup: vi.fn() };
+    await captured.stopping?.({ agent: dead, turn: 1, signal: AbortSignal.abort() });
+    expect(dead.steer).not.toHaveBeenCalled();
+    expect(dead.followup).not.toHaveBeenCalled();
   });
 
   it("turn-stopping steers on a blocked gate and stays silent on pass", async () => {

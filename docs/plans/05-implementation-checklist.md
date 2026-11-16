@@ -808,7 +808,17 @@ Dogfood the fork's V2 pre-terminal hook (upstream PR
   failure error-logs + no-ops (no mount throw); dead seam surface
   removed (`cancel`, `workingDirectory`). Kill-switch scope aligned:
   only profile-off skips lint/gate; `protect_off` stands down
-  guardrails alone. 25 adapter tests green; full suite 533.
+  guardrails alone. 24 adapter tests green; full suite 533.
+- [x] 42.7 Superiority round (same session): DSH takes the contracts the
+  host supports beyond parity — post-execute `block` turns lint findings
+  into a model-facing tool error in the same turn (opencode can only
+  log a landed edit; timeouts/infra stay accept + tracked for the
+  gate), pre-terminal `turn-stopping` + `steer` continues the same turn
+  (no re-prompt round-trip; steer dropped when the turn already
+  aborted), structured `info` on every denial, redirect-target guard
+  coverage. Parity ceilings verified against host sources (warn→allow
+  is the ceiling on headless: no `approval` provider, `ask` denies).
+  28 adapter tests green (fail-before proven by stash).
 
 ## Peer-review gate (mandatory after EVERY phase 21–27)
 
