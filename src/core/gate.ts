@@ -10,7 +10,7 @@
  */
 
 import { existsSync } from "node:fs";
-import { isAbsolute, relative } from "node:path";
+import { isAbsolute, relative, sep } from "node:path";
 import { splitCommand, toAbsolutePath } from "./command-utils.js";
 import type { CommandResult, RunCommand } from "./host.js";
 import { type LintLimiter, lintFile, MAX_CONCURRENT_LINTS } from "./lint.js";
@@ -21,11 +21,29 @@ export const DEFAULT_GATE_TIMEOUT_SECONDS = 300;
 
 /** Tracks files edited during a session so the gate can scope work. */
 export interface ChangedFileTracker {
-  add: (filePath: string, directory?: string) => void;
+  /**
+   * Record a file. Returns false (recording nothing) when an absolute path
+   * resolves outside `directory`: the gate is project-scoped, and tracking
+   * an out-of-tree file would demand the review name a `../` path no
+   * artifact can cover. Host filesystem watchers report whatever changed
+   * on disk (including sibling repos' `.git/` metadata), so this is the
+   * choke point that keeps the changed set in-tree for every adapter.
+   */
+  add: (filePath: string, directory?: string) => boolean;
   /** True when the (normalized) path is already tracked. */
   has: (filePath: string, directory?: string) => boolean;
   getChangedFiles: () => string[];
   clearChangedFiles: () => void;
+}
+
+/** True when a normalized candidate escapes the project directory. */
+function escapesDirectory(candidate: string): boolean {
+  return (
+    candidate === ".." ||
+    candidate.startsWith(`..${sep}`) ||
+    candidate.startsWith("../") ||
+    candidate.startsWith("..\\")
+  );
 }
 
 function normalizeTrackedPath(filePath: string, directory?: string): string {
@@ -44,7 +62,12 @@ export function createChangedFileTracker(): ChangedFileTracker {
   const files = new Set<string>();
   return {
     add(filePath, directory) {
-      files.add(normalizeTrackedPath(filePath, directory));
+      const candidate = normalizeTrackedPath(filePath, directory);
+      if (escapesDirectory(candidate)) {
+        return false;
+      }
+      files.add(candidate);
+      return true;
     },
     has(filePath, directory) {
       return files.has(normalizeTrackedPath(filePath, directory));

@@ -71,6 +71,25 @@ describe("changed-file tracker", () => {
     tracker.add("/project/src/a.ts", "/project");
     expect(tracker.getChangedFiles()).toEqual(["src/a.ts"]);
   });
+
+  it("refuses absolute paths outside the directory (sibling repos, .git metadata)", () => {
+    const tracker = createChangedFileTracker();
+    expect(
+      tracker.add("/home/jerome/operator-memory/.git/HEAD", "/home/jerome/opencode-dev-framework"),
+    ).toBe(false);
+    expect(
+      tracker.add(
+        "/home/jerome/opencode-dev-framework/src/a.ts",
+        "/home/jerome/opencode-dev-framework",
+      ),
+    ).toBe(true);
+    // Relative paths (the common caller shape) are unaffected.
+    expect(tracker.add("src/b.ts", "/home/jerome/opencode-dev-framework")).toBe(true);
+    expect(tracker.has("../operator-memory/.git/HEAD", "/home/jerome/opencode-dev-framework")).toBe(
+      false,
+    );
+    expect(tracker.getChangedFiles()).toEqual(["src/a.ts", "src/b.ts"]);
+  });
 });
 
 describe("substituteFiles", () => {

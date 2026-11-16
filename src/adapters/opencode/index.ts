@@ -697,7 +697,9 @@ const plugin = Plugin.define({
         const filePath = extractFilePath(event.input);
         if (!filePath) return;
         if (!FILE_TOOLS.has(event.tool)) return;
-        state.tracker.add(filePath, state.directory);
+        // Out-of-tree absolute paths (sibling repos, home dir) are outside
+        // the gate's jurisdiction: not tracked, not linted.
+        if (!state.tracker.add(filePath, state.directory)) return;
         if (event.status !== "completed") {
           await safeLog(
             state,
