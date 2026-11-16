@@ -37,7 +37,12 @@ to write the review file.
 
     If there is nothing to review, say so and stop.
 
- 2. **Run the specialists in parallel.** Delegate each as a subagent, giving
+     Docs-only changes (no product code) skip the battery: run
+     `npm run lint:md` on the changed files and record scope plus result
+     in the review artifact. That is the entire docs cadence.
+
+ 2. **Run the specialists in parallel (product code only).** For docs-only
+     changes, see the carve-out above — no battery. Delegate each as a subagent, giving
     each the diff scope and the relevant file paths:
     - **pattern-guardian** — duplication, re-invented helpers, divergent
       conventions, a second way to do a thing, unjustified new dependencies.

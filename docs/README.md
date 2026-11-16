@@ -28,4 +28,6 @@ Three doors, pick yours:
   authoritative references inside it are
   [`plans/03-config-spec.md`](plans/03-config-spec.md) (config schema) and
   [`plans/04-hook-mapping.md`](plans/04-hook-mapping.md) (hook mapping).
+- `migration/` — DeepSeek Harness assessment: what ports, what rides along,
+  seam reference, sequence, risks, decisions.
 - `../examples/` — copy-paste project configs (`go-service/` today).
