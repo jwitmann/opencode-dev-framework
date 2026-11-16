@@ -449,7 +449,7 @@ describe("DSH adapter (plan 25 slice 4)", () => {
     expect(captured.warns.length).toBe(0);
   });
 
-  it("lintBlockLines blames findings, excuses timeouts/skips/passes", () => {
+  it("lintBlockLines blames findings, excuses timeouts/skips/infra", () => {
     const finding: LintOutcome = {
       skipped: false,
       filePath: "a.ts",
@@ -470,7 +470,10 @@ describe("DSH adapter (plan 25 slice 4)", () => {
         },
       ]),
     ).toEqual([]);
-    // Skips, passes, and empty findings stay silent.
+    // Skips, passes, timeouts, 127s, and silent nonzero exits stay silent:
+    // timeouts are infra unknowns; 127 is the command-not-found convention
+    // (the linter never ran); a nonzero exit with no output anywhere is
+    // infra noise, not evidence of findings.
     expect(lintBlockLines([{ skipped: true, filePath: "c.ts", reason: "ghost" }])).toEqual([]);
     expect(
       lintBlockLines([
@@ -489,7 +492,16 @@ describe("DSH adapter (plan 25 slice 4)", () => {
           result: { stdout: "", stderr: "", exitCode: 2, timedOut: false },
         },
       ]),
-    ).toEqual(["lint failed for e.ts (exit 2):\n(no output)"]);
+    ).toEqual([]);
+    expect(
+      lintBlockLines([
+        {
+          skipped: false,
+          filePath: "missing.ts",
+          result: { stdout: "", stderr: "spawn eslint ENOENT", exitCode: 127, timedOut: false },
+        },
+      ]),
+    ).toEqual([]);
     // Long linter output is capped, not dumped unbounded into context.
     const long = lintBlockLines([
       {
@@ -501,6 +513,42 @@ describe("DSH adapter (plan 25 slice 4)", () => {
     expect(long).toHaveLength(1);
     expect(long[0]).toContain("(truncated)");
     expect(long[0].length).toBeLessThan(5000);
+    // More faults than the cap: first lines plus an omission tail naming
+    // the remainder, so one bad multi-file edit cannot flood context.
+    const many = Array.from({ length: 7 }, (_, i) => ({
+      skipped: false,
+      filePath: `m${i}.ts`,
+      result: { stdout: `err${i}`, stderr: "", exitCode: 1, timedOut: false },
+    }));
+    const capped = lintBlockLines(many);
+    expect(capped).toHaveLength(6);
+    expect(capped[0]).toContain("err0");
+    expect(capped[4]).toContain("err4");
+    expect(capped[5]).toContain("2 more files: m5.ts, m6.ts");
+  });
+
+  it("accepts when the linter itself cannot run (infra stays accept)", async () => {
+    writeConfig(
+      directory,
+      'profile: standard\ncommands:\n  lint:\n    ".ts": "eslint {file}"\non_edit:\n  format: false\n  lint: true\n',
+    );
+    writeFileSync(join(directory, "tool.ts"), "export const x = 1;\n");
+    // Missing binary: the shell reports 127 with spawn text, no findings.
+    const { ctx, captured } = stubContext({ exitCode: 127, stderr: "spawn eslint ENOENT" });
+    apply(ctx);
+    const postNext = async () => ({ kind: "accept" as const });
+    const decision = await captured.post?.(
+      { name: "write", arguments: { file_path: "tool.ts" } },
+      { isError: false },
+      postNext,
+    );
+    // Not a model fault: accept (the error is logged, the file is tracked,
+    // and the gate re-checks) instead of blaming the edit.
+    expect(decision?.kind).toBe("accept");
+    expect(
+      (decision as { additionalContexts?: Array<{ content: Array<{ text: string }> }> })
+        .additionalContexts?.[0].content[0].text,
+    ).toContain("lint failed for tool.ts");
   });
 
   it("turn-stopping drops the steer when the turn already aborted", async () => {

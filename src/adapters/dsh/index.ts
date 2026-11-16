@@ -274,20 +274,28 @@ export function guardErrorDecision(profile: Profile): "allow" | "deny" {
   return profile === "advisory" || profile === "off" ? "allow" : "deny";
 }
 
-/** Cap for model-facing lint feedback: corrective, not a full log dump. */
+/** Cap for the linter-output body in one feedback line (the `lint failed for…` header adds a little more). */
 const MAX_LINT_FEEDBACK_CHARS = 4000;
+
+/** Maximum fault lines in one block decision; the tail names the rest. */
+const MAX_LINT_BLOCK_LINES = 5;
+
+/** Suffix marking truncated feedback; the char cap is exact by construction. */
+const TRUNCATED_SUFFIX = "… (truncated)";
 
 /**
  * Model-fault lint failures for a post-execute `block` decision.
- * A finding (nonzero exit, no timeout) blames the edit, so the model sees
- * it as a failed tool call and fixes it in the same turn — stronger than
- * the OpenCode `execute.after`, which can only log after the edit lands.
- * Timeouts and infra errors are NOT model faults: they stay accept +
- * warn-log (the file is still tracked, so the gate re-checks). Pure for
- * testability.
+ * A finding blames the edit, so the model sees it as a failed tool call
+ * and fixes it in the same turn — stronger than the OpenCode
+ * `execute.after`, which can only log after the edit lands. A finding
+ * means: nonzero exit, no timeout, not the 127 command-not-found
+ * convention, and the linter actually printed something. Everything else
+ * (timeouts, spawn failures, missing binaries, silent crashes and silent
+ * nonzero exits) is infra the model cannot fix by editing: accept +
+ * error-log, file still tracked, gate re-checks. Pure for testability.
  */
 export function lintBlockLines(outcomes: LintOutcome[]): string[] {
-  const lines: string[] = [];
+  const faults: Array<{ filePath: string; line: string }> = [];
   for (const outcome of outcomes) {
     if (outcome.skipped || outcome.result === undefined) {
       continue;
@@ -295,18 +303,42 @@ export function lintBlockLines(outcomes: LintOutcome[]): string[] {
     if (outcome.result.timedOut || outcome.result.exitCode === 0) {
       continue;
     }
+    // Exit 127 is the command-not-found convention (shells and the
+    // adapter's own spawn transport both use it): the linter never ran.
+    if (outcome.result.exitCode === 127) {
+      continue;
+    }
     const output = [outcome.result.stdout, outcome.result.stderr]
       .map((part) => part.trim())
       .filter((part) => part !== "")
       .join("\n");
-    const body = output === "" ? "(no output)" : output;
+    // A nonzero exit with no output anywhere is infra noise, not evidence:
+    // a linter with real findings prints them. The gate re-runs the same
+    // command and surfaces whatever it says.
+    if (output === "") {
+      continue;
+    }
     const capped =
-      body.length > MAX_LINT_FEEDBACK_CHARS
-        ? `${body.slice(0, MAX_LINT_FEEDBACK_CHARS - 1)}… (truncated)`
-        : body;
-    lines.push(`lint failed for ${outcome.filePath} (exit ${outcome.result.exitCode}):\n${capped}`);
+      output.length > MAX_LINT_FEEDBACK_CHARS
+        ? `${output.slice(0, MAX_LINT_FEEDBACK_CHARS - TRUNCATED_SUFFIX.length)}${TRUNCATED_SUFFIX}`
+        : output;
+    faults.push({
+      filePath: outcome.filePath,
+      line: `lint failed for ${outcome.filePath} (exit ${outcome.result.exitCode}):\n${capped}`,
+    });
   }
-  return lines;
+  if (faults.length <= MAX_LINT_BLOCK_LINES) {
+    return faults.map((fault) => fault.line);
+  }
+  // Name the omitted files instead of asserting gate coverage: under the
+  // default `standard` profile the gate does not re-lint, so the tail is
+  // the only place the model learns which files still need attention.
+  const shown = faults.slice(0, MAX_LINT_BLOCK_LINES);
+  const omitted = faults.slice(MAX_LINT_BLOCK_LINES).map((fault) => fault.filePath);
+  return [
+    ...shown.map((fault) => fault.line),
+    `(findings omitted for ${omitted.length} more files: ${omitted.join(", ")})`,
+  ];
 }
 
 function dshUserMessage(text: string): DshUserMessage {
@@ -613,7 +645,9 @@ export function apply(ctx: DshContext): void {
       // the same turn instead of sailing on to be caught at the gate. The
       // OpenCode `execute.after` cannot do this — a landed edit can only be
       // logged. Advisory never blocks; format outcomes never block (the
-      // formatter is fix-up, and its nonzero exits are ambiguous infra).
+      // formatter is fix-up, and its nonzero exits are ambiguous infra);
+      // infra-looking lint outcomes (timeouts, 127, silent exits) stay
+      // accept + error-log with the file tracked for the gate.
       const faults = lintBlockLines(lintOutcomes);
       if (faults.length > 0 && state.config.profile !== "advisory") {
         await safeLog(state, "error", `post-execute lint blocks ${paths.join(", ")}`, {
@@ -661,20 +695,6 @@ export function apply(ctx: DshContext): void {
       if (message === null) {
         return;
       }
-      // The turn is already dead: steering now would wake a *new* turn
-      // carrying stale gate feedback (host `send` reroutes waking input
-      // after abort). Drop the steer; the log keeps the evidence.
-      if (signal?.aborted === true) {
-        await safeLog(
-          state,
-          "debug",
-          "turn-stopping gate blocked but turn aborted; steer dropped",
-          {
-            sessionID,
-          },
-        );
-        return;
-      }
       // Blocked: steer the turn back with the gate summary. This is the
       // superiority over the OpenCode idle gate: `turn-stopping` fires
       // pre-terminal (the host awaits listeners, then re-reads its inbox —
@@ -685,7 +705,21 @@ export function apply(ctx: DshContext): void {
       // never counts blocks itself.
       const followup = dshUserMessage(message);
       try {
-        if (typeof agent.steer === "function") {
+        // Single abort check immediately before steering: an abort landing
+        // between gate evaluation and this line must not wake a new turn
+        // with stale feedback (host `send` reroutes waking input after
+        // abort). Nothing that touches the inbox runs between check and
+        // steer, so the window is closed. The log keeps the evidence.
+        if (signal?.aborted === true) {
+          await safeLog(
+            state,
+            "debug",
+            "turn-stopping gate blocked but turn aborted; steer dropped",
+            {
+              sessionID,
+            },
+          );
+        } else if (typeof agent.steer === "function") {
           agent.steer(followup);
         } else if (typeof agent.followup === "function") {
           agent.followup(followup);
