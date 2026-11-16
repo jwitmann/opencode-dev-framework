@@ -1,9 +1,13 @@
 # DSH adapter
 
 > Status: implemented and unit-tested (29 adapter tests, full suite
-> green). Live-fire validation on stock `headless` is still pending —
-> until that run lands, treat this page as the setup contract, not a
-> support claim.
+> green). Live-fire 2026-11-16 on stock `headless`
+> (sessions `931700f5` + `9487c152`, model
+> `muse-spark-1.3-contributor`) proved all three mechanisms end to
+> end — guard deny, post-execute `block`, and pre-terminal same-turn
+> gate steering (details in the table). Full support still requires
+> the `./dsh` export entry (present), this doc (present), and a
+> deliberate release.
 
 Same core (`src/core/`), different wiring: the DSH adapter registers
 the ODF gates on a DeepSeek Harness Cordis context instead of OpenCode.
@@ -35,10 +39,10 @@ mount.
 
 | Mechanism | DSH hook | Strength |
 | --------- | -------- | -------- |
-| Protected paths + dangerous commands | `tools/pre-execute` deny (+ structured `info`) | **Hard block** before the tool runs. Shell redirect targets are guard-checked too (wider than the OpenCode path). |
+| Protected paths + dangerous commands | `tools/pre-execute` deny (+ structured `info`) | **Hard block** before the tool runs. Shell redirect targets are guard-checked too (wider than the OpenCode path). Live: `.env` write → `write on protected path ".env" is blocked (matched ".env*")` + `{"name":"opencode-dev-framework","code":"guard-deny"}`; file absent afterwards. |
 | Pre-flight gate | `tools/pre-execute` deny, before guardrails | **Hard block**; advisory warns and continues; the artifact path stays writable (relative or absolute spelling). |
-| Per-edit lint + format | `tools/post-execute` | Findings **fail the tool call** (`block` with the linter output as model-facing feedback) so the agent fixes its edit in the same turn — the OpenCode `execute.after` can only log a landed edit. Timeouts, exit-127, and silent nonzero exits stay accept + error-log with the file tracked (infra the model cannot fix). Feedback is capped (4000 chars/body, 5 files + named tail). |
-| Completion gate | `agent/turn-stopping` + `steer` | **Pre-terminal**: the host awaits listeners, then continues the SAME turn on steer — no re-prompt round-trip, unlike the OpenCode idle continuation. Steer is dropped when the turn already aborted. Budget exhaustion stands down silently. |
+| Per-edit lint + format | `tools/post-execute` | Findings **fail the tool call** (`block` with the linter output as model-facing feedback) so the agent fixes its edit in the same turn — the OpenCode `execute.after` can only log a landed edit. Live: marker edit → `[odf post-execute] your edit introduced lint findings; fix them and retry` + `lint failed for greet.js (exit 1)` + `{"code":"lint-block"}`; the agent retried clean in the same turn. Timeouts, exit-127, and silent nonzero exits stay accept + error-log with the file tracked (infra the model cannot fix). Feedback is capped (4000 chars/body, 5 files + named tail). |
+| Completion gate | `agent/turn-stopping` + `steer` | **Pre-terminal**: the host awaits listeners, then continues the SAME turn on steer — no re-prompt round-trip, unlike the OpenCode idle continuation. Live: after a one-edit task said "Done", the gate blocked on the missing review and steered turn 1 onward — the agent ran a style/test/correctness review loop, wrote the review artifact, and only then did the turn end (15 steps, one turn, no new turn). Steer is dropped when the turn already aborted. Budget exhaustion stands down silently. |
 | Warn tier | allow + warn log on every hook | **Ceiling, verified**: nothing provides the `approval` service on headless, so `ask` would unconditionally deny — advisory never blocks by construction. |
 | Kill switch | profile `off` skips everything; `protect_off` stands down guardrails only | Pre-flight, lint, and the gate still fire under `protect_off` — exactly the OpenCode scope. |
 

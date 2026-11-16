@@ -825,13 +825,20 @@ Dogfood the fork's V2 pre-terminal hook (upstream PR
   (types + import, mirrors the main entry); `docs/user/dsh.md` written
   (mount, contract table, troubleshooting — status banner honest:
   live-fire pending); README + `docs/README` map point at it.
-  Live-fire staged: real-artifact patch
+  Live-fire staged and executed: real-artifact patch
   (`/tmp/opencode/odf-livefire.patch.yml` → `dist/adapters/dsh/`),
-  model overlay, scratch project (`odf-live/`: standard profile,
-  `.env` protect, `odf-lint.sh` with pass/block/infra branches all
-  probe-verified), one task exercising deny + block + review-steer.
-  Composition proven via `--dump-config` (no model call). The live run
-  itself needs explicit model approval — standing rule, not waived.
+  model overlay, scratch project (`odf-live/`). Session one proved
+  guard-deny (`.env`, `code: guard-deny`, file absent) and post-execute
+  `block` (marker edit → `code: lint-block`, agent retried clean same
+  turn). Session two (read-only) proved the negative: no spurious
+  steer, clean turn end. Session three proved the headline: one-edit
+  task said "Done", gate blocked on the missing review, turn 1
+  continued 13 more steps — agent ran the review loop named by the
+  steer message, wrote the artifact, turn ended. Same turn throughout,
+  no re-prompt. Composition proven via `--dump-config` (no model
+  call). Killed-session resume is impossible (persisted state
+  corrupts on kill mid-flush — documented). The live runs needed
+  explicit model approval — standing rule, not waived.
 
 ## Peer-review gate (mandatory after EVERY phase 21–27)
 
