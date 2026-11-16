@@ -1,9 +1,14 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { extractDshCommand, extractDshPaths } from "../src/adapters/dsh/extract";
-import { apply, type DshContext, type DshPreDecision } from "../src/adapters/dsh/index";
+import {
+  apply,
+  type DshContext,
+  type DshPreDecision,
+  guardErrorDecision,
+} from "../src/adapters/dsh/index";
 import { clearConfigCache, loadConfig } from "../src/core/config";
 import { checkToolCall, decideFileGuard, decideShellGuard } from "../src/core/protect";
 
@@ -209,18 +214,82 @@ describe("DSH adapter (plan 25 slice 4)", () => {
     expect(ok).toEqual({ kind: "allow" });
   });
 
-  it("maps warn to ask for both tiers", async () => {
+  it("never blocks on warn: advisory allows with a warn log", async () => {
     writeConfig(directory, 'profile: advisory\nprotect:\n  - ".env*"\n');
     const { ctx, captured } = stubContext();
     apply(ctx);
     const next = async (): Promise<DshPreDecision> => ({ kind: "allow" });
+    // `ask` is never emitted: without an approval service the host denies
+    // it, which would convert warnings into blocks. Warn allows, like opencode.
     const bash = await captured.pre(
       { name: "bash", arguments: { command: "rm -rf /tmp/x" } },
       next,
     );
-    expect(bash.kind).toBe("ask");
+    expect(bash).toEqual({ kind: "allow" });
     const env = await captured.pre({ name: "write", arguments: { file_path: ".env" } }, next);
-    expect(env.kind).toBe("ask");
+    expect(env).toEqual({ kind: "allow" });
+    expect(captured.warns.length).toBeGreaterThan(0);
+  });
+
+  it("guardErrorDecision fails closed except in advisory", () => {
+    expect(guardErrorDecision("advisory")).toBe("allow");
+    expect(guardErrorDecision("standard")).toBe("deny");
+    expect(guardErrorDecision("strict")).toBe("deny");
+  });
+
+  it("enforces pre-flight tasks before guardrails", async () => {
+    writeConfig(directory, 'profile: standard\npreflight:\n  - "Do the thing"\n');
+    const { ctx, captured } = stubContext();
+    apply(ctx);
+    const next = async (): Promise<DshPreDecision> => ({ kind: "allow" });
+    const blocked = await captured.pre(
+      { name: "write", arguments: { file_path: "work.ts" } },
+      next,
+    );
+    expect(blocked.kind).toBe("deny");
+    expect((blocked as { reason: string }).reason).toContain("pre-flight");
+    // The artifact itself stays writable so the session can comply.
+    const artifact = await captured.pre(
+      {
+        name: "write",
+        arguments: { file_path: ".opencode/opencode-dev-framework/preflight.md" },
+      },
+      next,
+    );
+    expect(artifact).toEqual({ kind: "allow" });
+    // Completing the artifact stand downs the duty.
+    mkdirSync(join(directory, ".opencode", "opencode-dev-framework"), { recursive: true });
+    writeFileSync(
+      join(directory, ".opencode", "opencode-dev-framework", "preflight.md"),
+      "# Preflight\n\n- [x] Do the thing\n",
+    );
+    const allowed = await captured.pre(
+      { name: "write", arguments: { file_path: "work.ts" } },
+      next,
+    );
+    expect(allowed).toEqual({ kind: "allow" });
+  });
+
+  it("pre-flight warns and continues in advisory", async () => {
+    writeConfig(directory, 'profile: advisory\npreflight:\n  - "Do the thing"\n');
+    const { ctx, captured } = stubContext();
+    apply(ctx);
+    const next = async (): Promise<DshPreDecision> => ({ kind: "allow" });
+    const decision = await captured.pre(
+      { name: "write", arguments: { file_path: "work.ts" } },
+      next,
+    );
+    expect(decision).toEqual({ kind: "allow" });
+    expect(captured.warns.length).toBeGreaterThan(0);
+  });
+
+  it("apply with a broken config logs and registers nothing (never throws)", () => {
+    writeFileSync(join(directory, ".opencode-dev-framework.yml"), "{{{{ not yaml }\n");
+    const { ctx, captured } = stubContext();
+    expect(() => apply(ctx)).not.toThrow();
+    expect(captured.pre).toBeUndefined();
+    expect(captured.post).toBeUndefined();
+    expect(captured.stopping).toBeUndefined();
   });
 
   it("no-ops every hook when the kill switch is set", async () => {

@@ -21,7 +21,12 @@ import { createBlockStore, createStuckSnapshotStore } from "../../core/block-sto
 import { loadConfig } from "../../core/config.js";
 import { renderStatus } from "../../core/format-status.js";
 import { createChangedFileTracker } from "../../core/gate.js";
-import { createPassCache } from "../../core/harness.js";
+import {
+  artifactState,
+  createPassCache,
+  PREFLIGHT_ARTIFACT_REL,
+  preflightBlockReason,
+} from "../../core/harness.js";
 import {
   createLintLimiter,
   detectPreCommitAvailability,
@@ -49,6 +54,7 @@ import {
   setActiveState,
   setFallbackLog,
 } from "../../core/run-hooks.js";
+import type { ResolvedConfig } from "../../core/types.js";
 import { snapshotEnforceable } from "../../core/weakening.js";
 import { type DshExec, extractDshCommand, extractDshPaths } from "./extract.js";
 
@@ -114,7 +120,6 @@ export interface DshAgent {
   readonly session?: { readonly header?: { readonly id?: unknown } };
   steer?(message: DshUserMessage): void;
   followup?(message: DshUserMessage): void;
-  cancel?(cause: { kind: "hook"; reason: string }): void;
 }
 
 export type DshPreDecision =
@@ -160,13 +165,14 @@ export interface DshContext {
   ): void;
   on(
     event: "agent/turn-stopping",
+    // `signal` mirrors the host payload but is not wired yet: the core gate
+    // has no abort input (same as the OpenCode idle path). Follow-up, not drift.
     listener: (payload: {
       agent: DshAgent;
       turn: unknown;
       signal?: AbortSignal;
     }) => Promise<void> | void,
   ): void;
-  readonly workingDirectory?: unknown;
 }
 
 /** Resolve the project directory: explicit env override, else process cwd. */
@@ -219,15 +225,28 @@ function runOverSubprocess(ctx: DshContext, directory: string) {
 }
 
 function toPreDecision(result: GuardResult): DshPreDecision {
-  if (result.decision === "allow") {
+  // `warn` never blocks on any host: it allows with a warn log, exactly like
+  // the OpenCode adapter. (`ask` is deliberately never emitted: without an
+  // approval service the host denies it, which would convert advisory
+  // warnings into blocks — the opposite of the warn contract. The `ask`
+  // variant stays in `DshPreDecision` because the host contract owns it.)
+  if (result.decision !== "deny") {
     return { kind: "allow" };
-  }
-  if (result.decision === "warn") {
-    return { kind: "ask", reason: result.reason };
   }
   // Fallback literal is unreachable armor: core `enforce()` always sets
   // `reason` on deny/warn, so every non-allow result carries one.
   return { kind: "deny", reason: result.reason ?? "blocked by guardrails" };
+}
+
+/**
+ * What a guard *evaluation failure* (not a verdict — an exception) does.
+ * Profile-dependent like every other enforcement decision: advisory
+ * reports and allows; standard/strict fail closed (unknown = untrusted).
+ * Pure for testability. (`off` never reaches evaluation — the kill switch
+ * returns first.)
+ */
+export function guardErrorDecision(profile: string): "allow" | "deny" {
+  return profile === "advisory" ? "allow" : "deny";
 }
 
 function dshUserMessage(text: string): DshUserMessage {
@@ -272,8 +291,10 @@ function isOff(state: HookState): boolean {
 
 /**
  * Register the ODF gates on a DSH Cordis context. Synchronous like every
- * DSH plugin `apply`: config load failure throws fail-loud at mount (no
- * config, no gates) and surfaces through the plugin host.
+ * DSH plugin `apply`. A project without (or with a broken) config gets no
+ * hooks at all — error-logged, never throwing: failing the whole host
+ * mount for one project's missing yml would brick unrelated sessions
+ * (mirror of the OpenCode adapter's setup behavior).
  */
 export function apply(ctx: DshContext): void {
   const directory = resolveDshDirectory();
@@ -288,7 +309,16 @@ export function apply(ctx: DshContext): void {
   }
   setFallbackLog(log);
 
-  const config = loadConfig(directory);
+  let config: ResolvedConfig;
+  try {
+    config = loadConfig(directory);
+  } catch (error) {
+    void log(
+      "error",
+      `loadConfig(${directory}) failed: ${(error as Error)?.message ?? error} — ODF gates disabled`,
+    );
+    return;
+  }
   const run = runOverSubprocess(ctx, directory);
   const blockCounts = new Map<string, number>();
   const state: HookState = {
@@ -319,6 +349,31 @@ export function apply(ctx: DshContext): void {
       if (isOff(state)) {
         return next();
       }
+      const paths = extractDshPaths(exec);
+      const rawInput =
+        typeof exec.arguments === "object" && exec.arguments !== null
+          ? (exec.arguments as Record<string, unknown>)["input"]
+          : undefined;
+      warnApplyPatchSkip(state, exec, rawInput, paths);
+      // Pre-flight harness (mirror of the OpenCode `execute.before` order:
+      // pre-flight before guardrails, advisory warns and continues). Only
+      // file-tool paths are gated — shell tools fall through to the guard
+      // tiers below, exactly like `preflightBlockReason` returning null for
+      // non-file tools on the OpenCode side.
+      if (state.config.preflight.length > 0) {
+        const artifact = await artifactState(state.directory, PREFLIGHT_ARTIFACT_REL);
+        for (const filePath of paths) {
+          const reason = preflightBlockReason(state.config, exec.name, filePath, artifact);
+          if (reason !== null) {
+            if (state.config.profile === "advisory") {
+              await safeLog(state, "warn", reason, { tool: exec.name, filePath });
+            } else {
+              await safeLog(state, "error", reason, { tool: exec.name, filePath });
+              return { kind: "deny", reason } satisfies DshPreDecision;
+            }
+          }
+        }
+      }
       const command = extractDshCommand(exec);
       if (command !== undefined) {
         const verdict = decideShellGuard(state.config, command, undefined, exec.name);
@@ -343,12 +398,6 @@ export function apply(ctx: DshContext): void {
           }
         }
       }
-      const paths = extractDshPaths(exec);
-      const rawInput =
-        typeof exec.arguments === "object" && exec.arguments !== null
-          ? (exec.arguments as Record<string, unknown>)["input"]
-          : undefined;
-      warnApplyPatchSkip(state, exec, rawInput, paths);
       for (const filePath of paths) {
         const verdict = decideFileGuard(
           state.config,
@@ -366,13 +415,17 @@ export function apply(ctx: DshContext): void {
         }
       }
     } catch (error) {
-      // Fail-open on guard error (matches the spike; a guard bug must never
-      // brick the session). Deny-on-error rides the promotion follow-ups.
-      await safeLog(
-        state,
-        "warn",
-        `pre-execute guard error (fail-open): ${(error as Error)?.message ?? error}`,
-      );
+      // Evaluation failure (not a verdict): profile-dependent, like every
+      // other enforcement decision. Advisory reports and allows;
+      // standard/strict fail closed — a guard that cannot evaluate must not
+      // silently permit. (Post-execute stays fail-open under every profile:
+      // the edit already landed, so there is nothing left to gate.)
+      const message = `pre-execute guard error: ${(error as Error)?.message ?? error}`;
+      if (guardErrorDecision(state.config.profile) === "deny") {
+        await safeLog(state, "error", message);
+        return { kind: "deny", reason: message } satisfies DshPreDecision;
+      }
+      await safeLog(state, "warn", message);
     }
     return next();
   });

@@ -63,13 +63,16 @@ Nothing below is new machinery. The codebase already isolates host contact:
    Opencode adapter does NOT call it (no-op preserved). Gate green.
 3. **DSH adapter dogfood (outside this repo).** Scratch adapter package
    (private, e.g. under `/tmp` or `~/dsh-migration`) importing core source
-   directly: `tools/pre-execute` deny (protect lists verbatim, warn→ask),
+   directly: `tools/pre-execute` deny (protect lists verbatim),
    `tools/post-execute` format-then-lint with defensive re-entrancy guard,
    `agent/turn-stopping` counter (`gate.max_blocks`), slash commands via
    `dsh-commands`, `RunCommand` over `ctx.subprocess`, log via `ctx.logger`.
-   Dogfood one real task on a scratch profile (stock `headless` + `--patch`,
-   proven pattern). Exit: full ODF behavior observed on DSH, or a named
-   seam gap with a fallback. No packaging commitment yet.
+   Warn-tier mapping is allow-with-warn-log (never `ask`: without an
+   approval service the host denies `ask`, which would convert advisories
+   into blocks). Dogfood one real task on a scratch profile (stock
+   `headless` + `--patch`, proven pattern). Exit: full ODF behavior
+   observed on DSH, or a named seam gap with a fallback. No packaging
+   commitment yet.
 4. **Packaging decision (after dogfood).** Monorepo-ify (`packages/core`,
    `packages/opencode`, `packages/dsh`) vs in-place `src/core` +
    `src/adapters/*` vs standalone DSH package depending on the published
@@ -83,7 +86,11 @@ Nothing below is new machinery. The codebase already isolates host contact:
    npm flow. Promotion fixes from the spike review ride along
    (`checkToolCall` delegation via the `decideFileGuard`/`decideShellGuard`
    seam, core reason text, core block-store budget instead of an adapter
-   counter, `renderStatus` reuse). Known intentional asymmetry (not a fork):
+   counter, `renderStatus` reuse, profile-dependent guard-error handling
+   (advisory allows, standard/strict deny — unknown = untrusted),
+   pre-flight enforcement on pre-execute, warn-tier allow-with-log
+   (`ask` never emitted: it denies without an approval service),
+   load-failure error-log + no-op (mirror of opencode setup behavior). Known intentional asymmetry (not a fork):
    DSH pre-execute also guard-checks shell redirect targets
    (`extractRedirectTargets` → `decideFileGuard`) while OpenCode's
    `checkToolCall` checks only dangerous commands — same policy, wider
