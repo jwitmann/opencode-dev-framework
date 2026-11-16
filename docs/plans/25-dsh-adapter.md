@@ -113,9 +113,100 @@ Nothing below is new machinery. The codebase already isolates host contact:
    coverage on the new wiring. Extending the shared path is a follow-up,
    not slice 4. Likewise out of scope for slice 4: the child-session
    review-duty guard (needs a DSH child-session seam probe).
+
 5. **Docs.** Update `05-implementation-checklist.md` per done slice;
    `README.md` + `AGENTS.md` only if the user-facing contract changes
    (packaging does; slices 1–3 don't).
+
+## Parity audit (2026-11-16) — full OpenCode surface vs DSH
+
+Prompted by challenge: the adapter replicated enforcement, not the
+contract. Every OpenCode behavior below was checked against the DSH
+sources (not assumed). Status: DONE (live-proven), GAP (missing),
+N/A (by design), CEILING (parity is the max).
+
+### Enforcement — DONE (all live-proven 2026-11-16, sessions `931700f5` + `9487c152`)
+
+pre-execute deny, pre-flight (incl. `apply_patch` mapping, artifact
+exemption, `protect_off` scope), post-execute accept/`block` with the
+fault/infra line (127/empty/timeout stay accept), turn-stopping
+same-turn steer (incl. abort drop), kill-switch scope, deny `info`
+identity, redirect-target coverage. No further work.
+
+### Instruction — GAP (the big one)
+
+| OpenCode | DSH | Seam |
+|---|---|---|
+| Constitution injection (context/generate/compaction/title hooks) | missing (`state.constitution` stays `null`; the reload path maintains a value nothing reads) | `agent/pre-step` replace-messages, once per session |
+| Duty roster (`renderDutyRoster` per request) | missing | fold into the same once-per-session prepend |
+| Startup drift mention (`driftMentionLine`, once per session) | missing | same prepend when drift detected |
+| Weakening detection (`snapshotEnforceable` vs live config) | half: snapshot taken at mount, never compared | compare on reload, warn on weaken |
+
+### Tools (agent-invokable) — GAP (all portable)
+
+`dev_framework_init`, `dev_framework_set_profile`,
+`dev_framework_verify`, `dev_framework_status` exist only on OpenCode
+(`tool.transform`). DSH precedent verified: `ctx.tools.register(
+defineTool({...}))` (`tool-cordis`, `tool-goal`). Straight port, one
+per tool, over the same core functions.
+
+### Commands (human-invoked) — GAP (partially portable)
+
+| OpenCode | DSH | Verdict |
+|---|---|---|
+| `odf-status` | `odf-status` only | DONE (keep the name — live-proven surface, zero gain in rename churn) |
+| `df-goal` (wrap + delegate to native `/goal`) | missing | PORT: availability probe (optional `commands.list`), pure `buildVerifiedObjective`, delegate via `ctx.goals.create(agent, ...)` (documented service, used by `command-goal` + `tool-goal`). Same contract, host-native mechanism |
+| `df-verify` (TUI-only on OpenCode) | missing | PORT: `verifyGate` over the tracker snapshot, text result. Fills the on-demand slot the missing TUI leaves |
+| `df-profile` (TUI-only on OpenCode) | missing | PORT: `changeProfile` with validation, text result |
+| `df-init` / `df-update` | missing | PORT AS REPORT: detection + trial-run + brief-as-text (`init.ts`/`update.ts` are detection-first; full interactivity stays OpenCode/`bin`-only). `npx df init` already works for DSH projects (file scaffolding only) |
+| `df-runtime`, TUI modals, keymaps | — | N/A: Solid TUI has no DSH counterpart; console text is the output surface |
+
+### Native permission layer — CEILING (acceptable, documented)
+
+OpenCode's `permission.evaluate` is defense-in-depth behind the
+load-bearing `execute.before` deny. DSH's pipeline runs global guards
+after pre-execute listeners with no equivalent second hook on
+headless; our pre-execute deny IS the primary on both hosts. No
+second layer exists to wire. Not a gap — the backstop, not the wall.
+
+### Idle fallback net — N/A (no skip paths to net)
+
+OpenCode needs the `event.subscribe` net because the idle hook has
+boundaries it skips. DSH `turn-stopping` fires wherever a turn would
+otherwise end (loop re-checks the inbox after awaited serial
+dispatch; `concludesTurn` ends the turn through the same path).
+Nothing to net. Verified by reading the loop, not assumed.
+
+### Registry (per-project state) — N/A (by design)
+
+Single project per mount (`ODF_WORKDIR`/cwd). No multi-project
+fan-out to replicate.
+
+### Child-session review guard — GAP, investigation required
+
+OpenCode detects child sessions via a defensive host session lookup
+(`childSessionGetter`). DSH child sessions exist (live-fire used
+`subagent`), but no parentage seam has been verified. Needs a seam
+spike, not a blind port. Tracked, not committed.
+
+### Leftovers already tracked (unchanged)
+
+Pre-flight verb parity review; deliberate `release.sh minor` (user
+action).
+
+## Phase 43 — DSH parity completion (plan)
+
+- 43.1 Instruction pillar: pre-step once-per-session
+  constitution + roster + drift-mention prepend; weakening compare on
+  reload. Full battery (product code).
+- 43.2 Agent tools: the four `dev_framework_*` tools via
+  `ctx.tools.register(defineTool)`. Full battery.
+- 43.3 Commands: `df-goal` (goals seam), `df-verify`, `df-profile`,
+  `df-init`/`df-update` as report-mode. Full battery.
+- 43.4 Child-session seam spike: can DSH expose parentage? Timeboxed;
+  a "no seam" result is a valid exit that converts the gap to N/A
+  with evidence.
+- 43.5 Deliberate release (`release.sh minor`, user action).
 
 ## Validation (every slice)
 
