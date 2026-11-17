@@ -588,6 +588,12 @@ describe("DSH adapter (plan 25 slice 4)", () => {
     const next = async (): Promise<DshPreDecision> => ({ kind: "allow" });
     const decision = await captured.pre({ name: "write", arguments: { file_path: ".env" } }, next);
     expect(decision.kind).toBe("deny");
+    // And status reads the degraded mount as degraded.
+    const status = captured.registered.find((r) => r.name === "df-status");
+    const out = (await status?.handler()) as { kind: string; text: string };
+    expect(out.text).toContain("tools: unavailable (commands only)");
+    expect(out.text).toContain("goals: unavailable (df-goal degrades to error text)");
+    expect(out.text).toContain("approval: unavailable (warns allow + log)");
   });
 
   it("no-ops every hook when the kill switch is set", async () => {
@@ -879,6 +885,29 @@ describe("DSH adapter (plan 25 slice 4)", () => {
     const { ctx, captured } = stubContext();
     apply(ctx);
     expect(captured.registered.map((r) => r.name)).toContain("df-status");
+  });
+
+  it("df-status names the adapter formatter and reports seam availability", async () => {
+    writeConfig(directory, "profile: standard\n");
+    const { ctx, captured } = stubContext();
+    apply(ctx);
+    const status = captured.registered.find((r) => r.name === "df-status");
+    const out = (await status?.handler()) as { kind: string; text: string };
+    expect(out.text).toContain("format-then-lint in post-execute");
+    expect(out.text).not.toContain("OpenCode core's job");
+    // Stub mounts tools + goals, not approval: degraded reads degraded.
+    expect(out.text).toContain("tools: available (agent tools live)");
+    expect(out.text).toContain("goals: available");
+    expect(out.text).toContain("approval: unavailable (warns allow + log)");
+  });
+
+  it("df-status reports the approval seam when the host mounts it", async () => {
+    writeConfig(directory, "profile: standard\n");
+    const { ctx, captured } = stubContext();
+    apply({ ...ctx, approval: {} } as unknown as DshContext);
+    const status = captured.registered.find((r) => r.name === "df-status");
+    const out = (await status?.handler()) as { kind: string; text: string };
+    expect(out.text).toContain("approval: available (warns ask the human)");
   });
 
   it("pre-step prepends the constitution on the first step of a session", async () => {

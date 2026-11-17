@@ -30,4 +30,17 @@ describe("renderStatus format honesty", () => {
     expect(status).toContain("format: (ignored — formatting is OpenCode core's job)");
     expect(status).toContain("gofumpt -w {file}");
   });
+
+  it("names the adapter formatter when the host formats (DSH intent)", () => {
+    writeFileSync(join(dir, ".opencode-dev-framework.yml"), "profile: standard\n");
+    const config = loadConfig(dir);
+    const status = renderStatus(config, null, {
+      formatOwner: "adapter",
+    });
+    expect(status).not.toContain("OpenCode core's job");
+    expect(status).toContain(
+      "format: true (run by this adapter — format-then-lint in post-execute)",
+    );
+    expect(status).toContain("format: (run by this adapter — format-then-lint in post-execute)");
+  });
 });

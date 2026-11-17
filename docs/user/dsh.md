@@ -104,7 +104,9 @@ budgeting, `protect_off` scope.
   drift. Reviewer agents (`.opencode/agents/`) have no DSH equivalent
   and stay inert files — the review loop runs through gate steer text
   instead.
-- **`df-status`**: live gate status (profile, config, level).
+- **`df-status`**: live gate status (profile, config, level) plus host
+  seam availability (tools/goals/approval) and who runs the formatter —
+  a degraded mount reads as degraded, never as silently whole.
 - **Warn asks the human (TUI)**: a guard `warn` arrives as an `ask`
   decision when the approval seam is injected, so it prompts instead
   of scrolling by in the log. Child sessions never ask (they report

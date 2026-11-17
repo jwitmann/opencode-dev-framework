@@ -29,7 +29,7 @@ import {
 import type { LogFn, LogLevel } from "./logger.js";
 import { loadConstitution } from "./rules.js";
 import { type IdleHookVia, type TemplateState, writeRuntimeStatus } from "./runtime-status.js";
-import type { ResolvedConfig } from "./types.js";
+import type { HostSeams, ResolvedConfig } from "./types.js";
 import { checkTemplateUpdates, summarizeDrift } from "./update.js";
 import type { EnforceableSnapshot } from "./weakening.js";
 
@@ -81,6 +81,14 @@ export interface HookState {
   lintLimiter: LintLimiter;
   /** Fingerprint of the last clean gate pass; skips redundant suites. */
   passCache: PassCache;
+  /**
+   * Host seam availability (see `HostSeams`), probed once at mount with
+   * guarded reads. Rendered by status so a degraded mount reads as
+   * degraded, never as silently whole. The DSH adapter probes this at
+   * mount; OpenCode leaves it unset (its seams are core-guaranteed).
+   * Forked from `registry.ts` `HookState` like the stores above.
+   */
+  seams?: HostSeams;
   /**
    * `Date.now()` of the last config-mtime check. Hook fires are far more
    * frequent than config edits, so mtime stats are throttled to a 1s window.

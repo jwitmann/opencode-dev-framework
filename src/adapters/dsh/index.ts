@@ -91,6 +91,14 @@ export const inject = ["commands", "subprocess"] as const;
 /** Cap on collected subprocess output per stream (bytes). */
 const COLLECT_MAX_BYTES = 1024 * 1024;
 
+/**
+ * Formatter attribution for DSH status surfaces: the adapter (not host
+ * core) runs format-then-lint in post-execute. One site (the `df-status`
+ * command) passes `formatOwner: "adapter"`; the agent-tool status path
+ * renders through the same handler shape.
+ */
+const DSH_FORMAT_OWNER = "adapter" as const;
+
 /** Grace period before a subprocess abort escalates (ms). */
 const SUBPROCESS_GRACE_MS = 2000;
 
@@ -398,6 +406,20 @@ function registerDshTool(
 }
 
 /**
+ * Whether a host service exposes a given method. Guarded read (same idiom
+ * as every other seam probe): the host throws without inject, and absence
+ * degrades to false. Used once at mount for the status seams snapshot.
+ */
+function hasServiceMethod(read: () => unknown, method: string): boolean {
+  try {
+    const service = read() as Record<string, unknown> | null | undefined;
+    return typeof service?.[method] === "function";
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Whether a guard `warn` can reach the human as an `ask` decision. Guarded
  * read (same idiom as the tool/goal services): the host throws without
  * inject, and absence means allow+log. Child sessions never ask — a child
@@ -629,6 +651,13 @@ export function apply(ctx: DshContext): void {
     passCache: createPassCache(),
     lastConfigCheck: 0,
     lastIdleHandled: new Map<string, number>(),
+    // Probed once at mount so `df-status` reads degraded mounts as
+    // degraded. Never throws: every seam degrades to false.
+    seams: {
+      tools: hasServiceMethod(() => ctx.tools, "register"),
+      goals: hasServiceMethod(() => ctx.goals, "create"),
+      approval: canAskUser(ctx),
+    },
   };
   setActiveState(state);
   // Runtime snapshot for `df-runtime` (fire-and-forget, never throws):
@@ -1066,7 +1095,12 @@ export function apply(ctx: DshContext): void {
   ctx.commands.register({
     name: "df-status",
     description: "Show opencode-dev-framework gate status (profile, config, enforcement level).",
-    handler: () => ({ kind: "success", text: renderStatus(state.config, state) }),
+    handler: () => ({
+      kind: "success",
+      text: renderStatus(state.config, state, {
+        formatOwner: DSH_FORMAT_OWNER,
+      }),
+    }),
   });
 
   // Runtime snapshot: hook registration, gate continuation posture, and
@@ -1423,7 +1457,9 @@ export function apply(ctx: DshContext): void {
       const cfg = holder?.config ?? loadConfig(targetDir);
       // Nullable like the OpenCode tool: a foreign directory renders
       // config-only instead of misattributing our tracker data to it.
-      return renderStatus(cfg, holder);
+      return renderStatus(cfg, holder, {
+        formatOwner: DSH_FORMAT_OWNER,
+      });
     },
   });
 
