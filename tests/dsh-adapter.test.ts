@@ -928,7 +928,12 @@ describe("DSH adapter (plan 25 slice 4)", () => {
     // The apply-time stamp is fire-and-forget: wait for it to land, then
     // remove it, so the null branch below is deterministic (no further
     // stamp fires on this path — stamps happen at apply + turn-stopping).
-    const snapshotPath = join(directory, ".opencode", "opencode-dev-framework", "runtime-status.json");
+    const snapshotPath = join(
+      directory,
+      ".opencode",
+      "opencode-dev-framework",
+      "runtime-status.json",
+    );
     const deadline = Date.now() + 5000;
     while (!existsSync(snapshotPath) && Date.now() < deadline) {
       await new Promise((resolve) => setTimeout(resolve, 25));

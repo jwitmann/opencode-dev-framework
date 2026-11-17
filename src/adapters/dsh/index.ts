@@ -1288,7 +1288,9 @@ export function apply(ctx: DshContext): void {
       const own = state.directory === targetDir ? state : null;
       const holder = live ?? own;
       const cfg = holder?.config ?? loadConfig(targetDir);
-      return renderStatus(cfg, holder ?? state);
+      // Nullable like the OpenCode tool: a foreign directory renders
+      // config-only instead of misattributing our tracker data to it.
+      return renderStatus(cfg, holder);
     },
   });
 
