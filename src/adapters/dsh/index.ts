@@ -17,6 +17,7 @@
  * the `cwd` for every subprocess.
  */
 
+import { randomUUID } from "node:crypto";
 import { stat } from "node:fs/promises";
 import { join } from "node:path";
 import { createBlockStore, createStuckSnapshotStore } from "../../core/block-store.js";
@@ -152,6 +153,15 @@ export interface DshUserMessage {
   role: "user";
   content: Array<{ type: "text"; text: string }>;
   source: { kind: string };
+  /**
+   * Host session-event id. The host commits these messages as
+   * user/message session events and its resume validator requires a
+   * non-empty `data.id` on every message event — an id-less message
+   * poisons the log for the next resume. Always stamped by
+   * `dshUserMessage()`; optional here so hand-built messages still
+   * compile, but never omit it on the wire.
+   */
+  id?: string;
 }
 
 export interface DshAgent {
@@ -552,7 +562,12 @@ export function lintBlockLines(outcomes: LintOutcome[]): string[] {
 }
 
 function dshUserMessage(text: string): DshUserMessage {
-  return { role: "user", content: [{ type: "text", text }], source: { kind: "user" } };
+  return {
+    role: "user",
+    content: [{ type: "text", text }],
+    source: { kind: "user" },
+    id: randomUUID(),
+  };
 }
 
 /** Warn when an apply_patch envelope carries no recognizable file headers. */

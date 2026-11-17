@@ -858,6 +858,36 @@ describe("DSH adapter (plan 25 slice 4)", () => {
     const steered = { steer: vi.fn(), followup: vi.fn() };
     await captured.stopping?.({ agent: steered, turn: 1 });
     expect(steered.steer).toHaveBeenCalledTimes(1);
+    // Resume-shaping: every host-committed message event needs a non-empty
+    // data.id, so the steered message carries one.
+    const steeredMsg = steered.steer.mock.calls[0]?.[0] as { id?: unknown };
+    expect(typeof steeredMsg.id).toBe("string");
+    expect((steeredMsg.id as string).length).toBeGreaterThan(0);
+  });
+
+  it("stamps a unique id on every gate message (resume-shaping)", async () => {
+    writeConfig(directory, "profile: standard\n");
+    const { ctx, captured } = stubContext();
+    apply(ctx);
+    // Block the gate: tracked file, no review artifact.
+    writeFileSync(join(directory, "work.ts"), "export const y = 2;\n");
+    const postNext = async () => ({ kind: "accept" as const });
+    await captured.post?.(
+      { name: "write", arguments: { file_path: "work.ts" } },
+      { isError: false },
+      postNext,
+    );
+    const agent = { steer: vi.fn(), followup: vi.fn() };
+    await captured.stopping?.({ agent, turn: 1 });
+    const ids = agent.followup.mock.calls
+      .concat(agent.steer.mock.calls)
+      .map((call) => (call[0] as { id?: unknown }).id);
+    expect(ids.length).toBeGreaterThan(0);
+    for (const id of ids) {
+      expect(typeof id).toBe("string");
+      expect((id as string).length).toBeGreaterThan(0);
+    }
+    expect(new Set(ids).size).toBe(ids.length);
   });
 
   it("failed writes still track (gate sees partial applies)", async () => {

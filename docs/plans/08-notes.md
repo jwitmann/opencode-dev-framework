@@ -1873,6 +1873,25 @@ adds nothing over the human typing `/df-goal` with a plain objective
 the framework wraps exactly once and delegates. Do not revisit without
 a host-provided model goal seam.
 
+## DSH messages need host session-event ids (resume-shaping, fixed 2026-11-17)
+
+Every message the DSH adapter injects (`dshUserMessage()`:
+constitution prepend, duty roster, drift mention, `[odf post-execute]`
+contexts, gate steers) is committed by the host as a user/message
+session event, and the host resume validator requires a non-empty
+`data.id` on every message event. The factory minted messages with no id
+at all, so each injected message poisoned the log for the next resume —
+a live TUI session accumulated 14 id-less events and could not restart
+until the log was repaired by hand (UUIDs stamped onto the corrupt
+events). Fix: `id?: string` on `DshUserMessage` (optional so the shared
+type stays tolerant of host-owned incoming history) + `randomUUID()`
+from `node:crypto` stamped in the factory, which is the single producer
+of all outbound messages. Regression tests pin non-empty + unique ids
+(fail-before proven via stash). Lesson for future adapters: any object
+the host commits as a session event must carry the host's identity
+fields at creation — the validator is doing its job, the writer is at
+fault.
+
 ## `placeholder` trips the review template check even in meta-use (observed 2026-11-17)
 
 `tvmRSS` onboarding wrote a review describing `.dev-framework/rules/.gitkeep`
