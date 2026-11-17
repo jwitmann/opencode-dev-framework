@@ -31,12 +31,21 @@ review passes run inline by the lead instead of as focused children.
   `ctx.subagents` directly, so the inject name is `subagents` —
   **runtime probe still required** (host throws on non-injected reads,
   so the adapter must probe-guard exactly like tools/goals/approval).
-- Investigation-only restriction is host-side: persona/tool filtering
-  lives in **Agent Presets** (`agentPreset` field; `toolFilter` config
-  removed upstream). The plugin cannot ship presets; the profile owner
-  configures them. Without a preset, read-only is prompt-level only —
-  mitigated by the existing per-exec guards (they gate child execs
-  too) and the child-artifact deny (plan 23).
+- Investigation-only is enforceable by the plugin itself — no manual
+  profile step. `agentPresets.register(definition)` is designed for
+  "the declaring plugin": at apply time (with `agentPresets` injected,
+  probe-guarded like every other seam) the adapter registers an
+  `odf-reviewer` preset whose plugin list contains read-only tools
+  only, and spawns specialists with `agentPreset: "odf-reviewer"`.
+  Preset selection requires the `spawn` provider (`agentPreset: true`;
+  verified in host source) — `fork` sets `agentPreset: false` and
+  inherits the parent preset, so reviewers spawn self-contained with
+  the adapter packing the diff/context into the child prompt.
+  Without the `agentPresets` service, spawn proceeds preset-less with
+  prompt-level instruction only — backstopped by the existing
+  per-exec guards (they gate child execs too) and the child-artifact
+  deny (plan 23). Exact read-only plugin list is slice 26.3, verified
+  at probe time.
 
 ## Design
 
