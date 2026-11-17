@@ -10,7 +10,7 @@
  */
 
 import type { TemplateStatus } from "./installer.js";
-import { statusTemplates } from "./installer.js";
+import { statusMirror, statusTemplates } from "./installer.js";
 import type { TemplateState } from "./runtime-status.js";
 
 export interface TemplateDrift {
@@ -20,18 +20,36 @@ export interface TemplateDrift {
   refresh: string[];
   /** Shipped files absent — offer add (reads as botched/partial install). */
   add: string[];
-  /** True when nothing is installed at all — redirect to `/df-init`. */
+  /** True when no templates are installed at all — redirect to `/df-init`.
+   * Mirror copies never count: they are derived output, not the install. */
   empty: boolean;
 }
 
-export async function checkTemplateUpdates(directory: string): Promise<TemplateDrift> {
+export async function checkTemplateUpdates(
+  directory: string,
+  skillMirrorRoot?: string,
+): Promise<TemplateDrift> {
   const status: TemplateStatus = await statusTemplates(directory);
-  return {
-    current: status.present,
-    refresh: status.different,
-    add: status.missing,
+  const drift: TemplateDrift = {
+    current: [...status.present],
+    refresh: [...status.different],
+    add: [...status.missing],
+    // Deliberately template-only: the mirror is derived output, not the
+    // install. A populated mirror must never mask missing templates and
+    // suppress the /df-init redirect — an unloadable setup with no
+    // templates needs reinstalling, not mirror diffing.
     empty: status.present.length === 0 && status.different.length === 0,
   };
+  // Mirror maintenance: a host-scanned skill copy that is missing or
+  // edited-out-of-sync leaves the setup unloadable, so it reads as drift
+  // exactly like a template file. Unset means no mirror to maintain.
+  if (skillMirrorRoot !== undefined) {
+    const mirror = await statusMirror(directory, skillMirrorRoot);
+    drift.current.push(...mirror.present);
+    drift.refresh.push(...mirror.different);
+    drift.add.push(...mirror.missing);
+  }
+  return drift;
 }
 
 /**
@@ -143,6 +161,12 @@ export function driftMentionLine(drift: TemplateDrift): string | null {
 export interface UpdateCommandDeps {
   directory: string;
   delivery: unknown;
+  /**
+   * Skill mirror root to include in drift (same capability as
+   * `skillMirrorRoot` on the init side). Unset: drift covers the
+   * template set only.
+   */
+  skillMirrorRoot?: string;
   /** Throws when the owning setup/state went stale mid-check. */
   checkAlive: () => void;
   /** Deliver the report to the session; throws on transport failure. */
@@ -160,7 +184,7 @@ export interface UpdateCommandDeps {
  * recover. Returns whether the handoff was delivered.
  */
 export async function runUpdateCommand(deps: UpdateCommandDeps): Promise<boolean> {
-  const drift = await checkTemplateUpdates(deps.directory);
+  const drift = await checkTemplateUpdates(deps.directory, deps.skillMirrorRoot);
   deps.checkAlive();
   if (!needsAgentHandoff(drift)) {
     return false;

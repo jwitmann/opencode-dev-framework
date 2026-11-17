@@ -23,7 +23,7 @@ import { createBlockStore, createStuckSnapshotStore } from "../../core/block-sto
 
 import { changeProfile, verifyGate } from "../../core/commands.js";
 import { clearConfigCache, loadConfig } from "../../core/config.js";
-import { renderRuntimeStatus, renderStatus } from "../../core/format-status.js";
+import { renderHelp, renderRuntimeStatus, renderStatus } from "../../core/format-status.js";
 import { createChangedFileTracker } from "../../core/gate.js";
 import {
   buildVerifiedObjective,
@@ -662,7 +662,7 @@ export function apply(ctx: DshContext): void {
   setActiveState(state);
   // Runtime snapshot for `df-runtime` (fire-and-forget, never throws):
   // "armed" until a gate evaluation reports otherwise.
-  stampRuntimeStatus(state.directory, "turn-stopping", "armed");
+  stampRuntimeStatus(state.directory, "turn-stopping", "armed", DSH_SKILL_ROOTS[0]);
 
   // Re-entrancy guard: `formatFile` mutates, so it re-fires `post-execute`.
   // The guard lives here, never in core (plan 25 §Risks).
@@ -989,7 +989,9 @@ export function apply(ctx: DshContext): void {
       // First pre-step of a session is session startup (mount has no
       // session to mention into). Never throws into step assembly.
       try {
-        const line = driftMentionLine(await checkTemplateUpdates(state.directory));
+        const line = driftMentionLine(
+          await checkTemplateUpdates(state.directory, DSH_SKILL_ROOTS[0]),
+        );
         if (line !== null) {
           prepend.push(dshUserMessage(line));
           await safeLog(state, "debug", "template drift mentioned at session startup");
@@ -1041,7 +1043,12 @@ export function apply(ctx: DshContext): void {
       // Refresh the `df-runtime` snapshot: a block steers the same turn
       // ("idle" = gate failures continue the same execution); pass and
       // standdown leave the gate armed for the next turn.
-      stampRuntimeStatus(state.directory, "turn-stopping", message === null ? "armed" : "idle");
+      stampRuntimeStatus(
+        state.directory,
+        "turn-stopping",
+        message === null ? "armed" : "idle",
+        DSH_SKILL_ROOTS[0],
+      );
       if (message === null) {
         return;
       }
@@ -1121,6 +1128,14 @@ export function apply(ctx: DshContext): void {
         return { kind: "error", text: `df-runtime failed: ${(error as Error)?.message ?? error}` };
       }
     },
+  });
+
+  // Command list: the `renderHelp` text is the DSH surface where the
+  // OpenCode TUI would render the `/df-help` modal.
+  ctx.commands.register({
+    name: "df-help",
+    description: "List the opencode-dev-framework commands.",
+    handler: () => ({ kind: "success", text: renderHelp() }),
   });
 
   // Verified goal: availability check + pure verified-objective build, then
@@ -1322,6 +1337,9 @@ export function apply(ctx: DshContext): void {
         const delivered = await runUpdateCommand({
           directory: state.directory,
           delivery: undefined,
+          // The init-time mirror is maintained, not fire-and-forget: a
+          // missing or edited-out-of-sync skill copy reads as drift.
+          skillMirrorRoot: DSH_SKILL_ROOTS[0],
           checkAlive: () => invocation.signal?.throwIfAborted(),
           deliver: async (text) => {
             // Receiver-preserving method call: a bare-function
@@ -1466,7 +1484,7 @@ export function apply(ctx: DshContext): void {
   registerDshTool(ctx, state, {
     name: "dev_framework_init",
     description:
-      "Scaffold opencode-dev-framework project files (agents, skills, commands, default config) into the current project. Missing files are created; existing files are skipped unless overwrite is true. With wizard:true, appends a wizard brief (detection, trial-run, Makefile targets, open questions) when the scaffold changed anything, or a status note when already configured.",
+      "Scaffold opencode-dev-framework project files (agents, skills, commands, default config) into the current project, mirroring skills into the host-scanned skill root. Missing files are created; existing files are skipped unless overwrite is true. With wizard:true, appends a wizard brief (detection, trial-run, Makefile targets, open questions) when the scaffold changed anything, or a status note when already configured.",
     parameters: {
       type: "object",
       properties: {
@@ -1491,6 +1509,9 @@ export function apply(ctx: DshContext): void {
       const scaffold = await runInitScaffold(targetDir, run, {
         wizard: args.wizard,
         overwrite: args.overwrite,
+        // Same kick-start contract as the `df-init` command: the agent
+        // must be able to load the skills through the host `skill` tool.
+        skillMirrorRoot: DSH_SKILL_ROOTS[0],
       });
       return scaffoldReportLines(scaffold, targetDir).join("\n");
     },

@@ -308,11 +308,12 @@ export function stampRuntimeStatus(
   directory: string,
   idleHookVia: IdleHookVia,
   continuation: "idle" | "fallback" | "armed",
+  skillMirrorRoot?: string,
 ): void {
   void (async () => {
     let templates: TemplateState | undefined;
     try {
-      templates = summarizeDrift(await checkTemplateUpdates(directory));
+      templates = summarizeDrift(await checkTemplateUpdates(directory, skillMirrorRoot));
     } catch {
       // Best-effort: the snapshot renders without template state.
     }

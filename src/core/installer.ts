@@ -63,14 +63,11 @@ export async function mirrorSkillsToDsh(
   /** Sticky decision set when the user answers "all" or "none". */
   let stickyDecision: "overwrite" | "skip" | null = null;
 
-  const skillsDir = join(TEMPLATES_DIR, ".opencode", "skills");
   // Loud like `listTemplateFiles`: a missing/unreadable skills dir is
   // packaging breakage, and silence would present a clean init whose brief
   // names a skill the host can never catalog.
-  const names = (await fs.readdir(skillsDir, { withFileTypes: true }))
-    .filter((entry) => entry.isDirectory())
-    .map((entry) => entry.name)
-    .sort();
+  const names = await listSkillNames();
+  const skillsDir = join(TEMPLATES_DIR, ".opencode", "skills");
 
   for (const name of names) {
     const source = join(skillsDir, name, "SKILL.md");
@@ -121,6 +118,15 @@ export async function mirrorSkillsToDsh(
   }
 
   return result;
+}
+
+/** List the bundled skill names (subdirectories of `.opencode/skills`). */
+export async function listSkillNames(): Promise<string[]> {
+  const skillsDir = join(TEMPLATES_DIR, ".opencode", "skills");
+  return (await fs.readdir(skillsDir, { withFileTypes: true }))
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => entry.name)
+    .sort();
 }
 
 /** List all template files relative to TEMPLATES_DIR. */
@@ -254,6 +260,38 @@ export async function installTemplates(
   }
 
   return result;
+}
+
+/**
+ * Compare a skill mirror root against its `.opencode/skills` sources.
+ * Returns mirror-relative drift: absent mirrors read as `add`, differing
+ * ones as `refresh`. Orphaned mirrors (no template source — a skill the
+ * shipment dropped) are ignored: never nag about files we no longer ship.
+ * Like `statusTemplates`, a broken source dir throws instead of reading
+ * as clean. Shares the `TemplateStatus` shape so drift merges trivially.
+ */
+export async function statusMirror(
+  targetDir: string,
+  root: string = DSH_SKILL_ROOTS[0],
+): Promise<TemplateStatus> {
+  const drift: TemplateStatus = { present: [], different: [], missing: [] };
+  const skillsDir = join(TEMPLATES_DIR, ".opencode", "skills");
+  for (const name of await listSkillNames()) {
+    const sourceContent = await readFileSafe(join(skillsDir, name, "SKILL.md"));
+    if (sourceContent === null) {
+      continue;
+    }
+    const relative = `${root}/${name}/SKILL.md`;
+    const existing = await readFileSafe(join(targetDir, relative));
+    if (existing === null) {
+      drift.missing.push(relative);
+    } else if (existing === sourceContent) {
+      drift.present.push(relative);
+    } else {
+      drift.different.push(relative);
+    }
+  }
+  return drift;
 }
 
 /**

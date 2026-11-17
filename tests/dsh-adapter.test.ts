@@ -1205,6 +1205,21 @@ describe("DSH adapter (plan 25 slice 4)", () => {
     const inited = (await find("dev_framework_init")?.execute({}, {})) as string;
     expect(inited.length).toBeGreaterThan(0);
     expect(existsSync(join(directory, ".opencode-dev-framework.yml"))).toBe(true);
+    // The agent path kick-starts like the command: skills land where the
+    // host `skill` tool scans, not only under `.opencode/skills`.
+    expect(existsSync(join(directory, ".dsh/skills/peer-review/SKILL.md"))).toBe(true);
+  });
+
+  it("registers df-help with the command list", async () => {
+    writeConfig(directory, "profile: standard\n");
+    const { ctx, captured } = stubContext();
+    apply(ctx);
+    const help = captured.registered.find((r) => r.name === "df-help");
+    expect(help?.description).toContain("commands");
+    const out = (await help?.handler()) as { kind: string; text: string };
+    expect(out.kind).toBe("success");
+    expect(out.text).toContain("/df-status");
+    expect(out.text).toContain("/df-update");
   });
 
   it("df-update hands the refresh list via followup when drift is detected", async () => {
