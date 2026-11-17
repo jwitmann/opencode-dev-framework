@@ -10,10 +10,28 @@
 
 import { extractCommand, extractFilePath } from "../../core/protect.js";
 
+/** Host session header parentage (structural — no DSH imports).
+ * Shared by `DshExec["agent"]` and the adapter's `DshAgent` so the two
+ * never fork: one spelling for the header both sides read. */
+export interface DshSessionHeader {
+  readonly origin?: unknown;
+  readonly parentSession?: unknown;
+}
+
 /** Minimal DSH tool-execution shape (structural — no DSH imports). */
 export interface DshExec {
   readonly name: string;
   readonly arguments?: unknown;
+  /**
+   * Executing agent, when the host attaches it (carries session
+   * parentage for the child-session guard; structural so no host
+   * import is needed — compatible with the adapter's `DshAgent`).
+   */
+  readonly agent?: {
+    readonly session?: {
+      readonly header?: DshSessionHeader;
+    };
+  };
 }
 
 /**

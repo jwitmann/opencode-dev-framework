@@ -32,7 +32,9 @@ import {
 } from "../../core/goal.js";
 import {
   artifactState,
+  childArtifactDenial,
   createPassCache,
+  isReviewArtifact,
   PREFLIGHT_ARTIFACT_REL,
   preflightBlockReason,
 } from "../../core/harness.js";
@@ -73,7 +75,12 @@ import { readRuntimeStatus } from "../../core/runtime-status.js";
 import type { Profile, ResolvedConfig } from "../../core/types.js";
 import { checkTemplateUpdates, driftMentionLine, runUpdateCommand } from "../../core/update.js";
 import { snapshotEnforceable } from "../../core/weakening.js";
-import { type DshExec, extractDshCommand, extractDshPaths } from "./extract.js";
+import {
+  type DshExec,
+  type DshSessionHeader,
+  extractDshCommand,
+  extractDshPaths,
+} from "./extract.js";
 
 export const name = "opencode-dev-framework-dsh";
 
@@ -134,7 +141,11 @@ export interface DshUserMessage {
 
 export interface DshAgent {
   readonly id?: unknown;
-  readonly session?: { readonly header?: { readonly id?: unknown } };
+  readonly session?: {
+    readonly header?: DshSessionHeader & {
+      readonly id?: unknown;
+    };
+  };
   steer?(message: DshUserMessage): void;
   followup?(message: DshUserMessage): void;
 }
@@ -148,7 +159,7 @@ export interface DshToolErrorInfo {
 
 /** Stable identity stamped on every ODF denial so host diagnostics can attribute it. */
 function odfInfo(
-  code: "guard-deny" | "guard-error" | "preflight-deny" | "lint-block",
+  code: "guard-deny" | "guard-error" | "preflight-deny" | "lint-block" | "child-artifact-deny",
 ): DshToolErrorInfo {
   return { name: "opencode-dev-framework", code };
 }
@@ -507,6 +518,25 @@ function isProfileOff(state: HookState): boolean {
 }
 
 /**
+ * Child-session predicate for the review-duty guard. DSH-native shape:
+ * the host attaches the session header to the agent, so parentage is a
+ * synchronous header read — no session lookup, no cache, no walk (all of
+ * that is OpenCode's problem, where the event carries no parentage).
+ * The rule mirrors the host's own classification: `parentSession` names
+ * the direct creator, but historical ordinary forks may retain it, so a
+ * child is `origin === "subagent"` *with* a creator id (cf. the host's
+ * `archive-admission` walk condition). An absent agent or header reads
+ * as top-level — the pre-existing behavior, never a new block.
+ */
+export function isChildAgent(agent: DshAgent | DshExec["agent"] | undefined): boolean {
+  const header = agent?.session?.header;
+  if (header?.origin !== "subagent") {
+    return false;
+  }
+  return typeof header.parentSession === "string" && header.parentSession !== "";
+}
+
+/**
  * Register the ODF gates on a DSH Cordis context. Synchronous like every
  * DSH plugin `apply`. A project without (or with a broken) config gets no
  * hooks at all — error-logged, never throwing: failing the whole host
@@ -588,6 +618,32 @@ export function apply(ctx: DshContext): void {
           ? (exec.arguments as Record<string, unknown>)["input"]
           : undefined;
       warnApplyPatchSkip(state, exec, rawInput, paths);
+      // Children never write the parent's review artifact. Not a
+      // guardrail — it fires under `protect_off` too — so it sits above
+      // both pre-flight and the guard tiers, where the specific duty
+      // message wins. File tools by target path, shell tools by redirect
+      // target; a bare mention (grep, cat without redirect) stays
+      // allowed. Top-level sessions pass through: the duty is theirs.
+      {
+        const command = extractDshCommand(exec);
+        const candidates =
+          command === undefined ? paths : [...paths, ...extractRedirectTargets(command)];
+        if (candidates.some((p) => isReviewArtifact(p, state.directory))) {
+          if (isChildAgent(exec.agent)) {
+            const reason = childArtifactDenial();
+            if (state.config.profile === "advisory") {
+              await safeLog(state, "warn", reason, { tool: exec.name });
+            } else {
+              await safeLog(state, "error", reason, { tool: exec.name });
+              return {
+                kind: "deny",
+                reason,
+                info: odfInfo("child-artifact-deny"),
+              } satisfies DshPreDecision;
+            }
+          }
+        }
+      }
       // Pre-flight harness (mirror of the OpenCode `execute.before` order:
       // pre-flight before guardrails, advisory warns and continues). Only
       // file-tool paths are gated — shell tools fall through to the guard
@@ -888,6 +944,15 @@ export function apply(ctx: DshContext): void {
 
   ctx.on("agent/turn-stopping", async ({ agent, turn, signal }) => {
     try {
+      // Children owe no review duty: the artifact belongs to the
+      // top-level session, so a child idling on a dirty tree must never
+      // be steered into the review loop. Skip before any gate work — no
+      // verdict, no steer, no stamp. The parent answers for the shared
+      // tree at its own boundary.
+      if (isChildAgent(agent)) {
+        await safeLog(state, "debug", "completion gate skipped: child session owes no review duty");
+        return;
+      }
       await reloadConfigIfChanged(state);
       // Only a fully-off profile skips the gate: `protect_off` stands
       // down guardrails, not the completion contract — mirroring the

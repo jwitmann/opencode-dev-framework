@@ -850,6 +850,13 @@ Dogfood the fork's V2 pre-terminal hook (upstream PR
   (core run*Command with `followup` handoff — operator-memory
   init pattern). 7 new tests green, fail-before proven by stash.
   40 adapter tests total; full suite 549.
+- [x] 43.4 Child-session guard: the host session header carries
+  parentage (`origin === "subagent"` + `parentSession` — host's own
+  classification), so the port is a synchronous header read, not a
+  lookup clone: turn-stopping skips children, pre-execute denies
+  child artifact writes (`child-artifact-deny`; advisory warns,
+  parent writes pass). 4 new tests green, fail-before proven by
+  stash (without `src`, the child gets steered — the plan-23 replay).
 
 ## Peer-review gate (mandatory after EVERY phase 21–27)
 

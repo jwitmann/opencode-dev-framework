@@ -182,12 +182,19 @@ Nothing to net. Verified by reading the loop, not assumed.
 Single project per mount (`ODF_WORKDIR`/cwd). No multi-project
 fan-out to replicate.
 
-### Child-session review guard — GAP, investigation required
+### Child-session review guard — DONE (seam found in the host, not a spike)
 
 OpenCode detects child sessions via a defensive host session lookup
-(`childSessionGetter`). DSH child sessions exist (live-fire used
-`subagent`), but no parentage seam has been verified. Needs a seam
-spike, not a blind port. Tracked, not committed.
+(`childSessionGetter`). DSH needs no lookup: the host attaches the
+session header to the agent, and the header carries parentage —
+`origin === "subagent"` with `parentSession` naming the direct creator
+(the host's own classification; historical forks may retain a creator
+id without the origin, so both conditions are required — cf. the
+host's `archive-admission` walk condition and `timeline/delegation`
+reading the same fields). The DSH port is deliberately NOT a clone:
+no async lookup, no cache, no depth walk — a synchronous header read
+(`isChildAgent`) at the two DSH enforcement sites (turn-stopping
+skip, pre-execute artifact deny). Same intent as plan 23, local shape.
 
 ### Leftovers already tracked (unchanged)
 
@@ -204,9 +211,10 @@ action).
   `ctx.tools.register(defineTool)`. Full battery.
 - 43.3 Commands: `df-goal` (goals seam), `df-verify`, `df-profile`,
   `df-init`/`df-update` as report-mode. Full battery.
-- 43.4 Child-session seam spike: can DSH expose parentage? Timeboxed;
-  a "no seam" result is a valid exit that converts the gap to N/A
-  with evidence.
+- 43.4 Child-session guard: DONE — the spike found the seam in the
+  host session header (`origin`/`parentSession`), so no timebox exit
+  was needed. DSH-native port (synchronous header read, no lookup /
+  cache / walk), wired at turn-stopping + pre-execute. Full battery.
 - 43.5 Deliberate release (`release.sh minor`, user action).
 
 ## Validation (every slice)

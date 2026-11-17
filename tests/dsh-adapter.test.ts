@@ -9,6 +9,7 @@ import {
   type DshPostDecision,
   type DshPreDecision,
   guardErrorDecision,
+  isChildAgent,
   lintBlockLines,
 } from "../src/adapters/dsh/index";
 import { clearConfigCache, loadConfig } from "../src/core/config";
@@ -21,7 +22,13 @@ function writeConfig(directory: string, body: string): void {
 
 interface Captured {
   pre: (
-    exec: { name: string; arguments?: unknown },
+    exec: {
+      name: string;
+      arguments?: unknown;
+      agent?: {
+        session?: { header?: { origin?: unknown; parentSession?: unknown } };
+      };
+    },
     next: () => Promise<DshPreDecision>,
   ) => Promise<DshPreDecision>;
   post:
@@ -33,7 +40,11 @@ interface Captured {
     | undefined;
   stopping:
     | ((payload: {
-        agent: { steer?: (m: unknown) => void; followup?: (m: unknown) => void };
+        agent: {
+          steer?: (m: unknown) => void;
+          followup?: (m: unknown) => void;
+          session?: { header?: { origin?: unknown; parentSession?: unknown } };
+        };
         turn: unknown;
         signal?: AbortSignal;
       }) => Promise<void> | void)
@@ -387,6 +398,90 @@ describe("DSH adapter (plan 25 slice 4)", () => {
     const steered = { steer: vi.fn(), followup: vi.fn() };
     await captured.stopping?.({ agent: steered, turn: 1 });
     expect(steered.steer).toHaveBeenCalledTimes(1);
+  });
+
+  it("isChildAgent reads the host header: subagent origin plus creator only", () => {
+    expect(
+      isChildAgent({ session: { header: { origin: "subagent", parentSession: "ses-parent" } } }),
+    ).toBe(true);
+    expect(isChildAgent({})).toBe(false);
+    expect(isChildAgent(undefined)).toBe(false);
+    // Historical ordinary forks may retain a creator id without the
+    // subagent origin: those read as top-level (host classification).
+    expect(isChildAgent({ session: { header: { parentSession: "ses-parent" } } })).toBe(false);
+    expect(isChildAgent({ session: { header: { origin: "subagent" } } })).toBe(false);
+    expect(isChildAgent({ session: { header: { origin: "subagent", parentSession: "" } } })).toBe(
+      false,
+    );
+  });
+
+  it("turn-stopping skips child sessions: no steer, no followup", async () => {
+    writeConfig(directory, "profile: standard\n");
+    writeFileSync(join(directory, "work.ts"), "export const y = 2;\n");
+    const { ctx, captured } = stubContext();
+    apply(ctx);
+    // Seed gate duty: track an edit so the missing review blocks.
+    const postNext = async () => ({ kind: "accept" as const });
+    await captured.post?.(
+      { name: "write", arguments: { file_path: "work.ts" } },
+      { isError: false },
+      postNext,
+    );
+    // Sanity: a top-level agent on the same dirty tree IS steered.
+    const plain = { steer: vi.fn(), followup: vi.fn() };
+    await captured.stopping?.({ agent: plain, turn: 2 });
+    expect(plain.steer).toHaveBeenCalledTimes(1);
+    const child = {
+      steer: vi.fn(),
+      followup: vi.fn(),
+      session: { header: { origin: "subagent", parentSession: "ses-parent" } },
+    };
+    await captured.stopping?.({ agent: child, turn: 1 });
+    expect(child.steer).not.toHaveBeenCalled();
+    expect(child.followup).not.toHaveBeenCalled();
+  });
+
+  it("pre-execute denies child review-artifact writes, allows the parent's", async () => {
+    writeConfig(directory, "profile: standard\n");
+    const { ctx, captured } = stubContext();
+    apply(ctx);
+    const next = async (): Promise<DshPreDecision> => ({ kind: "allow" });
+    const artifact = ".opencode/opencode-dev-framework/review.md";
+    const child = { session: { header: { origin: "subagent", parentSession: "ses-parent" } } };
+    const denied = await captured.pre(
+      { name: "write", arguments: { file_path: artifact }, agent: child },
+      next,
+    );
+    expect(denied.kind).toBe("deny");
+    expect((denied as { reason: string }).reason).toContain("child sessions never write");
+    expect((denied as { info?: { code: string } }).info?.code).toBe("child-artifact-deny");
+    // Top-level owes the duty: its own artifact write passes through.
+    const parent = await captured.pre({ name: "write", arguments: { file_path: artifact } }, next);
+    expect(parent).toEqual({ kind: "allow" });
+    // A shell redirect to the artifact is a write too.
+    const redirect = await captured.pre(
+      { name: "bash", arguments: { command: `echo hi > ${artifact}` }, agent: child },
+      next,
+    );
+    expect(redirect.kind).toBe("deny");
+  });
+
+  it("child artifact guard warns and continues in advisory", async () => {
+    writeConfig(directory, "profile: advisory\n");
+    const { ctx, captured } = stubContext();
+    apply(ctx);
+    const next = async (): Promise<DshPreDecision> => ({ kind: "allow" });
+    const child = { session: { header: { origin: "subagent", parentSession: "ses-parent" } } };
+    const decision = await captured.pre(
+      {
+        name: "write",
+        arguments: { file_path: ".opencode/opencode-dev-framework/review.md" },
+        agent: child,
+      },
+      next,
+    );
+    expect(decision).toEqual({ kind: "allow" });
+    expect(captured.warns.some((w) => w.includes("child sessions never write"))).toBe(true);
   });
 
   it("pre-flight warns and continues in advisory", async () => {

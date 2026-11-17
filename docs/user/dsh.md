@@ -85,6 +85,11 @@ budgeting, `protect_off` scope.
   code, judgment half handed to the agent via `followup` (the
   operator-memory `operator-project-init` pattern). Safe to re-run.
 - **`df-status`**: live gate status (profile, config, level).
+- **Child sessions**: the turn-stopping gate skips subagents (they owe
+  no review duty — the parent answers for the shared tree), and
+  children cannot write `review.md` (`child-artifact-deny`; advisory
+  warns). Parentage is read synchronously from the host session
+  header (`origin`/`parentSession`), no lookup needed.
 
 ## Troubleshooting
 
