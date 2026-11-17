@@ -50,23 +50,16 @@ else is under `npx df init --help`.
 
 ### On DSH
 
-Build once, then mount the adapter in your Cordis profile:
-
 ```bash
-npm run build
+df install-dsh --profile <name>
+dsh plugin --profile <name> add opencode-dev-framework  # after release
 ```
 
-```yaml
-# in your profile patch overlay
-- insert:
-    - id: odf-gates
-      name: /path/to/opencode-dev-framework/dist/adapters/dsh/index.js
-- id: odf-gates
-  inject:
-    - tools
-    - goals
-    - approval # omit and guard warns only log instead of prompting
-```
+One command writes a managed `odf-gates` block into the profile
+(auto-detects the preset registry; rerun any time). Pre-release local
+build: `npm run build`, then `df install-dsh --profile <name> --dist
+/path/to/opencode-dev-framework/dist/adapters/dsh/index.js`.
+Full reference: [`docs/user/dsh.md`](docs/user/dsh.md).
 
 Then, per project: run `dsh` from the project root (or export
 `ODF_WORKDIR`), run `df-init` once (scaffolds templates *and* the

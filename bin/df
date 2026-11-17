@@ -20,6 +20,7 @@ import {
 } from "../dist/core/installer.js";
 import { detectProject } from "../dist/core/detect.js";
 import { existingConfigPath } from "../dist/core/config.js";
+import { installDshProfile } from "../dist/core/install-dsh.js";
 import { runCommand } from "../dist/core/host.js";
 
 async function getVersion() {
@@ -35,6 +36,8 @@ Usage:
   df init [dir]        Scaffold templates into a project (default: cwd)
   df profile <name> [dir]  Set profile to off, advisory, standard, or strict
   df status [dir]      Show which template files are missing/present/different
+  df install-dsh --profile <name>  Wire the adapter into a DSH profile
+                       (managed patch block; npm-first, --dist for local)
   df version           Print the plugin version
   df help              Show this help
 
@@ -56,6 +59,66 @@ function formatList(label, files) {
     return [`${label}: (none)`];
   }
   return [`${label}:`, ...files.map((file) => `  - ${file}`)];
+}
+
+function flagValue(args, flag) {
+  const index = args.indexOf(flag);
+  if (index === -1 || index + 1 >= args.length) {
+    return undefined;
+  }
+  const value = args[index + 1];
+  return value.startsWith("--") ? undefined : value;
+}
+
+async function runInstallDsh(args) {
+  if (args.includes("--help") || args.includes("-h")) {
+    console.log(`df install-dsh --profile <name> [--dist <file> | --package <spec>]
+                       [--with-presets | --no-presets] [--force] [--dry-run]
+                       [--dsh-home <dir>] [--dsh-bin <bin>]
+
+Wire the ODF adapter into a DSH profile with a managed patch block
+(idempotent; user content outside the block is preserved). Defaults to
+the npm package spec; --dist points at a local build instead.`);
+    return;
+  }
+  const profile = flagValue(args, "--profile");
+  if (!profile) {
+    console.error("df install-dsh: --profile <name> is required");
+    process.exitCode = 1;
+    return;
+  }
+  const distFile = flagValue(args, "--dist");
+  const packageSpec = flagValue(args, "--package");
+  const withPresets = args.includes("--with-presets")
+    ? true
+    : args.includes("--no-presets")
+      ? false
+      : "auto";
+  try {
+    const result = await installDshProfile({
+      profile,
+      dshHome: flagValue(args, "--dsh-home"),
+      dshBin: flagValue(args, "--dsh-bin") ?? "dsh",
+      ...(distFile !== undefined ? { distFile } : {}),
+      ...(packageSpec !== undefined ? { packageSpec } : {}),
+      withPresets,
+      force: args.includes("--force"),
+      dryRun: args.includes("--dry-run"),
+    });
+    console.log(`DSH profile "${profile}": ${result.patchFile}`);
+    console.log(`  entry: ${result.entryName}`);
+    console.log(`  seams: ${result.seams.join(", ")}`);
+    console.log(`  ${result.createdPatchFile ? "patch file created" : result.changed ? "managed block written" : "already current (no changes)"}`);
+    for (const warning of result.warnings) {
+      console.log(`  warning: ${warning}`);
+    }
+    if (args.includes("--dry-run")) {
+      console.log("  dry run: nothing written");
+    }
+  } catch (error) {
+    console.error(`df install-dsh failed: ${error instanceof Error ? error.message : error}`);
+    process.exitCode = 1;
+  }
 }
 
 async function main() {
@@ -91,6 +154,11 @@ async function main() {
     const configPath = existingConfigPath(profileDir) ?? fresh;
     await setProfileInFile(configPath, profile);
     console.log(`Profile set to "${profile}" in ${configPath}`);
+    return;
+  }
+
+  if (command === "install-dsh") {
+    await runInstallDsh(args.slice(1));
     return;
   }
 

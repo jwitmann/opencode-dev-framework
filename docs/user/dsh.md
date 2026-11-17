@@ -34,8 +34,21 @@ Project config is the same `.dev-framework.yml` (legacy
 
 ## Mount
 
-`apply(ctx)` is the plugin entry (`opencode-dev-framework/dsh`). Mount
-it with a `--patch` overlay naming the built file:
+`apply(ctx)` is the plugin entry (`opencode-dev-framework/dsh`).
+Wire it with one command (npm-first; `--dist` for local builds):
+
+```bash
+df install-dsh --profile <name>
+dsh plugin --profile <name> add opencode-dev-framework  # after release
+```
+
+The installer writes a managed `odf-gates` block into the profile's
+`cordis.patch.yml`, auto-detects the agent-preset registry, and leaves
+everything outside its markers untouched (rerun any time; `--force`
+replaces a hand-maintained entry). Pre-release local equivalent:
+`df install-dsh --profile <name> --dist
+/path/to/opencode-dev-framework/dist/adapters/dsh/index.js`.
+Or mount by hand with a `--patch` overlay naming the built file:
 
 ```yaml
 - insert:
