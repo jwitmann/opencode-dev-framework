@@ -936,6 +936,14 @@ Dogfood the fork's V2 pre-terminal hook (upstream PR
   in the child roster via the shared context but were never called;
   hardening to preset-excluded is open, not blocking.)
 
+## Post-merge hardening (DONE 2026-11-17, on main)
+
+- [x] Child-deny on all six `dev_framework_*` tools: child sessions
+  get the redirect text, never a gate evaluation (unit: deny-all +
+  top-level-untouched, stash-proven fail-before).
+- [x] `df init --dsh`: CLI mirrors skills into `.dsh/skills`
+  (live-verified in `/tmp/odf-dfinit`, all 5 skills).
+
 ## Peer-review gate (mandatory after EVERY phase 21–27)
 
 Run the **`peer-review` skill** (`templates/.opencode/skills/peer-review/SKILL.md`),
