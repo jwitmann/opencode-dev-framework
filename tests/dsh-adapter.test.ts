@@ -409,7 +409,7 @@ describe("DSH adapter (plan 25 slice 4)", () => {
     expect(captured.pre).toBeUndefined();
     expect(captured.post).toBeUndefined();
     expect(captured.stopping).toBeUndefined();
-    // The odf-status command below the early return never registers either.
+    // The df-status command below the early return never registers either.
     expect(captured.registered).toEqual([]);
   });
 
@@ -697,11 +697,11 @@ describe("DSH adapter (plan 25 slice 4)", () => {
     expect(agent.followup).not.toHaveBeenCalled();
   });
 
-  it("registers odf-status via dsh-commands", async () => {
+  it("registers df-status via dsh-commands", async () => {
     writeConfig(directory, "profile: standard\n");
     const { ctx, captured } = stubContext();
     apply(ctx);
-    expect(captured.registered.map((r) => r.name)).toContain("odf-status");
+    expect(captured.registered.map((r) => r.name)).toContain("df-status");
   });
 
   it("pre-step prepends the constitution on the first step of a session", async () => {

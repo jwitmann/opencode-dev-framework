@@ -4,8 +4,9 @@
 > enforcement live-proven 2026-11-16 on stock `headless`
 > (sessions `931700f5` + `9487c152`, model
 > `muse-spark-1.3-contributor`). Instruction pillar
-> (`agent/pre-step` constitution prepend), commands (`df-goal`,
-> `df-verify`, `df-profile`, `df-runtime`, `df-init`, `df-update`),
+> (`agent/pre-step` constitution prepend), commands (`df-status`,
+> `df-goal`, `df-verify`, `df-profile`, `df-runtime`, `df-init`,
+> `df-update`),
 > and agent tools (`dev_framework_verify/set_profile/status/init`)
 > are wired and unit-proven; their live-fire runs next. Deliberate
 > release still pending.
@@ -83,7 +84,7 @@ budgeting, `protect_off` scope.
 - **`df-init` / `df-update`**: deterministic scaffold/drift-check in
   code, judgment half handed to the agent via `followup` (the
   operator-memory `operator-project-init` pattern). Safe to re-run.
-- **`odf-status`**: live gate status (profile, config, level).
+- **`df-status`**: live gate status (profile, config, level).
 
 ## Troubleshooting
 
@@ -96,4 +97,4 @@ budgeting, `protect_off` scope.
   `[odf post-execute]` error log, not the model feedback.
 - Turn ends despite a failing gate: `profile: off` skips the gate, and
   budget exhaustion (`gate.max_blocks`) stands down — both by design;
-  the `odf-status` command shows the live state.
+  the `df-status` command shows the live state.

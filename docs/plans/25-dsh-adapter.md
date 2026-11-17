@@ -154,7 +154,7 @@ per tool, over the same core functions.
 
 | OpenCode | DSH | Verdict |
 |---|---|---|
-| `odf-status` | `odf-status` only | DONE (keep the name — live-proven surface, zero gain in rename churn) |
+| `df-status` | `df-status` (renamed from `odf-status` for the `df-*` convention) | DONE |
 | `df-goal` (wrap + delegate to native `/goal`) | missing | PORT: availability probe (optional `commands.list`), pure `buildVerifiedObjective`, delegate via `ctx.goals.create(agent, ...)` (documented service, used by `command-goal` + `tool-goal`). Same contract, host-native mechanism |
 | `df-verify` (TUI-only on OpenCode) | missing | PORT: `verifyGate` over the tracker snapshot, text result. Fills the on-demand slot the missing TUI leaves |
 | `df-profile` (TUI-only on OpenCode) | missing | PORT: `changeProfile` with validation, text result |

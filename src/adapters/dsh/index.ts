@@ -953,7 +953,7 @@ export function apply(ctx: DshContext): void {
   });
 
   ctx.commands.register({
-    name: "odf-status",
+    name: "df-status",
     description: "Show opencode-dev-framework gate status (profile, config, enforcement level).",
     handler: () => ({ kind: "success", text: renderStatus(state.config, state) }),
   });
