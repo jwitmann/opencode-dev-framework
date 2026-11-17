@@ -898,6 +898,20 @@ Dogfood the fork's V2 pre-terminal hook (upstream PR
   (322 frames, first frame identical, zero id-less events). Lesson
   recorded in `08-notes.md`.
 
+## Phase 26 — DSH specialist subagents (SCOPED 2026-11-17, not started)
+
+- [ ] 26.0 Plan written (`docs/plans/26-dsh-specialists.md`): seam
+  verified against installed host `0.2.2-rc.3` (`ctx.subagents`
+  `startActivation`, async delivery-to-parent, `spawn`/`fork`
+  providers present on headless). Interim docs fix shipped
+  (`40-delegation.md` harness rule: DSH inline is primary).
+- [ ] 26.1 Probe `subagents` inject + `startActivation` from adapter
+  ctx (throwaway patch, echo child).
+- [ ] 26.2 Spawn path at gate block (pattern-guardian first),
+  findings folded into steer; degrade to inline when seam absent.
+- [ ] 26.3 Remaining specialists + caps + Agent Preset doc.
+- [ ] 26.4 Tests + live proofs (headless + TUI) + docs updates.
+
 ## Peer-review gate (mandatory after EVERY phase 21–27)
 
 Run the **`peer-review` skill** (`templates/.opencode/skills/peer-review/SKILL.md`),
