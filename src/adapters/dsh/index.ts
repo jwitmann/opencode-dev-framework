@@ -731,13 +731,21 @@ const SPECIALIST_FALLBACK_BRIEF =
   "conventions, unjustified new dependencies). Report findings as text; do " +
   "not edit anything.";
 
-/** Load the specialist brief: shipped agent file first, fallback brief never throws. */
+/** Brief source chain (plan 26.3): neutral override first so a DSH-only
+ * project never needs OpenCode's home; the shipped OpenCode home second
+ * (single source both harnesses edit); embedded fallback last. Never throws. */
+const SPECIALIST_BRIEF_RELS = [".dev-framework/agents", ".opencode/agents"] as const;
+
+/** Load the specialist brief: neutral override, OpenCode home, fallback. */
 async function loadSpecialistBrief(kind: string, directory: string): Promise<string> {
-  try {
-    return await readFile(join(directory, ".opencode/agents", `${kind}.md`), "utf8");
-  } catch {
-    return SPECIALIST_FALLBACK_BRIEF;
+  for (const rel of SPECIALIST_BRIEF_RELS) {
+    try {
+      return await readFile(join(directory, rel, `${kind}.md`), "utf8");
+    } catch {
+      // Next brief source.
+    }
   }
+  return SPECIALIST_FALLBACK_BRIEF;
 }
 
 /** Best-effort text of one entering message (any shape, never throws). */

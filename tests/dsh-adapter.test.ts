@@ -1485,9 +1485,7 @@ describe("specialist spawn (plan 26 slice 26.2)", () => {
     apply(ctx);
     await blockOnce(captured);
     expect(started).toHaveLength(3);
-    const pgName = (
-      started as Array<Record<string, unknown>>
-    ).find((request) =>
+    const pgName = (started as Array<Record<string, unknown>>).find((request) =>
       (request["name"] as string).startsWith("odf-pattern-guardian-"),
     )?.["name"] as string;
     const notice = {
@@ -1653,6 +1651,46 @@ describe("specialist spawn (plan 26 slice 26.2)", () => {
       expect(request).not.toHaveProperty("agentPreset");
     }
     expect(steerText(agent)).toContain("Specialist review dispatched");
+  });
+
+  it("prefers the neutral brief over the OpenCode home", async () => {
+    writeConfig(directory, "profile: standard\n");
+    mkdirSync(join(directory, ".dev-framework", "agents"), { recursive: true });
+    writeFileSync(
+      join(directory, ".dev-framework", "agents", "pattern-guardian.md"),
+      "NEUTRAL-BRIEF-MARKER\n",
+    );
+    mkdirSync(join(directory, ".opencode", "agents"), { recursive: true });
+    writeFileSync(
+      join(directory, ".opencode", "agents", "pattern-guardian.md"),
+      "OPENCODE-BRIEF-MARKER\n",
+    );
+    const { ctx, captured } = stubContext();
+    const started = withSubagents(ctx);
+    apply(ctx);
+    await blockOnce(captured);
+    const prompt = (started[0]["prompt"] as Array<{ text: string }>)
+      .map((part) => part.text)
+      .join("\n");
+    expect(prompt).toContain("NEUTRAL-BRIEF-MARKER");
+    expect(prompt).not.toContain("OPENCODE-BRIEF-MARKER");
+  });
+
+  it("falls back to the OpenCode home when no neutral brief exists", async () => {
+    writeConfig(directory, "profile: standard\n");
+    mkdirSync(join(directory, ".opencode", "agents"), { recursive: true });
+    writeFileSync(
+      join(directory, ".opencode", "agents", "pattern-guardian.md"),
+      "OPENCODE-BRIEF-MARKER\n",
+    );
+    const { ctx, captured } = stubContext();
+    const started = withSubagents(ctx);
+    apply(ctx);
+    await blockOnce(captured);
+    const prompt = (started[0]["prompt"] as Array<{ text: string }>)
+      .map((part) => part.text)
+      .join("\n");
+    expect(prompt).toContain("OPENCODE-BRIEF-MARKER");
   });
 
   it("never spawns for child sessions", async () => {
