@@ -508,6 +508,30 @@ describe("DSH adapter (plan 25 slice 4)", () => {
     expect(captured.registered).toEqual([]);
   });
 
+  it("registers agent tools with the service receiver preserved", () => {
+    writeConfig(directory, "profile: standard\n");
+    const { ctx, captured } = stubContext();
+    // The host implementation reads `this`: an unbound register call
+    // throws and every tool silently never registers (live-proven S1
+    // failure mode — gates fired, catalog empty). The stub enforces it.
+    const toolsService = {
+      register(this: unknown, def: { name: string }) {
+        if (this !== toolsService) {
+          throw new TypeError("register called without service receiver");
+        }
+        captured.tools.push(def as never);
+      },
+    };
+    const bound = { ...ctx, tools: toolsService };
+    expect(() => apply(bound as unknown as DshContext)).not.toThrow();
+    expect(captured.tools.map((t) => t.name)).toEqual([
+      "dev_framework_verify",
+      "dev_framework_set_profile",
+      "dev_framework_status",
+      "dev_framework_init",
+    ]);
+  });
+
   it("survives a host that throws on uninjected service reads", async () => {
     writeConfig(directory, "profile: standard\n");
     const { ctx, captured } = stubContext();

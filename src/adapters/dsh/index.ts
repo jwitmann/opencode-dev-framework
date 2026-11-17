@@ -356,19 +356,21 @@ function registerDshTool(
 ): void {
   // The host throws on reading a non-injected service (rather than
   // yielding undefined), so the read itself is guarded: a host without
-  // the service keeps every command, exactly as documented.
-  let register: DshTools["register"] | undefined;
+  // the service keeps every command, exactly as documented. The service
+  // object (not the bare method) is captured so the `register` call
+  // keeps its receiver — the host implementation reads `this`.
+  let tools: DshTools | undefined;
   try {
-    register = ctx.tools?.register;
+    tools = ctx.tools;
   } catch {
-    register = undefined;
+    tools = undefined;
   }
-  if (typeof register !== "function") {
+  if (typeof tools?.register !== "function") {
     void safeLog(state, "warn", `tool service unavailable; skipping agent tool ${def.name}`);
     return;
   }
   try {
-    register({
+    tools.register({
       name: def.name,
       description: def.description,
       parameters: def.parameters,
