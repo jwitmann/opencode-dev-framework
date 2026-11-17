@@ -1939,6 +1939,31 @@ inherits the parent preset and rejects independent selection), so
 reviewers spawn self-contained — the adapter packs context into the
 child prompt.
 
+## DSH specialist dispatch live (2026-11-17, plan 26 slice 26.3)
+
+Two deployment-truth lessons from proving the loop on stock headless:
+
+- **Never inject a service the profile does not provide.** Adding
+  `agentPresets` to the patch inject list pended the *entire*
+  `odf-gates` plugin (`entry did not activate … pending (waiting for
+  service: agentPresets)` — stock headless has no `agentPresets`
+  registry, only dsh-tui does). The adapter code degrades gracefully
+  by design, but the inject list itself is a hard activation gate:
+  one missing service silences every hook with only a stderr warning.
+  Rule: inject lists name only services verified present in that
+  profile's `--dump-config`; everything else stays a guarded runtime
+  read. Headless therefore spawns preset-less (prompt + guards);
+  the read-only preset path is TUI-only until proven otherwise.
+- **Review freshness is file-name coverage, not diff coverage.** A
+  stale review that names the changed file still grades `present` —
+  re-editing `greet.js` under a `greet.js` review passes. Forcing a
+  review-block needs a change in a file the review does not name
+  (new `util.js` did it). Test fixtures and live self-tests should
+  use fresh files, not re-edits, when the block itself is the
+  objective. (Bonus dogfood: the constitution made the model refuse
+  a direct "skip the review" order twice and route around a
+  read-only review.md — the gates hold against the operator too.)
+
 ## References
 
 - OpenCode plugin docs: <https://opencode.ai/docs/plugins>

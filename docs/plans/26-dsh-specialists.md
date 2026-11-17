@@ -2,7 +2,11 @@
 
 Status: 26.1 PROBED 2026-11-17 (full loop green). 26.2 IMPLEMENTED
 2026-11-17 (6 behavior tests, stash-proven fail-before, 606/606 suite).
-Slices 26.3–26.4 remain.
+26.3 IMPLEMENTED + LIVE-PROVEN 2026-11-17 (10 behavior tests,
+fail-before via stash, 610/610 suite; headless live: review-block
+dispatched all three kinds, notices folded, real finding fixed,
+gate PASS — session `session-de1269e0` in `--tmp-odf-spec264--`).
+26.4 (dsh.md/matrix + TUI preset proof) remains.
 
 ## Problem
 
@@ -100,19 +104,30 @@ Closed by the 26.1 probe (headless, model
   DONE 2026-11-17 (full loop green, notice verbatim in the unknowns section).
 - 26.2 Spawn path: one specialist (pattern-guardian) at gate block,
   findings folded into steer; degenerate-to-inline when seam absent.
-  DONE 2026-11-17 (6 behavior tests, stash-proven fail-before, 606/606
-  suite): seam probed at mount (`HostSeams.subagents`, rendered in
-  `df-status`); top-level blocking profiles only (advisory/off/children
-  never dispatch); one pending child per session (no fan-out); findings
-  fold exactly once then clear; silent children free the slot; abort
-  signal passed through; brief loaded from
-  `.opencode/agents/pattern-guardian.md` with embedded fallback.
-  Session keying uses stable host session ids (turn-number fallback
-  only in id-less test stubs). Verified interplay: the gate skips
-  unchanged trees, so re-blocks track fresh edits.
-- 26.3 Remaining specialists + naming/budget caps + preset doc.
+  DONE 2026-11-17 (mount seam probe, per-session pending slot, fold-once,
+  silent-slot-free, abort pass-through, shipped-file brief + fallback).
+- 26.3 Remaining specialists + reason-gating + plugin-registered preset.
+  DONE 2026-11-17: all three read-only kinds dispatch on review-blocks
+  only (red trees never dispatch — verified live: a `test: exit 1`
+  tree blocked 3/3 with zero spawns); per-kind pending slots;
+  `odf-reviewer` preset registered by the adapter and selected on
+  spawn (duplicate counts as ready; failure degrades to preset-less).
+  LIVE-PROVEN headless (preset-less path): review-block on a new file
+  dispatched `odf-pattern-guardian-1, odf-style-enforcer-2,
+  odf-code-reviewer-3`; all three notices arrived and folded; a real
+  finding (CJS in an ESM file) was fixed by the lead; gate PASS.
+  Session `session-de1269e0` in `--tmp-odf-spec264--`.
+  Deployment rule learned live: never inject a service the profile
+  does not provide — `agentPresets` on stock headless pends the whole
+  plugin (stderr: `pending (waiting for service: agentPresets)`).
 - 26.4 Tests (stubbed `subagents` ctx) + live proofs (headless + TUI)
   - `dsh.md`/matrix updates.
+  - TUI preset live proof stays user-run: the `agentPresets` registry
+    exists only where the profile composition provides it (dsh-tui has
+    `dsh-tui-agent-preset-registry`; stock headless has none — injecting
+    a missing service pends the whole plugin, proven live 2026-11-17).
+    Headless therefore spawns preset-less by deployment, TUI with the
+    plugin-registered `odf-reviewer` preset.
 
 ## Acceptance
 

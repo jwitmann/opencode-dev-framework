@@ -916,7 +916,13 @@ Dogfood the fork's V2 pre-terminal hook (upstream PR
   DONE 2026-11-17 — see plan doc slice notes for the full evidence
   (6 behavior tests, stash-proven fail-before, 606/606 suite,
   no new lint diagnostics).
-- [ ] 26.3 Remaining specialists + caps + Agent Preset doc.
+- [x] 26.3 Multi-kind dispatch + reason-gating + plugin-registered
+  preset. DONE 2026-11-17 — 10 behavior tests, stash-proven
+  fail-before, 610/610 suite; live-proven headless (session
+  `session-de1269e0`, fixture `/tmp/odf-spec264`): review-block
+  dispatched all three kinds, notices folded, real CJS-in-ESM finding
+  fixed, gate PASS. Preset-selected spawn is unit-proven only; its
+  live proof needs the registry (TUI, user-run — see 26.4).
 - [ ] 26.4 Tests + live proofs (headless + TUI) + docs updates.
 
 ## Peer-review gate (mandatory after EVERY phase 21–27)
