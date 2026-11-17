@@ -1202,15 +1202,18 @@ export function apply(ctx: DshContext): void {
             }
           },
           deliver: async (text) => {
-            const followup = invocation.agent.followup;
-            if (typeof followup !== "function") {
+            // Receiver-preserving method call: a bare-function
+            // extraction would drop a `this`-dependent host
+            // implementation (same class as the tools.register fix).
+            const agent = invocation.agent;
+            if (typeof agent.followup !== "function") {
               // Core converts a delivery throw into a precise
               // scaffold-succeeded-but-handoff-failed error (init.ts).
               throw new Error(
                 "df-init: the host agent has no followup seam; setup brief could not be handed off",
               );
             }
-            followup(dshUserMessage(text));
+            agent.followup(dshUserMessage(text));
           },
           note: async (level, message, extra) => {
             await safeLog(state, level, message, extra);
@@ -1245,15 +1248,18 @@ export function apply(ctx: DshContext): void {
           delivery: undefined,
           checkAlive: () => invocation.signal?.throwIfAborted(),
           deliver: async (text) => {
-            const followup = invocation.agent.followup;
-            if (typeof followup !== "function") {
+            // Receiver-preserving method call: a bare-function
+            // extraction would drop a `this`-dependent host
+            // implementation (same class as the tools.register fix).
+            const agent = invocation.agent;
+            if (typeof agent.followup !== "function") {
               // Core converts a delivery throw into a precise
               // refreshed-but-handoff-failed error (update.ts).
               throw new Error(
                 "df-update: the host agent has no followup seam; refresh handoff could not be delivered",
               );
             }
-            followup(dshUserMessage(text));
+            agent.followup(dshUserMessage(text));
           },
         });
         if (!delivered) {

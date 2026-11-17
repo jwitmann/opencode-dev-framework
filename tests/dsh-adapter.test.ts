@@ -993,13 +993,23 @@ describe("DSH adapter (plan 25 slice 4)", () => {
     const { ctx, captured } = stubContext();
     apply(ctx);
     const init = captured.registered.find((r) => r.name === "df-init");
-    const followup = vi.fn();
-    const decision = (await init?.handler({ agent: { followup }, rawInput: "" })) as {
+    const followupImpl = vi.fn();
+    // Receiver-enforcing: the handoff must keep the host method's
+    // receiver (same class as the tools.register fix).
+    const agent: { followup(this: unknown, m: unknown): void } = {
+      followup(this: unknown) {
+        if (this !== agent) {
+          throw new TypeError("followup called without agent receiver");
+        }
+        followupImpl();
+      },
+    };
+    const decision = (await init?.handler({ agent, rawInput: "" })) as {
       kind: string;
       text: string;
     };
     expect(decision.kind).toBe("success");
-    expect(followup).toHaveBeenCalledTimes(1);
+    expect(followupImpl).toHaveBeenCalledTimes(1);
     expect(existsSync(join(directory, ".opencode-dev-framework.yml"))).toBe(true);
   });
 
