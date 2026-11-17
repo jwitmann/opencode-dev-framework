@@ -288,7 +288,7 @@ const plugin = Plugin.define({
         // 1a) Startup template-drift mention — once per session, best-effort.
         // First `context` sighting of a sessionID is session startup (plugin
         // `setup()` has no session to mention into). Drifted installs get one
-        // line pointing at `/df-update`; current and empty trees stay silent.
+        // line pointing at `dev_framework_update`; current and empty trees stay silent.
         // Never throws into prompt assembly; never writes.
         const startupID = getEventSessionID(event);
         if (startupID !== undefined && !hasSeenSessionStart(startupID)) {

@@ -154,7 +154,7 @@ export function driftMentionLine(drift: TemplateDrift): string | null {
   }
   return (
     `opencode-dev-framework templates have drifted (${parts.join(", ")}). ` +
-    "Run /df-update to review each file with approval."
+    "Run dev_framework_update to review each file with approval."
   );
 }
 

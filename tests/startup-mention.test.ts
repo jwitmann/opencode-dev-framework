@@ -74,7 +74,7 @@ describe("startup template-drift mention (plan 20)", () => {
   }
 
   function mentionParts(system: { type: string; text: string }[]): string[] {
-    return system.filter((p) => p.text.includes("/df-update")).map((p) => p.text);
+    return system.filter((p) => p.text.includes("dev_framework_update")).map((p) => p.text);
   }
 
   it("mentions once on first sighting of a drifted tree", async () => {

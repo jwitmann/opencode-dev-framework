@@ -144,13 +144,13 @@ describe("composeUpdatePrompt", () => {
 });
 
 describe("driftMentionLine", () => {
-  it("names refresh/add counts and /df-update on drift", async () => {
+  it("names refresh/add counts and dev_framework_update on drift", async () => {
     const first = await installFirstOnly();
     await writeFile(join(dir, first), "customized", "utf8");
     const drift = await checkTemplateUpdates(dir);
     const line = driftMentionLine(drift);
     expect(line).not.toBeNull();
-    expect(line as string).toContain("/df-update");
+    expect(line as string).toContain("dev_framework_update");
     expect(line as string).toContain("1 to refresh");
     expect(line as string).toContain("to add");
   });
