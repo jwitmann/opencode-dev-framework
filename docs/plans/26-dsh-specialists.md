@@ -105,7 +105,10 @@ Closed by the 26.1 probe (headless, model
 - 26.2 Spawn path: one specialist (pattern-guardian) at gate block,
   findings folded into steer; degenerate-to-inline when seam absent.
   DONE 2026-11-17 (mount seam probe, per-session pending slot, fold-once,
-  silent-slot-free, abort pass-through, shipped-file brief + fallback).
+  silent-slot-free, abort pass-through). Brief source is the
+  neutral-first chain (`.dev-framework/agents/<kind>.md`, then
+  `.opencode/agents/<kind>.md`, then embedded fallback) so DSH-only
+  projects never need OpenCode's home.
 - 26.3 Remaining specialists + reason-gating + plugin-registered preset.
   DONE 2026-11-17: all three read-only kinds dispatch on review-blocks
   only (red trees never dispatch — verified live: a `test: exit 1`
