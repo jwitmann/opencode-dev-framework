@@ -7,9 +7,11 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   buildWizardBrief,
+  DSH_SKILL_ROOTS,
   formatTrialRun,
   formatWizardBrief,
   installTemplates,
+  mirrorSkillsToDsh,
   resolveTargetDir,
   setProfileInFile,
   statusTemplates,
@@ -42,6 +44,8 @@ Usage:
 
 Options:
   --wizard              Print the wizard brief after init (agent-led handoff)
+  --dsh                 Also mirror skills into .dsh/skills so the DSH host
+                       skill tool catalogs them (same skip/overwrite rules)
   --overwrite-existing  Overwrite files that already exist (non-interactive)
   --skip-existing       Skip files that already exist (non-interactive)
 `);
@@ -137,6 +141,20 @@ async function main() {
     console.log(line);
   }
   console.log(`\nConfig: ${configResult.action}`);
+  if (flags.has("--dsh")) {
+    const mirror = await mirrorSkillsToDsh(targetDir, DSH_SKILL_ROOTS[0], {
+      overwriteExisting: flags.has("--overwrite-existing"),
+      skipExisting: flags.has("--skip-existing"),
+    });
+    console.log("\nDSH skill mirror (.dsh/skills):");
+    for (const line of [
+      ...formatList("Created", mirror.created),
+      ...formatList("Overwritten", mirror.overwritten),
+      ...formatList("Skipped", mirror.skipped),
+    ]) {
+      console.log(line);
+    }
+  }
   if (flags.has("--wizard")) {
     try {
       const brief = await buildWizardBrief(targetDir, runCommand);

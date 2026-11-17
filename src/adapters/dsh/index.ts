@@ -451,7 +451,22 @@ function registerDshTool(
         ],
       },
       ...(def.isConcurrencySafe === undefined ? {} : { isConcurrencySafe: def.isConcurrencySafe }),
-      execute: (args: unknown, _exec: unknown) => def.execute(args),
+      execute: (args: unknown, exec: unknown) => {
+        // Review duty belongs to the top-level session (plan 23): a child
+        // that invokes a gate tool gets a denial with the redirect, never
+        // a gate evaluation for the shared tree. Investigation-only by
+        // construction, even where the child roster lists these tools.
+        const agent = (exec as { agent?: DshAgent } | null | undefined)?.agent;
+        if (isChildAgent(agent)) {
+          const denial =
+            `Child sessions may not invoke ${def.name}: the review duty belongs ` +
+            "to the top-level session — report findings back as text and let the " +
+            "parent run the gate.";
+          void safeLog(state, "warn", denial, { tool: def.name });
+          return Promise.resolve(denial);
+        }
+        return def.execute(args);
+      },
     });
   } catch (error) {
     void safeLog(state, "warn", `agent tool ${def.name} rejected by host; commands still work`, {

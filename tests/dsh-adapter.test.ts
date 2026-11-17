@@ -1715,3 +1715,53 @@ describe("specialist spawn (plan 26 slice 26.2)", () => {
     expect(child.steer).not.toHaveBeenCalled();
   });
 });
+
+describe("child tool guard (hardening: investigation-only by construction)", () => {
+  const directory = mkdtempSync(join(tmpdir(), "odf-child-guard-"));
+  let savedEnv: string | undefined;
+
+  beforeEach(() => {
+    savedEnv = process.env["ODF_WORKDIR"];
+    process.env["ODF_WORKDIR"] = directory;
+  });
+
+  afterEach(() => {
+    if (savedEnv === undefined) {
+      delete process.env["ODF_WORKDIR"];
+    } else {
+      process.env["ODF_WORKDIR"] = savedEnv;
+    }
+  });
+
+  function childExec() {
+    return {
+      agent: {
+        session: {
+          header: { id: "ses-child", origin: "subagent", parentSession: "ses-parent" },
+        },
+      },
+    };
+  }
+
+  it("denies every gate tool to child sessions with the redirect", async () => {
+    writeConfig(directory, "profile: standard\n");
+    const { ctx, captured } = stubContext();
+    apply(ctx);
+    expect(captured.tools).toHaveLength(6);
+    for (const tool of captured.tools) {
+      const out = (await tool.execute({}, childExec())) as string;
+      expect(out).toContain("Child sessions may not invoke");
+      expect(out).toContain(tool.name);
+    }
+  });
+
+  it("leaves top-level tool calls untouched", async () => {
+    writeConfig(directory, "profile: standard\n");
+    const { ctx, captured } = stubContext();
+    apply(ctx);
+    const status = captured.tools.find((t) => t.name === "dev_framework_status");
+    const out = (await status?.execute({}, { agent: {} })) as string;
+    expect(out).toContain("Profile:");
+    expect(out).not.toContain("Child sessions may not invoke");
+  });
+});
