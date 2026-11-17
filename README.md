@@ -94,7 +94,7 @@ differ:
 | Redirect targets (`a > file`) | Not guard-checked | Guard-checked (wider than OpenCode) |
 | denial identity | Reason text | Reason text + structured `{name, code}` |
 | Skills | `.opencode/skills` (native) | `.dsh/skills` mirror (host never scans `.opencode/skills`) |
-| Reviewer agents | `.opencode/agents` specialists | No equivalent; review loop runs through gate steer text |
+| Reviewer agents | `.opencode/agents` specialists run as subagents | Adapter-dispatched DSH children on review-blocks (one per kind; findings fold into the steer); inline steer when the seam is absent |
 | Goals | `/df-goal` wraps native `/goal` | `df-goal` creates the host goal with the same verification contract |
 
 Identical on both: pre-execute deny hardness, pre-flight ordering and

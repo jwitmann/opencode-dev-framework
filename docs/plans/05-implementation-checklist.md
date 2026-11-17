@@ -923,7 +923,16 @@ Dogfood the fork's V2 pre-terminal hook (upstream PR
   dispatched all three kinds, notices folded, real CJS-in-ESM finding
   fixed, gate PASS. Preset-selected spawn is unit-proven only; its
   live proof needs the registry (TUI, user-run — see 26.4).
-- [ ] 26.4 Tests + live proofs (headless + TUI) + docs updates.
+- [x] 26.4 Docs half DONE 2026-11-17: `dsh.md` (specialist row,
+  inject rule, seam list, agent-file role) + README matrix
+  (reviewer-agents row). Test + headless-live half already covered
+  by 26.1–26.3 evidence.
+- [ ] 26.4 TUI preset live proof (user-run): spawn with
+  `agentPreset: odf-reviewer` on dsh-tui (registry present there)
+  and confirm read-only children. Requires an interactive TUI
+  session; steps: mount with `agentPresets` injected, trigger a
+  review-block, observe preset registration + selected spawn in the
+  steer, confirm a write attempt from a child is denied.
 
 ## Peer-review gate (mandatory after EVERY phase 21–27)
 

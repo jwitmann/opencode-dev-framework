@@ -49,11 +49,27 @@ it with a `--patch` overlay naming the built file:
     # `ask` decisions only when this seam is injected. Without it the
     # adapter allows with a warn log (agent-run headless keeps working).
     - approval
+    # Reviewer dispatch: the adapter spawns specialist children through
+    # this seam on review-blocks. Without it, review stays inline.
+    - subagents
+    # Read-only reviewer preset: ONLY on profiles whose composition
+    # provides the agentPresets registry (dsh-tui does; stock headless
+    # does not). Without it the adapter spawns preset-less (prompt
+    # restriction + per-exec guards).
+    # - agentPresets
 ```
 
 ```bash
 dsh --profile headless --patch ./odf-livefire.patch.yml "your task"
 ```
+
+**Inject rule: name only services the profile provides.** A patch
+`inject:` entry is a hard activation gate — listing a missing service
+pends the *entire* plugin (`entry did not activate … pending (waiting
+for service: …)`) with only a stderr warning, silencing every hook.
+Verify against `dsh --profile <name> --dump-config` before adding a
+seam; the adapter itself degrades gracefully, but only for seams that
+resolve.
 
 The adapter resolves the project directory from `ODF_WORKDIR`, else the
 process working directory — run `dsh` from the project (or export
@@ -71,12 +87,14 @@ mount.
 | Completion gate | `agent/turn-stopping` + `steer` | **Pre-terminal**: the host awaits listeners, then continues the SAME turn on steer — no re-prompt round-trip, unlike the OpenCode idle continuation. Live: after a one-edit task said "Done", the gate blocked on the missing review and steered turn 1 onward — the agent ran a style/test/correctness review loop, wrote the review artifact, and only then did the turn end (15 steps, one turn, no new turn). Steer is dropped when the turn already aborted. Budget exhaustion stands down silently. |
 | Warn tier | allow + warn log on every hook | **Ceiling, verified**: nothing provides the `approval` service on headless, so `ask` would unconditionally deny — advisory never blocks by construction. **TUI half live-proven 2026-11-17** (`dsh-tui`, model `muse-spark-1.3-contributor`, `proj-ask` with `protect_mode: warn`): `.env` edit surfaced a human approval prompt, approved once, edit landed. |
 | Kill switch | profile `off` skips everything; `protect_off` stands down guardrails only | Pre-flight, lint, and the gate still fire under `protect_off` — exactly the OpenCode scope. |
+| Specialist dispatch | `subagents.startActivation` at review-blocks + completion-notice fold | On review-blocks (green tree, review missing/stale) the adapter spawns one child per reviewer kind (`odf-pattern-guardian-N`, `odf-style-enforcer-N`, `odf-code-reviewer-N`) via the `spawn` provider with delivery-to-parent; their closing messages fold into the next steer exactly once. Gate-blocks (red tree) dispatch nothing — reviewing broken code wastes runs. No seam, advisory/off, or child session → inline steer, unchanged. Live 2026-11-17 (headless): all three dispatched, notices folded, a real CommonJS-in-ESM finding fixed, gate PASS. |
 
 ## Differences from the OpenCode adapter
 
 Stronger where the host allows more: pre-terminal same-turn gate
 steering, model-facing post-execute `block`, structured denial
-identity, abort-aware steering, redirect-target guard coverage.
+identity, abort-aware steering, redirect-target guard coverage,
+adapter-dispatched reviewer children on review-blocks.
 Identical where the hosts agree: pre-execute deny hardness,
 warn→allow-with-log, pre-flight ordering and semantics, block
 budgeting, `protect_off` scope.
@@ -107,11 +125,11 @@ budgeting, `protect_off` scope.
   agent to load `project-config` with the `skill` tool and ask
   user-only questions (at most 3) with `ask_user_question`. Safe to
   re-run; mirrors never clobber user edits unasked and never read as
-  drift. Reviewer agents (`.opencode/agents/`) have no DSH equivalent
-  and stay inert files — the review loop runs through gate steer text
-  instead.
+   drift. The shipped agent files (`.opencode/agents/`) double as the
+   reviewer briefs the adapter dispatches as children on review-blocks
+   (see the contracts table) — never inert.
 - **`df-status`**: live gate status (profile, config, level) plus host
-  seam availability (tools/goals/approval) and who runs the formatter —
+  seam availability (tools/goals/approval/subagents/presets) and who runs the formatter —
   a degraded mount reads as degraded, never as silently whole.
 - **Warn asks the human (TUI)**: a guard `warn` arrives as an `ask`
   decision when the approval seam is injected, so it prompts instead
