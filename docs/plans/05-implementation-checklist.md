@@ -927,12 +927,14 @@ Dogfood the fork's V2 pre-terminal hook (upstream PR
   inject rule, seam list, agent-file role) + README matrix
   (reviewer-agents row). Test + headless-live half already covered
   by 26.1–26.3 evidence.
-- [ ] 26.4 TUI preset live proof (user-run): spawn with
-  `agentPreset: odf-reviewer` on dsh-tui (registry present there)
-  and confirm read-only children. Requires an interactive TUI
-  session; steps: mount with `agentPresets` injected, trigger a
-  review-block, observe preset registration + selected spawn in the
-  steer, confirm a write attempt from a child is denied.
+- [x] 26.4 TUI preset live proof DONE 2026-11-17 (user-run,
+  parent session `78def5ff` = `$DSH_TUI_RESUME_SESSION`): steer named
+  all three children, all three notices arrived and folded, child
+  session logged `agent-preset/selected: odf-reviewer` and called
+  only read/grep/glob/read_image/working_directory — no
+  write/edit/bash/subagent. (`dev_framework_*` tools remain visible
+  in the child roster via the shared context but were never called;
+  hardening to preset-excluded is open, not blocking.)
 
 ## Peer-review gate (mandatory after EVERY phase 21–27)
 

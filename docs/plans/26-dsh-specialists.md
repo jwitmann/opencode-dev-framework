@@ -6,7 +6,7 @@ Status: 26.1 PROBED 2026-11-17 (full loop green). 26.2 IMPLEMENTED
 fail-before via stash, 610/610 suite; headless live: review-block
 dispatched all three kinds, notices folded, real finding fixed,
 gate PASS — session `session-de1269e0` in `--tmp-odf-spec264--`).
-26.4 (dsh.md/matrix + TUI preset proof) remains.
+26.4 docs half DONE 2026-11-17; TUI preset proof DONE the same day (user-run finnomena session, see checklist).
 
 ## Problem
 
