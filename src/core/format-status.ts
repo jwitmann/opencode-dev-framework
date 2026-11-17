@@ -233,6 +233,9 @@ export function renderStatus(
       lines.push(
         `  subagents: ${state.seams.subagents ? "available (specialists dispatch as children)" : "unavailable (review runs inline)"}`,
       );
+      lines.push(
+        `  presets: ${state.seams.agentPresets ? "available (reviewers run read-only)" : "unavailable (prompt-level restriction + guards)"}`,
+      );
     }
   }
 

@@ -22,6 +22,8 @@ export interface HostSeams {
   approval: boolean;
   /** DSH-only: the host subagent service (specialist dispatch). */
   subagents: boolean;
+  /** DSH-only: the agent-preset registry (read-only reviewer preset). */
+  agentPresets: boolean;
 }
 
 /**

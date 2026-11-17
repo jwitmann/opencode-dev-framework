@@ -207,6 +207,16 @@ export type DshPostDecision =
 /** `agent/pre-step` decision: reject the step or let edited messages enter. */
 export type DshPreStepDecision = { kind: "reject" } | { kind: "enter"; messages: DshUserMessage[] };
 
+/** Minimal structural face of the host agent-preset registry (plan 26). */
+export interface DshAgentPresets {
+  register(definition: {
+    id: string;
+    name?: string;
+    description?: string;
+    plugins: Array<{ id?: string; name: string; config?: unknown }>;
+  }): Promise<unknown>;
+}
+
 /** Minimal structural face of the host subagent service (plan 26). */
 export interface DshSubagents {
   getProvider(name: string): { name: string } | undefined;
@@ -295,6 +305,12 @@ export interface DshContext {
    * so every read is guarded and absence degrades to inline review.
    */
   readonly subagents?: DshSubagents;
+  /**
+   * Agent-preset registry for the read-only reviewer preset (plan 26.3).
+   * Same guarded-read contract: absence degrades to spawning without a
+   * preset (prompt-level restriction + per-exec guards).
+   */
+  readonly agentPresets?: DshAgentPresets;
   /**
    * User-approval seam. Optional like `tools`/`goals`: the host throws on
    * reading a non-injected service, so every read is guarded and absence
@@ -649,14 +665,56 @@ export function isChildAgent(agent: DshAgent | DshExec["agent"] | undefined): bo
 }
 
 /**
- * Specialist dispatch (plan 26). The only specialist kind dispatched at
- * the gate so far is the pattern-guardian (slice 26.2); style, correctness,
- * and evidence follow in 26.3 through the same helpers.
+ * Specialist dispatch (plan 26). The read-only reviewers dispatched at
+ * review-blocks: pattern-guardian first (slice 26.2), style-enforcer and
+ * code-reviewer joining in 26.3. test-grounder stays a lead duty — it
+ * executes the project's own verify commands, which needs an
+ * execution-capable context, not a read-only child.
  */
-const SPECIALIST_KIND = "pattern-guardian" as const;
+const SPECIALIST_KINDS = ["pattern-guardian", "style-enforcer", "code-reviewer"] as const;
 
-/** Name stem for adapter-spawned specialist children (host limit: ≤32 chars). */
-const SPECIALIST_NAME_STEM = "odf-pattern-guardian";
+type SpecialistKind = (typeof SPECIALIST_KINDS)[number];
+
+/** Name stems for adapter-spawned specialist children (host limit: ≤32 chars). */
+const SPECIALIST_NAME_STEMS: Record<SpecialistKind, string> = {
+  "pattern-guardian": "odf-pattern-guardian",
+  "style-enforcer": "odf-style-enforcer",
+  "code-reviewer": "odf-code-reviewer",
+};
+
+/**
+ * Read-only reviewer preset (plan 26.3): the exact toolset every
+ * specialist child runs under. Registered by the adapter itself at
+ * apply time — no profile-owner step. Reads + search only: no writes,
+ * no exec, no delegation (a child can neither edit nor spawn).
+ */
+const REVIEWER_PRESET_ID = "odf-reviewer";
+
+function reviewerPresetDefinition(): {
+  id: string;
+  name: string;
+  description: string;
+  plugins: Array<{ id: string; name: string; config: unknown }>;
+} {
+  return {
+    id: REVIEWER_PRESET_ID,
+    name: "ODF Reviewer",
+    description:
+      "Read-only review tools for ODF specialist children: filesystem reads and search. No writes, no exec, no delegation.",
+    plugins: [
+      {
+        id: "odf-reviewer-fs",
+        name: "@deepseek-ai/dsh-tool-fs",
+        config: { read: true, readImage: true, write: false, edit: false, applyPatch: false },
+      },
+      {
+        id: "odf-reviewer-search",
+        name: "@deepseek-ai/dsh-tool-fs-search",
+        config: { sampleOverCapGlobResults: false },
+      },
+    ],
+  };
+}
 
 /**
  * Completion-notice shape, verified live (plan 26 slice 26.1): the
@@ -759,6 +817,7 @@ export function apply(ctx: DshContext): void {
       goals: hasServiceMethod(() => ctx.goals, "create"),
       approval: canAskUser(ctx),
       subagents: hasServiceMethod(() => ctx.subagents, "startActivation"),
+      agentPresets: hasServiceMethod(() => ctx.agentPresets, "register"),
     },
   };
   setActiveState(state);
@@ -781,17 +840,74 @@ export function apply(ctx: DshContext): void {
   const injectedSessions = new Map<string, number | undefined>();
 
   // Specialist dispatch (plan 26): children the adapter spawned per
-  // session (at most one pending — a new block while one is outstanding
-  // reuses it instead of fanning out) and findings collected per
-  // session. Findings fold into the next gate steer exactly once, then
-  // clear, so a later block never steers a stale copy.
-  const dispatchedSpecialists = new Map<string, string>();
+  // session and kind (at most one pending per kind — a new block while
+  // one is outstanding reuses it instead of fanning out) and findings
+  // collected per session. Findings fold into the next gate steer
+  // exactly once, then clear, so a later block never steers a stale copy.
+  const dispatchedSpecialists = new Map<string, Map<SpecialistKind, string>>();
   const specialistFindings = new Map<string, string[]>();
   let specialistCounter = 0;
+  // Whether the read-only reviewer preset registered (plan 26.3). Set
+  // asynchronously at apply; spawn reads it at dispatch time, so an
+  // early block simply spawns preset-less and degrades gracefully.
+  let reviewerPresetReady = false;
 
-  /** Dispatch one pattern-guardian child; null when the seam is absent/fails. */
+  // Fire-and-forget: the adapter ships its own reviewer preset — no
+  // profile-owner step. Duplicate registration means our deterministic
+  // definition is already live (HMR re-apply), which also counts as
+  // ready. Any other failure degrades to preset-less spawning.
+  void (async () => {
+    let presets: DshAgentPresets | undefined;
+    try {
+      presets = ctx.agentPresets;
+    } catch (error) {
+      await safeLog(
+        state,
+        "debug",
+        `reviewer preset skipped (no agentPresets seam): ${(error as Error)?.message ?? error}`,
+      );
+      return;
+    }
+    if (typeof presets?.register !== "function") {
+      await safeLog(state, "debug", "reviewer preset skipped: agentPresets.register unavailable");
+      return;
+    }
+    try {
+      await presets.register(reviewerPresetDefinition());
+      reviewerPresetReady = true;
+      await safeLog(state, "info", `reviewer preset registered: ${REVIEWER_PRESET_ID}`);
+    } catch (error) {
+      const message = String((error as Error)?.message ?? error);
+      if (message.includes("Duplicate agent preset")) {
+        reviewerPresetReady = true;
+        await safeLog(state, "debug", `reviewer preset already live: ${REVIEWER_PRESET_ID}`);
+      } else {
+        await safeLog(
+          state,
+          "warn",
+          `reviewer preset unavailable (prompt-level restriction only): ${message}`,
+        );
+      }
+    }
+  })();
+
+  function pendingSpecialist(sessionKey: string, kind: SpecialistKind): string | undefined {
+    return dispatchedSpecialists.get(sessionKey)?.get(kind);
+  }
+
+  function trackSpecialist(sessionKey: string, kind: SpecialistKind, name: string): void {
+    let kinds = dispatchedSpecialists.get(sessionKey);
+    if (kinds === undefined) {
+      kinds = new Map();
+      dispatchedSpecialists.set(sessionKey, kinds);
+    }
+    kinds.set(kind, name);
+  }
+
+  /** Dispatch one specialist child; null when the seam is absent/fails. */
   async function spawnSpecialist(
     sessionKey: string,
+    kind: SpecialistKind,
     agent: DshAgent,
     changedFiles: string[],
     gateSummary: string,
@@ -808,8 +924,8 @@ export function apply(ctx: DshContext): void {
     }
     try {
       specialistCounter += 1;
-      const name = `${SPECIALIST_NAME_STEM}-${specialistCounter}`;
-      const brief = await loadSpecialistBrief(SPECIALIST_KIND, state.directory);
+      const name = `${SPECIALIST_NAME_STEMS[kind]}-${specialistCounter}`;
+      const brief = await loadSpecialistBrief(kind, state.directory);
       const prompt =
         `${brief}\n\nYou are investigating, not implementing: report findings ` +
         `as text, do not edit anything.\nChanged files under review:\n` +
@@ -817,14 +933,15 @@ export function apply(ctx: DshContext): void {
         `Gate summary for this block:\n${gateSummary}`;
       const activation = await subagents.startActivation({
         provider: "spawn",
-        label: `odf specialist review (${SPECIALIST_KIND})`,
+        label: `odf specialist review (${kind})`,
         name,
         prompt: [{ type: "text", text: prompt }],
         parent: agent,
+        ...(reviewerPresetReady ? { agentPreset: REVIEWER_PRESET_ID } : {}),
         ...(signal !== undefined ? { signal } : {}),
         delivery: "parent",
       });
-      dispatchedSpecialists.set(sessionKey, activation.name);
+      trackSpecialist(sessionKey, kind, activation.name);
       await safeLog(state, "info", `specialist dispatched: ${activation.name}`, {
         sessionID: sessionKey,
       });
@@ -1133,31 +1250,40 @@ export function apply(ctx: DshContext): void {
       // the session is already injected.
       {
         const pending = dispatchedSpecialists.get(key);
-        if (pending !== undefined) {
+        if (pending !== undefined && pending.size > 0) {
           for (const message of messages) {
             const text = enteringMessageText(message);
             if (text === null) {
               continue;
             }
             const match = SPECIALIST_NOTICE_RE.exec(text);
-            if (match?.[1] === pending) {
-              // The child finished: consume the pending slot whether or
-              // not it reported anything, so a silent child never wedges
-              // future blocks. Empty closings fold nothing.
-              dispatchedSpecialists.delete(key);
-              const finding = (match[2] ?? "").trim();
-              if (finding !== "") {
-                const collected = specialistFindings.get(key) ?? [];
-                collected.push(`[${pending}] ${finding}`);
-                specialistFindings.set(key, collected);
-                await safeLog(state, "info", `specialist findings collected: ${pending}`, {
-                  sessionID: key,
-                });
-              } else {
-                await safeLog(state, "debug", `specialist finished silent: ${pending}`, {
-                  sessionID: key,
-                });
+            if (match === null) {
+              continue;
+            }
+            const finished = match[1];
+            if (![...pending.values()].includes(finished)) {
+              continue;
+            }
+            // The child finished: consume its kind slot whether or not
+            // it reported anything, so a silent child never wedges
+            // future blocks. Empty closings fold nothing.
+            for (const [kind, childName] of pending) {
+              if (childName === finished) {
+                pending.delete(kind);
               }
+            }
+            const finding = (match[2] ?? "").trim();
+            if (finding !== "") {
+              const collected = specialistFindings.get(key) ?? [];
+              collected.push(`[${finished}] ${finding}`);
+              specialistFindings.set(key, collected);
+              await safeLog(state, "info", `specialist findings collected: ${finished}`, {
+                sessionID: key,
+              });
+            } else {
+              await safeLog(state, "debug", `specialist finished silent: ${finished}`, {
+                sessionID: key,
+              });
             }
           }
         }
@@ -1261,29 +1387,44 @@ export function apply(ctx: DshContext): void {
           "\n\nSpecialist findings (incorporate before writing the review artifact):\n" +
           collected.join("\n");
       }
-      // Dispatch one specialist per block on blocking profiles with the
-      // seam present (plan 26.2: pattern-guardian first). Advisory never
-      // dispatches — it warns instead of blocking. A pending uncollected
-      // child is reused, never fanned out. Absent seam or spawn failure
-      // degrades to the inline steer, unchanged.
+      // Dispatch specialists on review-blocks only (plan 26.3): the tree
+      // is green and only the review duty is unmet — exactly the
+      // reviewers' job. Gate-blocks (failing tests) need the lead to fix
+      // code first; reviewing a red tree would burn child runs for
+      // findings the gate already reports. Weakened blocks steer text
+      // only. Advisory never dispatches — it warns instead of blocking.
+      // At most one pending child per kind per session: a new block
+      // while one is outstanding reuses the slot instead of fanning out.
+      // Absent seam or spawn failure degrades to the inline steer.
       let specialistLine = "";
       if (
+        verdict.decision === "blocked" &&
+        verdict.reason === "review" &&
         (state.config.profile === "standard" || state.config.profile === "strict") &&
-        state.seams?.subagents === true &&
-        !dispatchedSpecialists.has(sessionID)
+        state.seams?.subagents === true
       ) {
-        const dispatched = await spawnSpecialist(
-          sessionID,
-          agent,
-          state.tracker.getChangedFiles(),
-          message,
-          signal,
-        );
-        if (dispatched !== null) {
+        const dispatched: string[] = [];
+        for (const kind of SPECIALIST_KINDS) {
+          if (pendingSpecialist(sessionID, kind) !== undefined) {
+            continue;
+          }
+          const name = await spawnSpecialist(
+            sessionID,
+            kind,
+            agent,
+            state.tracker.getChangedFiles(),
+            message,
+            signal,
+          );
+          if (name !== null) {
+            dispatched.push(name);
+          }
+        }
+        if (dispatched.length > 0) {
           specialistLine =
-            `\n\nSpecialist review dispatched (${dispatched}): its completion ` +
-            "notice will arrive shortly — incorporate its findings alongside this " +
-            "summary before writing the review artifact.";
+            `\n\nSpecialist review dispatched (${dispatched.join(", ")}): their ` +
+            "completion notices will arrive shortly — incorporate their findings " +
+            "alongside this summary before writing the review artifact.";
         }
       }
       // Blocked: steer the turn back with the gate summary. This is the

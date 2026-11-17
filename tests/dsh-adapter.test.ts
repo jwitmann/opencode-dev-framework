@@ -1364,6 +1364,30 @@ describe("specialist spawn (plan 26 slice 26.2)", () => {
     return started;
   }
 
+  function withPresets(
+    ctx: DshContext,
+    mode: "ok" | "duplicate" | "fail" = "ok",
+  ): { definitions: Array<Record<string, unknown>> } {
+    const definitions: Array<Record<string, unknown>> = [];
+    (ctx as unknown as Record<string, unknown>)["agentPresets"] = {
+      register: async (definition: Record<string, unknown>) => {
+        if (mode === "duplicate") {
+          throw new Error(`Duplicate agent preset: ${definition["id"]}`);
+        }
+        if (mode === "fail") {
+          throw new Error("registry unavailable");
+        }
+        definitions.push(definition);
+        return () => undefined;
+      },
+    };
+    return { definitions };
+  }
+
+  async function flushPresetRegistration(): Promise<void> {
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+
   function steerText(agent: { steer: { mock: { calls: unknown[][] } } }): string {
     const message = agent.steer.mock.calls[0]?.[0] as {
       content: Array<{ text: string }>;
@@ -1394,23 +1418,39 @@ describe("specialist spawn (plan 26 slice 26.2)", () => {
     return agent;
   }
 
-  it("spawns a pattern-guardian child on gate block when the seam is present", async () => {
+  it("spawns all three reviewer kinds on a review block", async () => {
     writeConfig(directory, "profile: standard\n");
     const { ctx, captured } = stubContext();
     const started = withSubagents(ctx);
     apply(ctx);
     const agent = await blockOnce(captured);
-    expect(started).toHaveLength(1);
-    const request = started[0] as Record<string, unknown>;
-    expect(request["provider"]).toBe("spawn");
-    expect(request["name"]).toMatch(/^odf-pattern-guardian-\d+$/);
-    expect(request["delivery"]).toBe("parent");
-    const prompt = (request["prompt"] as Array<{ text: string }>)
-      .map((part) => part.text)
-      .join("\n");
-    expect(prompt).toContain("pattern-guardian");
-    expect(prompt).toContain("work.ts");
-    expect(steerText(agent)).toContain(request["name"]);
+    expect(started).toHaveLength(3);
+    const byKind = new Map(
+      (started as Array<Record<string, unknown>>).map((request) => [
+        (request["label"] as string).replace("odf specialist review (", "").replace(")", ""),
+        request,
+      ]),
+    );
+    expect([...byKind.keys()].sort()).toEqual([
+      "code-reviewer",
+      "pattern-guardian",
+      "style-enforcer",
+    ]);
+    for (const [kind, request] of byKind) {
+      const typed = request as Record<string, unknown>;
+      expect(typed["provider"]).toBe("spawn");
+      expect(typed["delivery"]).toBe("parent");
+      expect(typed["name"]).toMatch(new RegExp(`^odf-${kind}-\\d+$`));
+      const prompt = (typed["prompt"] as Array<{ text: string }>)
+        .map((part) => part.text)
+        .join("\n");
+      expect(prompt).toContain(kind);
+      expect(prompt).toContain("work.ts");
+    }
+    const text = steerText(agent);
+    for (const request of started) {
+      expect(text).toContain(request["name"] as string);
+    }
   });
 
   it("degrades to the inline steer when the seam is absent", async () => {
@@ -1418,7 +1458,7 @@ describe("specialist spawn (plan 26 slice 26.2)", () => {
     const { ctx, captured } = stubContext();
     apply(ctx);
     const agent = await blockOnce(captured);
-    expect(steerText(agent)).not.toContain("odf-pattern-guardian");
+    expect(steerText(agent)).not.toContain("Specialist review dispatched");
   });
 
   it("never spawns in advisory, even with the seam present", async () => {
@@ -1444,14 +1484,19 @@ describe("specialist spawn (plan 26 slice 26.2)", () => {
     const started = withSubagents(ctx);
     apply(ctx);
     await blockOnce(captured);
-    const childName = started[0]["name"] as string;
+    expect(started).toHaveLength(3);
+    const pgName = (
+      started as Array<Record<string, unknown>>
+    ).find((request) =>
+      (request["name"] as string).startsWith("odf-pattern-guardian-"),
+    )?.["name"] as string;
     const notice = {
       role: "user",
       content: [
         {
           type: "text",
           text:
-            `Background subagent ${childName} finished and will do no further ` +
+            `Background subagent ${pgName} finished and will do no further ` +
             "work unless you send it more. Its closing message: NO-DUP-HELPERS FOUND",
         },
       ],
@@ -1484,6 +1529,9 @@ describe("specialist spawn (plan 26 slice 26.2)", () => {
     await captured.stopping?.({ agent: second, turn: 2 });
     expect(second.steer).toHaveBeenCalledTimes(1);
     expect(steerText(second)).toContain("NO-DUP-HELPERS FOUND");
+    // Only the collected kind re-spawns (style + correctness still pending).
+    expect(started).toHaveLength(4);
+    expect(started[3]["name"]).toMatch(/^odf-pattern-guardian-\d+$/);
     // Findings are consumed: a further block carries no stale copy.
     await track("extra.ts");
     const third = {
@@ -1494,6 +1542,8 @@ describe("specialist spawn (plan 26 slice 26.2)", () => {
     await captured.stopping?.({ agent: third, turn: 3 });
     expect(third.steer).toHaveBeenCalledTimes(1);
     expect(steerText(third)).not.toContain("NO-DUP-HELPERS FOUND");
+    // Nothing new collected: no further spawns (all three kinds pending).
+    expect(started).toHaveLength(4);
   });
 
   it("a silent child frees the pending slot without folding", async () => {
@@ -1534,8 +1584,75 @@ describe("specialist spawn (plan 26 slice 26.2)", () => {
       session: { header: { id: "ses-spec" } },
     };
     await captured.stopping?.({ agent: second, turn: 2 });
-    expect(started).toHaveLength(2);
+    // First block dispatched three kinds; only the silent one re-spawns.
+    expect(started).toHaveLength(4);
     expect(steerText(second)).not.toContain("Specialist findings");
+  });
+
+  it("dispatches nothing on gate-blocks: reviewers never review a red tree", async () => {
+    writeConfig(directory, 'profile: standard\ncommands:\n  test: "exit 1"\n');
+    // The stub ignores argv, so force the failure at the transport.
+    const { ctx, captured } = stubContext({ exitCode: 1 });
+    const started = withSubagents(ctx);
+    apply(ctx);
+    const agent = await blockOnce(captured);
+    expect(started).toHaveLength(0);
+    expect(steerText(agent)).not.toContain("Specialist review dispatched");
+  });
+
+  it("registers the read-only reviewer preset and selects it on spawn", async () => {
+    writeConfig(directory, "profile: standard\n");
+    const { ctx, captured } = stubContext();
+    const started = withSubagents(ctx);
+    const { definitions } = withPresets(ctx);
+    apply(ctx);
+    await flushPresetRegistration();
+    expect(definitions).toHaveLength(1);
+    const definition = definitions[0] as Record<string, unknown>;
+    expect(definition["id"]).toBe("odf-reviewer");
+    const plugins = definition["plugins"] as Array<Record<string, unknown>>;
+    const fs = plugins.find((plugin) => plugin["name"] === "@deepseek-ai/dsh-tool-fs");
+    expect(fs?.["config"]).toMatchObject({
+      read: true,
+      write: false,
+      edit: false,
+      applyPatch: false,
+    });
+    expect(plugins.some((plugin) => (plugin["name"] as string).includes("bash"))).toBe(false);
+    await blockOnce(captured);
+    expect(started).toHaveLength(3);
+    for (const request of started) {
+      expect(request["agentPreset"]).toBe("odf-reviewer");
+    }
+  });
+
+  it("duplicate preset counts as ready: re-apply never throws", async () => {
+    writeConfig(directory, "profile: standard\n");
+    const { ctx, captured } = stubContext();
+    const started = withSubagents(ctx);
+    withPresets(ctx, "duplicate");
+    apply(ctx);
+    await flushPresetRegistration();
+    await blockOnce(captured);
+    expect(started).toHaveLength(3);
+    for (const request of started) {
+      expect(request["agentPreset"]).toBe("odf-reviewer");
+    }
+  });
+
+  it("preset failure degrades to preset-less spawn, never to no spawn", async () => {
+    writeConfig(directory, "profile: standard\n");
+    const { ctx, captured } = stubContext();
+    const started = withSubagents(ctx);
+    withPresets(ctx, "fail");
+    apply(ctx);
+    await flushPresetRegistration();
+    const agent = await blockOnce(captured);
+    expect(started).toHaveLength(3);
+    for (const request of started) {
+      expect(request).not.toHaveProperty("agentPreset");
+    }
+    expect(steerText(agent)).toContain("Specialist review dispatched");
   });
 
   it("never spawns for child sessions", async () => {
