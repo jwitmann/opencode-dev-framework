@@ -215,7 +215,9 @@ export function continuationMessage(
     `(block ${verdict.blockCount}/${verdict.maxBlocks}).\n\n${verdict.summary}\n\n` +
     `Fix the underlying cause and continue. Do NOT disable, skip, or weaken these checks to ` +
     `get past the gate. If a failure is pre-existing and unrelated to your work, prove it ` +
-    `(show it fails on a clean tree) and report it to the user.`
+    `(show it fails on a clean tree) and report it to the user.\n\n` +
+    `You can inspect live gate state with dev_framework_runtime; if the setup ` +
+    `looks stale, check drift with dev_framework_update.`
   );
 }
 

@@ -139,6 +139,8 @@ export function scaffoldReportLines(scaffold: InitScaffold, directory: string): 
     ...(!scaffold.fresh
       ? ["", "Already configured: nothing changed, so no brief was rebuilt."]
       : []),
+    "",
+    "If the setup drifts later, run dev_framework_update to check.",
   ];
 }
 

@@ -93,6 +93,7 @@ describe("scaffoldReportLines", () => {
     expect(lines[0]).toContain(dir);
     expect(lines.join("\n")).toContain("Config: created");
     expect(lines.join("\n")).toContain("Created files:");
+    expect(lines.join("\n")).toContain("dev_framework_update");
   });
 
   it("explains itself on a no-op re-run", async () => {

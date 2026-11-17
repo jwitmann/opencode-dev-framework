@@ -188,6 +188,8 @@ describe("idle-first continuation (§12 cutover)", () => {
     });
     const first = synthetic.mock.calls[0]?.[0] as { text?: string } | undefined;
     expect(first?.text).toContain("(block 1/3)");
+    expect(first?.text).toContain("dev_framework_runtime");
+    expect(first?.text).toContain("dev_framework_update");
     expect(await createBlockStore(storage).get("blocked-s1")).toBe(1);
 
     // A new boundary after the double-fire window blocks again (count+1).
