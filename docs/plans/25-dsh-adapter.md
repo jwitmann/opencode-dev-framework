@@ -191,7 +191,15 @@ session header to the agent, and the header carries parentage —
 (the host's own classification; historical forks may retain a creator
 id without the origin, so both conditions are required — cf. the
 host's `archive-admission` walk condition and `timeline/delegation`
-reading the same fields). The DSH port is deliberately NOT a clone:
+reading the same fields). Mechanism verified in host source, not
+assumed: `core/tools/src/pipeline.ts` spreads `agent` into the
+pre-execute `exec` whenever the input carries one, and
+`core/tools/src/contracts.ts` documents `ToolExecutionInput.agent`
+as "set by the agent loop" — a child's tool calls run through the
+child's loop, so `exec.agent` is the child agent and the header
+read fires. The only agent-less path is non-loop-initiated calls,
+which read as top-level (same fail-closed-to-today as OpenCode's
+missing-getter fallback). The DSH port is deliberately NOT a clone:
 no async lookup, no cache, no depth walk — a synchronous header read
 (`isChildAgent`) at the two DSH enforcement sites (turn-stopping
 skip, pre-execute artifact deny). Same intent as plan 23, local shape.
