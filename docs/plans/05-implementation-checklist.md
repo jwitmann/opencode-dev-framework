@@ -943,6 +943,12 @@ Dogfood the fork's V2 pre-terminal hook (upstream PR
   top-level-untouched, stash-proven fail-before).
 - [x] `df init --dsh`: CLI mirrors skills into `.dsh/skills`
   (live-verified in `/tmp/odf-dfinit`, all 5 skills).
+- [x] `df install-dsh --profile <name>`: one-command profile wiring
+  (managed block, npm-first `--dist` fallback, preset auto-detect,
+  hand-entry guard, dry-run). Unit: 10 tests; live-dogfooded on
+  dsh-tui (force-migrated hand entry, dump-config verified,
+  idempotency confirmed). Backup of the prior hand edit kept at
+  `~/.dsh/profiles/dsh-tui/cordis.patch.yml.pre-install-dsh`.
 
 ## Peer-review gate (mandatory after EVERY phase 21–27)
 
