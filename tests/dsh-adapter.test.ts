@@ -1148,8 +1148,18 @@ describe("DSH adapter (plan 25 slice 4)", () => {
     const { ctx, captured } = stubContext();
     apply(ctx);
     const init = captured.registered.find((r) => r.name === "df-init");
-    const followup = vi.fn();
-    await init?.handler({ agent: { followup }, rawInput: "" });
+    const followupImpl = vi.fn();
+    // Receiver-enforcing: the handoff must keep the host method's
+    // receiver (same class as the tools.register fix).
+    const agent: { followup(this: unknown, m: unknown): void } = {
+      followup(this: unknown) {
+        if (this !== agent) {
+          throw new TypeError("followup called without agent receiver");
+        }
+        followupImpl();
+      },
+    };
+    await init?.handler({ agent, rawInput: "" });
     // Corrupt a deployed template file so drift is detected.
     const deployed = join(directory, ".opencode", "opencode-dev-framework", "review.md");
     if (existsSync(deployed)) {
@@ -1157,14 +1167,14 @@ describe("DSH adapter (plan 25 slice 4)", () => {
     } else {
       rmSync(join(directory, ".opencode"), { recursive: true, force: true });
     }
-    followup.mockClear();
+    followupImpl.mockClear();
     const update = captured.registered.find((r) => r.name === "df-update");
-    const decision = (await update?.handler({ agent: { followup }, rawInput: "" })) as {
+    const decision = (await update?.handler({ agent, rawInput: "" })) as {
       kind: string;
       text: string;
     };
     expect(decision.kind).toBe("success");
-    expect(followup).toHaveBeenCalledTimes(1);
+    expect(followupImpl).toHaveBeenCalledTimes(1);
     expect(decision.text).toMatch(/drift|refresh/i);
   });
 });
