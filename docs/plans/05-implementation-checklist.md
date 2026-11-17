@@ -911,8 +911,11 @@ Dogfood the fork's V2 pre-terminal hook (upstream PR
   verbatim in plan doc). Evidence: `/tmp/odf-probe26/` (never
   committed) + headless session `session-eaa96a9b` (run 1) and the
   `odf_probe_spawn` session (run 2).
-- [ ] 26.2 Spawn path at gate block (pattern-guardian first),
+- [x] 26.2 Spawn path at gate block (pattern-guardian first),
   findings folded into steer; degrade to inline when seam absent.
+  DONE 2026-11-17 — see plan doc slice notes for the full evidence
+  (6 behavior tests, stash-proven fail-before, 606/606 suite,
+  no new lint diagnostics).
 - [ ] 26.3 Remaining specialists + caps + Agent Preset doc.
 - [ ] 26.4 Tests + live proofs (headless + TUI) + docs updates.
 

@@ -230,6 +230,9 @@ export function renderStatus(
       lines.push(
         `  approval: ${state.seams.approval ? "available (warns ask the human)" : "unavailable (warns allow + log)"}`,
       );
+      lines.push(
+        `  subagents: ${state.seams.subagents ? "available (specialists dispatch as children)" : "unavailable (review runs inline)"}`,
+      );
     }
   }
 

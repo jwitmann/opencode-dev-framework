@@ -1,7 +1,8 @@
 # Plan 26 — DSH specialist subagents (close the delegation gap)
 
-Status: 26.1 PROBED 2026-11-17 (full loop green, see evidence below).
-Slices 26.2–26.4 remain.
+Status: 26.1 PROBED 2026-11-17 (full loop green). 26.2 IMPLEMENTED
+2026-11-17 (6 behavior tests, stash-proven fail-before, 606/606 suite).
+Slices 26.3–26.4 remain.
 
 ## Problem
 
@@ -96,8 +97,19 @@ Closed by the 26.1 probe (headless, model
 
 - 26.1 Probe: `subagents` inject + `startActivation` from the adapter
   ctx on headless (throwaway patch, echo child). Fail-closed record.
+  DONE 2026-11-17 (full loop green, notice verbatim in the unknowns section).
 - 26.2 Spawn path: one specialist (pattern-guardian) at gate block,
   findings folded into steer; degenerate-to-inline when seam absent.
+  DONE 2026-11-17 (6 behavior tests, stash-proven fail-before, 606/606
+  suite): seam probed at mount (`HostSeams.subagents`, rendered in
+  `df-status`); top-level blocking profiles only (advisory/off/children
+  never dispatch); one pending child per session (no fan-out); findings
+  fold exactly once then clear; silent children free the slot; abort
+  signal passed through; brief loaded from
+  `.opencode/agents/pattern-guardian.md` with embedded fallback.
+  Session keying uses stable host session ids (turn-number fallback
+  only in id-less test stubs). Verified interplay: the gate skips
+  unchanged trees, so re-blocks track fresh edits.
 - 26.3 Remaining specialists + naming/budget caps + preset doc.
 - 26.4 Tests (stubbed `subagents` ctx) + live proofs (headless + TUI)
   - `dsh.md`/matrix updates.

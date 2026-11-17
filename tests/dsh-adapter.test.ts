@@ -1330,3 +1330,233 @@ describe("DSH adapter (plan 25 slice 4)", () => {
     expect(decision.text).toMatch(/drift|refresh/i);
   });
 });
+
+describe("specialist spawn (plan 26 slice 26.2)", () => {
+  let directory: string;
+  let savedEnv: string | undefined;
+
+  beforeEach(() => {
+    directory = mkdtempSync(join(tmpdir(), "odf-spec-"));
+    savedEnv = process.env["ODF_WORKDIR"];
+    process.env["ODF_WORKDIR"] = directory;
+  });
+
+  afterEach(() => {
+    if (savedEnv === undefined) {
+      delete process.env["ODF_WORKDIR"];
+    } else {
+      process.env["ODF_WORKDIR"] = savedEnv;
+    }
+    clearConfigCache();
+    rmSync(directory, { recursive: true, force: true });
+  });
+
+  function withSubagents(ctx: DshContext): Array<Record<string, unknown>> {
+    const started: Array<Record<string, unknown>> = [];
+    (ctx as unknown as Record<string, unknown>)["subagents"] = {
+      getProvider: (name: string) => ({ name }),
+      resolveMaxDepth: () => undefined,
+      startActivation: async (request: Record<string, unknown>) => {
+        started.push(request);
+        return { name: request["name"] };
+      },
+    };
+    return started;
+  }
+
+  function steerText(agent: { steer: { mock: { calls: unknown[][] } } }): string {
+    const message = agent.steer.mock.calls[0]?.[0] as {
+      content: Array<{ text: string }>;
+    };
+    return message.content.map((part) => part.text).join("\n");
+  }
+
+  async function blockOnce(
+    captured: Captured,
+    file = "work.ts",
+  ): Promise<{ steer: ReturnType<typeof vi.fn>; followup: ReturnType<typeof vi.fn> }> {
+    writeFileSync(join(directory, file), "export const x = 1;\n");
+    const postNext = async () => ({ kind: "accept" as const });
+    await captured.post?.(
+      { name: "write", arguments: { file_path: file } },
+      { isError: false },
+      postNext,
+    );
+    // Stable session id (production shape): pre-step and turn-stopping
+    // key the same session across turns; turn numbers alone would not.
+    const agent = {
+      steer: vi.fn(),
+      followup: vi.fn(),
+      session: { header: { id: "ses-spec" } },
+    };
+    await captured.stopping?.({ agent, turn: 1 });
+    expect(agent.steer).toHaveBeenCalledTimes(1);
+    return agent;
+  }
+
+  it("spawns a pattern-guardian child on gate block when the seam is present", async () => {
+    writeConfig(directory, "profile: standard\n");
+    const { ctx, captured } = stubContext();
+    const started = withSubagents(ctx);
+    apply(ctx);
+    const agent = await blockOnce(captured);
+    expect(started).toHaveLength(1);
+    const request = started[0] as Record<string, unknown>;
+    expect(request["provider"]).toBe("spawn");
+    expect(request["name"]).toMatch(/^odf-pattern-guardian-\d+$/);
+    expect(request["delivery"]).toBe("parent");
+    const prompt = (request["prompt"] as Array<{ text: string }>)
+      .map((part) => part.text)
+      .join("\n");
+    expect(prompt).toContain("pattern-guardian");
+    expect(prompt).toContain("work.ts");
+    expect(steerText(agent)).toContain(request["name"]);
+  });
+
+  it("degrades to the inline steer when the seam is absent", async () => {
+    writeConfig(directory, "profile: standard\n");
+    const { ctx, captured } = stubContext();
+    apply(ctx);
+    const agent = await blockOnce(captured);
+    expect(steerText(agent)).not.toContain("odf-pattern-guardian");
+  });
+
+  it("never spawns in advisory, even with the seam present", async () => {
+    writeConfig(directory, "profile: advisory\n");
+    const { ctx, captured } = stubContext();
+    const started = withSubagents(ctx);
+    apply(ctx);
+    writeFileSync(join(directory, "work.ts"), "export const x = 1;\n");
+    const postNext = async () => ({ kind: "accept" as const });
+    await captured.post?.(
+      { name: "write", arguments: { file_path: "work.ts" } },
+      { isError: false },
+      postNext,
+    );
+    const agent = { steer: vi.fn(), followup: vi.fn() };
+    await captured.stopping?.({ agent, turn: 1 });
+    expect(started).toHaveLength(0);
+  });
+
+  it("folds specialist findings into the next steer, exactly once", async () => {
+    writeConfig(directory, "profile: standard\n");
+    const { ctx, captured } = stubContext();
+    const started = withSubagents(ctx);
+    apply(ctx);
+    await blockOnce(captured);
+    const childName = started[0]["name"] as string;
+    const notice = {
+      role: "user",
+      content: [
+        {
+          type: "text",
+          text:
+            `Background subagent ${childName} finished and will do no further ` +
+            "work unless you send it more. Its closing message: NO-DUP-HELPERS FOUND",
+        },
+      ],
+      source: { kind: "subagent" },
+    };
+    await captured.preStep?.(
+      {
+        agent: { session: { header: { id: "ses-spec" } } },
+        messages: [notice],
+        turn: 2,
+      },
+      async () => ({ kind: "enter", messages: [] }),
+    );
+    // New work between blocks: the gate skips unchanged trees, so track
+    // a fresh edit before each re-block.
+    const track = async (file: string) => {
+      writeFileSync(join(directory, file), "export const x = 1;\n");
+      await captured.post?.(
+        { name: "write", arguments: { file_path: file } },
+        { isError: false },
+        async () => ({ kind: "accept" as const }),
+      );
+    };
+    await track("more.ts");
+    const second = {
+      steer: vi.fn(),
+      followup: vi.fn(),
+      session: { header: { id: "ses-spec" } },
+    };
+    await captured.stopping?.({ agent: second, turn: 2 });
+    expect(second.steer).toHaveBeenCalledTimes(1);
+    expect(steerText(second)).toContain("NO-DUP-HELPERS FOUND");
+    // Findings are consumed: a further block carries no stale copy.
+    await track("extra.ts");
+    const third = {
+      steer: vi.fn(),
+      followup: vi.fn(),
+      session: { header: { id: "ses-spec" } },
+    };
+    await captured.stopping?.({ agent: third, turn: 3 });
+    expect(third.steer).toHaveBeenCalledTimes(1);
+    expect(steerText(third)).not.toContain("NO-DUP-HELPERS FOUND");
+  });
+
+  it("a silent child frees the pending slot without folding", async () => {
+    writeConfig(directory, "profile: standard\n");
+    const { ctx, captured } = stubContext();
+    const started = withSubagents(ctx);
+    apply(ctx);
+    await blockOnce(captured);
+    const childName = started[0]["name"] as string;
+    const silent = {
+      role: "user",
+      content: [
+        {
+          type: "text",
+          text: `Background subagent ${childName} finished and will do no further work unless you send it more. Its closing message: `,
+        },
+      ],
+      source: { kind: "subagent" },
+    };
+    await captured.preStep?.(
+      {
+        agent: { session: { header: { id: "ses-spec" } } },
+        messages: [silent],
+        turn: 2,
+      },
+      async () => ({ kind: "enter", messages: [] }),
+    );
+    // Slot freed: the next block dispatches a fresh specialist and folds nothing.
+    writeFileSync(join(directory, "more.ts"), "export const x = 1;\n");
+    await captured.post?.(
+      { name: "write", arguments: { file_path: "more.ts" } },
+      { isError: false },
+      async () => ({ kind: "accept" as const }),
+    );
+    const second = {
+      steer: vi.fn(),
+      followup: vi.fn(),
+      session: { header: { id: "ses-spec" } },
+    };
+    await captured.stopping?.({ agent: second, turn: 2 });
+    expect(started).toHaveLength(2);
+    expect(steerText(second)).not.toContain("Specialist findings");
+  });
+
+  it("never spawns for child sessions", async () => {
+    writeConfig(directory, "profile: standard\n");
+    const { ctx, captured } = stubContext();
+    const started = withSubagents(ctx);
+    apply(ctx);
+    writeFileSync(join(directory, "work.ts"), "export const x = 1;\n");
+    const postNext = async () => ({ kind: "accept" as const });
+    await captured.post?.(
+      { name: "write", arguments: { file_path: "work.ts" } },
+      { isError: false },
+      postNext,
+    );
+    const child = {
+      steer: vi.fn(),
+      followup: vi.fn(),
+      session: { header: { origin: "subagent", parentSession: "ses-parent" } },
+    };
+    await captured.stopping?.({ agent: child, turn: 1 });
+    expect(started).toHaveLength(0);
+    expect(child.steer).not.toHaveBeenCalled();
+  });
+});

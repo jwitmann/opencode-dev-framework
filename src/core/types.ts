@@ -20,6 +20,8 @@ export interface HostSeams {
   tools: boolean;
   goals: boolean;
   approval: boolean;
+  /** DSH-only: the host subagent service (specialist dispatch). */
+  subagents: boolean;
 }
 
 /**

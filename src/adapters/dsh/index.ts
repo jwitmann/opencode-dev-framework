@@ -18,7 +18,7 @@
  */
 
 import { randomUUID } from "node:crypto";
-import { stat } from "node:fs/promises";
+import { readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { createBlockStore, createStuckSnapshotStore } from "../../core/block-store.js";
 
@@ -207,6 +207,23 @@ export type DshPostDecision =
 /** `agent/pre-step` decision: reject the step or let edited messages enter. */
 export type DshPreStepDecision = { kind: "reject" } | { kind: "enter"; messages: DshUserMessage[] };
 
+/** Minimal structural face of the host subagent service (plan 26). */
+export interface DshSubagents {
+  getProvider(name: string): { name: string } | undefined;
+  resolveMaxDepth(value: unknown): unknown;
+  startActivation(request: {
+    provider: string;
+    label: string;
+    name?: string;
+    prompt: Array<{ type: "text"; text: string }>;
+    parent: unknown;
+    agentPreset?: string;
+    maxDepth?: unknown;
+    signal?: AbortSignal;
+    delivery: "parent";
+  }): Promise<{ name: string }>;
+}
+
 /** What a DSH command handler receives: the invoking agent, raw input, abort. */
 export interface DshCommandInvocation {
   readonly agent: DshAgent;
@@ -272,6 +289,12 @@ export interface DshContext {
   readonly commands: DshCommands;
   readonly tools?: DshTools;
   readonly goals?: DshGoals;
+  /**
+   * Subagent service for specialist dispatch (plan 26). Optional like
+   * `tools`/`goals`: the host throws on reading a non-injected service,
+   * so every read is guarded and absence degrades to inline review.
+   */
+  readonly subagents?: DshSubagents;
   /**
    * User-approval seam. Optional like `tools`/`goals`: the host throws on
    * reading a non-injected service, so every read is guarded and absence
@@ -626,6 +649,63 @@ export function isChildAgent(agent: DshAgent | DshExec["agent"] | undefined): bo
 }
 
 /**
+ * Specialist dispatch (plan 26). The only specialist kind dispatched at
+ * the gate so far is the pattern-guardian (slice 26.2); style, correctness,
+ * and evidence follow in 26.3 through the same helpers.
+ */
+const SPECIALIST_KIND = "pattern-guardian" as const;
+
+/** Name stem for adapter-spawned specialist children (host limit: ≤32 chars). */
+const SPECIALIST_NAME_STEM = "odf-pattern-guardian";
+
+/**
+ * Completion-notice shape, verified live (plan 26 slice 26.1): the
+ * delivery-to-parent notice names the finished child and quotes its
+ * closing message.
+ */
+const SPECIALIST_NOTICE_RE =
+  /Background subagent ([a-z0-9][a-z0-9-]*) finished[\s\S]*?[Ii]ts closing message:\s*([\s\S]*?)\s*$/;
+
+/** Read-only investigation brief when the agent file is unreadable. */
+const SPECIALIST_FALLBACK_BRIEF =
+  "You are the pattern-guardian: check the changed files below against the " +
+  "codebase's existing patterns (duplication, re-invented helpers, divergent " +
+  "conventions, unjustified new dependencies). Report findings as text; do " +
+  "not edit anything.";
+
+/** Load the specialist brief: shipped agent file first, fallback brief never throws. */
+async function loadSpecialistBrief(kind: string, directory: string): Promise<string> {
+  try {
+    return await readFile(join(directory, ".opencode/agents", `${kind}.md`), "utf8");
+  } catch {
+    return SPECIALIST_FALLBACK_BRIEF;
+  }
+}
+
+/** Best-effort text of one entering message (any shape, never throws). */
+function enteringMessageText(message: unknown): string | null {
+  if (typeof message !== "object" || message === null) {
+    return null;
+  }
+  const content = (message as { content?: unknown }).content;
+  if (!Array.isArray(content)) {
+    return null;
+  }
+  const parts: string[] = [];
+  for (const part of content) {
+    if (
+      typeof part === "object" &&
+      part !== null &&
+      (part as { type?: unknown }).type === "text" &&
+      typeof (part as { text?: unknown }).text === "string"
+    ) {
+      parts.push((part as { text: string }).text);
+    }
+  }
+  return parts.length > 0 ? parts.join("\n") : null;
+}
+
+/**
  * Register the ODF gates on a DSH Cordis context. Synchronous like every
  * DSH plugin `apply`. A project without (or with a broken) config gets no
  * hooks at all — error-logged, never throwing: failing the whole host
@@ -678,6 +758,7 @@ export function apply(ctx: DshContext): void {
       tools: hasServiceMethod(() => ctx.tools, "register"),
       goals: hasServiceMethod(() => ctx.goals, "create"),
       approval: canAskUser(ctx),
+      subagents: hasServiceMethod(() => ctx.subagents, "startActivation"),
     },
   };
   setActiveState(state);
@@ -698,6 +779,65 @@ export function apply(ctx: DshContext): void {
   // `sessionOf`: stable host ids in production, turn-number fallback in
   // id-less contexts (test stubs).
   const injectedSessions = new Map<string, number | undefined>();
+
+  // Specialist dispatch (plan 26): children the adapter spawned per
+  // session (at most one pending — a new block while one is outstanding
+  // reuses it instead of fanning out) and findings collected per
+  // session. Findings fold into the next gate steer exactly once, then
+  // clear, so a later block never steers a stale copy.
+  const dispatchedSpecialists = new Map<string, string>();
+  const specialistFindings = new Map<string, string[]>();
+  let specialistCounter = 0;
+
+  /** Dispatch one pattern-guardian child; null when the seam is absent/fails. */
+  async function spawnSpecialist(
+    sessionKey: string,
+    agent: DshAgent,
+    changedFiles: string[],
+    gateSummary: string,
+    signal?: AbortSignal,
+  ): Promise<string | null> {
+    let subagents: DshSubagents | undefined;
+    try {
+      subagents = ctx.subagents;
+    } catch {
+      subagents = undefined;
+    }
+    if (typeof subagents?.startActivation !== "function") {
+      return null;
+    }
+    try {
+      specialistCounter += 1;
+      const name = `${SPECIALIST_NAME_STEM}-${specialistCounter}`;
+      const brief = await loadSpecialistBrief(SPECIALIST_KIND, state.directory);
+      const prompt =
+        `${brief}\n\nYou are investigating, not implementing: report findings ` +
+        `as text, do not edit anything.\nChanged files under review:\n` +
+        `${changedFiles.map((file) => `- ${file}`).join("\n")}\n\n` +
+        `Gate summary for this block:\n${gateSummary}`;
+      const activation = await subagents.startActivation({
+        provider: "spawn",
+        label: `odf specialist review (${SPECIALIST_KIND})`,
+        name,
+        prompt: [{ type: "text", text: prompt }],
+        parent: agent,
+        ...(signal !== undefined ? { signal } : {}),
+        delivery: "parent",
+      });
+      dispatchedSpecialists.set(sessionKey, activation.name);
+      await safeLog(state, "info", `specialist dispatched: ${activation.name}`, {
+        sessionID: sessionKey,
+      });
+      return activation.name;
+    } catch (error) {
+      await safeLog(
+        state,
+        "warn",
+        `specialist spawn failed (inline review continues): ${(error as Error)?.message ?? error}`,
+      );
+      return null;
+    }
+  }
 
   ctx.on("tools/pre-execute", async (exec, next) => {
     try {
@@ -984,6 +1124,44 @@ export function apply(ctx: DshContext): void {
         return next();
       }
       const key = sessionOf(agent, turn);
+      // Specialist findings (plan 26): a completion notice for a child
+      // this adapter dispatched carries its closing message as review
+      // evidence. Collect per session; the next gate block folds the
+      // findings into its steer and clears them. Notices for children
+      // the adapter did not dispatch are ignored. Scanned before the
+      // injection early-return: findings arrive on later steps, after
+      // the session is already injected.
+      {
+        const pending = dispatchedSpecialists.get(key);
+        if (pending !== undefined) {
+          for (const message of messages) {
+            const text = enteringMessageText(message);
+            if (text === null) {
+              continue;
+            }
+            const match = SPECIALIST_NOTICE_RE.exec(text);
+            if (match?.[1] === pending) {
+              // The child finished: consume the pending slot whether or
+              // not it reported anything, so a silent child never wedges
+              // future blocks. Empty closings fold nothing.
+              dispatchedSpecialists.delete(key);
+              const finding = (match[2] ?? "").trim();
+              if (finding !== "") {
+                const collected = specialistFindings.get(key) ?? [];
+                collected.push(`[${pending}] ${finding}`);
+                specialistFindings.set(key, collected);
+                await safeLog(state, "info", `specialist findings collected: ${pending}`, {
+                  sessionID: key,
+                });
+              } else {
+                await safeLog(state, "debug", `specialist finished silent: ${pending}`, {
+                  sessionID: key,
+                });
+              }
+            }
+          }
+        }
+      }
       // Already injected under the current config: pass through (the
       // once-per-session rule; admitted history keeps its copy, exactly
       // like system text already admitted on the OpenCode side).
@@ -1073,6 +1251,41 @@ export function apply(ctx: DshContext): void {
       if (message === null) {
         return;
       }
+      // Fold collected specialist findings (plan 26), then clear: each
+      // finding steers exactly one block, never a stale copy.
+      let steerText = message;
+      const collected = specialistFindings.get(sessionID);
+      if (collected !== undefined && collected.length > 0) {
+        specialistFindings.delete(sessionID);
+        steerText +=
+          "\n\nSpecialist findings (incorporate before writing the review artifact):\n" +
+          collected.join("\n");
+      }
+      // Dispatch one specialist per block on blocking profiles with the
+      // seam present (plan 26.2: pattern-guardian first). Advisory never
+      // dispatches — it warns instead of blocking. A pending uncollected
+      // child is reused, never fanned out. Absent seam or spawn failure
+      // degrades to the inline steer, unchanged.
+      let specialistLine = "";
+      if (
+        (state.config.profile === "standard" || state.config.profile === "strict") &&
+        state.seams?.subagents === true &&
+        !dispatchedSpecialists.has(sessionID)
+      ) {
+        const dispatched = await spawnSpecialist(
+          sessionID,
+          agent,
+          state.tracker.getChangedFiles(),
+          message,
+          signal,
+        );
+        if (dispatched !== null) {
+          specialistLine =
+            `\n\nSpecialist review dispatched (${dispatched}): its completion ` +
+            "notice will arrive shortly — incorporate its findings alongside this " +
+            "summary before writing the review artifact.";
+        }
+      }
       // Blocked: steer the turn back with the gate summary. This is the
       // superiority over the OpenCode idle gate: `turn-stopping` fires
       // pre-terminal (the host awaits listeners, then re-reads its inbox —
@@ -1081,7 +1294,7 @@ export function apply(ctx: DshContext): void {
       // queues a turn only when steering is unavailable. Budget exhaustion
       // is already a core `standdown` verdict (no steer) — the adapter
       // never counts blocks itself.
-      const followup = dshUserMessage(message);
+      const followup = dshUserMessage(steerText + specialistLine);
       try {
         // Single abort check immediately before steering: an abort landing
         // between gate evaluation and this line must not wake a new turn
