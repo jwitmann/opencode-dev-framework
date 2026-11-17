@@ -8,7 +8,10 @@
 > `df-goal`, `df-verify`, `df-profile`, `df-runtime`, `df-init`,
 > `df-update`),
 > and agent tools (`dev_framework_verify/set_profile/status/init`)
-> are wired and unit-proven; their live-fire runs next. Deliberate
+> are wired and unit-proven; `dev_framework_status` since invoked
+> live by the model (full status text returned), and the child
+> artifact deny live-proven (subagent attempted `review.md`, got
+> the guard text, reported back as text). Deliberate
 > release still pending.
 
 ## Agent tools
@@ -89,7 +92,9 @@ budgeting, `protect_off` scope.
   no review duty — the parent answers for the shared tree), and
   children cannot write `review.md` (`child-artifact-deny`; advisory
   warns). Parentage is read synchronously from the host session
-  header (`origin`/`parentSession`), no lookup needed.
+  header (`origin`/`parentSession`), no lookup needed. Live: the
+  subagent attempted the review write, received the denial text,
+  and reported back while the parent wrote the artifact.
 
 ## Troubleshooting
 
