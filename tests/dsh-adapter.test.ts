@@ -301,8 +301,9 @@ describe("DSH adapter (plan 25 slice 4)", () => {
     const { ctx, captured } = stubContext();
     apply(ctx);
     const next = async (): Promise<DshPreDecision> => ({ kind: "allow" });
-    // `ask` is never emitted: without an approval service the host denies
-    // it, which would convert warnings into blocks. Warn allows, like opencode.
+    // No approval seam in this stub: warn allows with a warn log, exactly
+    // like the OpenCode adapter. With the seam present (next test), the
+    // human gets the question instead.
     const bash = await captured.pre(
       { name: "bash", arguments: { command: "rm -rf /tmp/x" } },
       next,
@@ -311,6 +312,39 @@ describe("DSH adapter (plan 25 slice 4)", () => {
     const env = await captured.pre({ name: "write", arguments: { file_path: ".env" } }, next);
     expect(env).toEqual({ kind: "allow" });
     expect(captured.warns.length).toBeGreaterThan(0);
+  });
+
+  it("asks the human on warn when the approval seam is present (TUI intent)", async () => {
+    writeConfig(directory, 'profile: advisory\nprotect:\n  - ".env*"\n');
+    const { ctx, captured } = stubContext();
+    // The interactive TUI mounts user-approval with human answerers; the
+    // guarded read succeeds, so the warn reaches the human as `ask`.
+    // Either object- or function-shaped mounts count (services are
+    // objects today; a callable mount must not silently degrade).
+    for (const approval of [{}, () => {}]) {
+      const withApproval = { ...ctx, approval };
+      apply(withApproval as unknown as DshContext);
+      const next = async (): Promise<DshPreDecision> => ({ kind: "allow" });
+      const env = await captured.pre({ name: "write", arguments: { file_path: ".env" } }, next);
+      expect(env.kind).toBe("ask");
+      expect((env as { reason: string }).reason).toContain('matched ".env*"');
+    }
+  });
+
+  it("never asks from child sessions: children report back, the parent decides", async () => {
+    writeConfig(directory, 'profile: advisory\nprotect:\n  - ".env*"\n');
+    const { ctx, captured } = stubContext();
+    const withApproval = { ...ctx, approval: {} };
+    apply(withApproval as unknown as DshContext);
+    const next = async (): Promise<DshPreDecision> => ({ kind: "allow" });
+    const childAgent = {
+      session: { header: { origin: "subagent", parentSession: "ses_parent" } },
+    };
+    const env = await captured.pre(
+      { name: "write", arguments: { file_path: ".env" }, agent: childAgent },
+      next,
+    );
+    expect(env).toEqual({ kind: "allow" });
   });
 
   it("guardErrorDecision fails closed except in advisory", () => {

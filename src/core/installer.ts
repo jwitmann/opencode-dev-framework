@@ -36,6 +36,93 @@ export interface TemplateStatus {
   different: string[];
 }
 
+/**
+ * DSH skill roots scanned by the host skill-filesystem provider, highest
+ * rank first. `.opencode/skills` (the OpenCode layout `installTemplates`
+ * writes) is not among them, so a DSH `df-init` must mirror the bundled
+ * skills here or the `skill` tool never catalogs them and the setup brief
+ * names something the agent cannot load — the framework would not start.
+ */
+export const DSH_SKILL_ROOTS = [".dsh/skills", ".agents/skills"] as const;
+
+/**
+ * Mirror the bundled `.opencode/skills` templates into a DSH-scanned skill
+ * root so the host `skill` tool catalogs them. Same skip/overwrite
+ * semantics as `installTemplates`: never clobber user files unasked.
+ * Returns created/skipped/overwritten paths relative to the target dir.
+ * `statusTemplates` only iterates the template set, so these copies never
+ * read as drift.
+ */
+export async function mirrorSkillsToDsh(
+  targetDir: string,
+  root: string = DSH_SKILL_ROOTS[0],
+  options: InstallOptions = {},
+): Promise<InstallResult> {
+  const result: InstallResult = { created: [], skipped: [], overwritten: [] };
+  const prompt = options.prompt ?? defaultPrompt;
+  /** Sticky decision set when the user answers "all" or "none". */
+  let stickyDecision: "overwrite" | "skip" | null = null;
+
+  const skillsDir = join(TEMPLATES_DIR, ".opencode", "skills");
+  // Loud like `listTemplateFiles`: a missing/unreadable skills dir is
+  // packaging breakage, and silence would present a clean init whose brief
+  // names a skill the host can never catalog.
+  const names = (await fs.readdir(skillsDir, { withFileTypes: true }))
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => entry.name)
+    .sort();
+
+  for (const name of names) {
+    const source = join(skillsDir, name, "SKILL.md");
+    const sourceContent = await readFileSafe(source);
+    if (sourceContent === null) {
+      continue;
+    }
+    const relative = `${root}/${name}/SKILL.md`;
+    const destination = join(targetDir, relative);
+
+    if (!(await fileExists(destination))) {
+      await fs.mkdir(dirname(destination), { recursive: true });
+      await fs.writeFile(destination, sourceContent, "utf8");
+      result.created.push(relative);
+      continue;
+    }
+
+    if ((await readFileSafe(destination)) === sourceContent) {
+      result.skipped.push(relative);
+      continue;
+    }
+
+    let decision: OverwriteDecision;
+    if (stickyDecision !== null) {
+      decision = stickyDecision;
+    } else if (options.skipExisting) {
+      decision = "skip";
+    } else if (options.overwriteExisting) {
+      decision = "overwrite";
+    } else {
+      decision = await prompt(relative);
+    }
+
+    if (decision === "overwrite-all") {
+      stickyDecision = "overwrite";
+      decision = "overwrite";
+    } else if (decision === "skip-all") {
+      stickyDecision = "skip";
+      decision = "skip";
+    }
+
+    if (decision === "overwrite") {
+      await fs.writeFile(destination, sourceContent, "utf8");
+      result.overwritten.push(relative);
+    } else {
+      result.skipped.push(relative);
+    }
+  }
+
+  return result;
+}
+
 /** List all template files relative to TEMPLATES_DIR. */
 export async function listTemplateFiles(): Promise<string[]> {
   const files: string[] = [];

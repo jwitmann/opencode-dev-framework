@@ -38,6 +38,14 @@ it with a `--patch` overlay naming the built file:
 - insert:
     - id: odf-gates
       name: /path/to/opencode-dev-framework/dist/adapters/dsh/index.js
+- id: odf-gates
+  inject:
+    - tools
+    - goals
+    # Ask the human instead of logging: guard `warn` verdicts arrive as
+    # `ask` decisions only when this seam is injected. Without it the
+    # adapter allows with a warn log (agent-run headless keeps working).
+    - approval
 ```
 
 ```bash
@@ -86,8 +94,22 @@ budgeting, `protect_off` scope.
   (same core as the OpenCode modal/tool); invalid names rejected.
 - **`df-init` / `df-update`**: deterministic scaffold/drift-check in
   code, judgment half handed to the agent via `followup` (the
-  operator-memory `operator-project-init` pattern). Safe to re-run.
+  operator-memory `operator-project-init` pattern). DSH-native: the
+  scaffold also mirrors the shipped skills into `.dsh/skills/` (the
+  host `skill` tool only scans `.dsh/skills`, `.agents/skills`, and
+  the user roots — never `.opencode/skills`), and the brief tells the
+  agent to load `project-config` with the `skill` tool and ask
+  user-only questions (at most 3) with `ask_user_question`. Safe to
+  re-run; mirrors never clobber user edits unasked and never read as
+  drift. Reviewer agents (`.opencode/agents/`) have no DSH equivalent
+  and stay inert files — the review loop runs through gate steer text
+  instead.
 - **`df-status`**: live gate status (profile, config, level).
+- **Warn asks the human (TUI)**: a guard `warn` arrives as an `ask`
+  decision when the approval seam is injected, so it prompts instead
+  of scrolling by in the log. Child sessions never ask (they report
+  back; the parent decides). Without the seam, warn allows with a
+  warn log.
 - **Child sessions**: the turn-stopping gate skips subagents (they owe
   no review duty — the parent answers for the shared tree), and
   children cannot write `review.md` (`child-artifact-deny`; advisory

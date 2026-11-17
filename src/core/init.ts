@@ -18,6 +18,7 @@ import {
   formatTrialRun,
   formatWizardBrief,
   installTemplates,
+  mirrorSkillsToDsh,
   trialRunDetectedCommands,
   writeDetectedConfig,
 } from "./installer.js";
@@ -26,6 +27,12 @@ export interface InitScaffoldOptions {
   wizard?: boolean;
   /** Rewrite files that differ from the templates (default: skip them). */
   overwrite?: boolean;
+  /**
+   * Mirror the bundled skills into this host-scanned skill root (e.g.
+   * ".dsh/skills") so the host `skill` tool catalogs them. Unset means
+   * no mirror (hosts that read `.opencode/skills` directly need none).
+   */
+  skillMirrorRoot?: string;
 }
 
 export interface InitScaffold {
@@ -60,6 +67,16 @@ export async function runInitScaffold(
   const io = { overwriteExisting: overwrite, skipExisting: !overwrite };
   const result = await installTemplates(directory, io);
   const configResult = await writeDetectedConfig(directory, io);
+  if (options.skillMirrorRoot !== undefined) {
+    // Setup intent: the framework only "kicks in" if the agent can load
+    // the shipped skills through the host `skill` tool. Roots the host
+    // never scans (e.g. `.opencode/skills` on DSH) get mirrored where
+    // discovery looks — same skip/overwrite contract as the templates.
+    const mirror = await mirrorSkillsToDsh(directory, options.skillMirrorRoot, io);
+    result.created.push(...mirror.created);
+    result.skipped.push(...mirror.skipped);
+    result.overwritten.push(...mirror.overwritten);
+  }
   const fresh =
     result.created.length > 0 ||
     result.overwritten.length > 0 ||
@@ -137,6 +154,7 @@ export function composeInitPrompt(
   scaffold: InitScaffold,
   directory: string,
   warnings: string[] = [],
+  skillAccess: "name" | "tool" = "name",
 ): string {
   const warningLines = warnings.length > 0 ? [...warnings.map((w) => `Warning: ${w}`), ""] : [];
   if (!scaffold.fresh) {
@@ -152,10 +170,20 @@ export function composeInitPrompt(
     ...scaffoldReportLines(scaffold, directory),
     ...warningLines,
     "",
-    "Set up opencode-dev-framework for this project from the report and brief above. " +
-      "Follow the project-config skill to resolve the open questions — ask at most 3 genuinely " +
-      "user-only questions, resolve the rest yourself by reading the repo and running the commands — " +
-      "then present .opencode-dev-framework.yml + hardening.md for review. Do not commit unreviewed.",
+    ...(skillAccess === "tool"
+      ? [
+          "Set up opencode-dev-framework for this project from the report and brief above. " +
+            "Load the project-config skill with the `skill` tool and follow it to resolve the open questions — " +
+            "ask at most 3 genuinely user-only questions with `ask_user_question`, resolve the rest yourself " +
+            "by reading the repo and running the commands — " +
+            "then present .opencode-dev-framework.yml + hardening.md for review. Do not commit unreviewed.",
+        ]
+      : [
+          "Set up opencode-dev-framework for this project from the report and brief above. " +
+            "Follow the project-config skill to resolve the open questions — ask at most 3 genuinely " +
+            "user-only questions, resolve the rest yourself by reading the repo and running the commands — " +
+            "then present .opencode-dev-framework.yml + hardening.md for review. Do not commit unreviewed.",
+        ]),
   ].join("\n");
 }
 
@@ -163,6 +191,17 @@ export interface InitCommandDeps {
   directory: string;
   run: RunCommand;
   delivery: unknown;
+  /**
+   * Mirror skills into this host-scanned root (setup only reaches the
+   * agent where the host looks). Unset: no mirror.
+   */
+  skillMirrorRoot?: string;
+  /**
+   * How the brief names skill loading: `"tool"` loads via a host `skill`
+   * tool with user questions via `ask_user_question`; `"name"` (default)
+   * follows the skill by registered name through conversation.
+   */
+  skillAccess?: "name" | "tool";
   /** Throws when the owning setup/state went stale mid-scaffold. */
   checkAlive: () => void;
   /** Reload the project config after scaffolding; throws on invalid config. */
@@ -188,7 +227,10 @@ export interface InitCommandDeps {
  * handoff was delivered.
  */
 export async function runInitCommand(deps: InitCommandDeps): Promise<boolean> {
-  const scaffold = await runInitScaffold(deps.directory, deps.run, { wizard: true });
+  const scaffold = await runInitScaffold(deps.directory, deps.run, {
+    wizard: true,
+    skillMirrorRoot: deps.skillMirrorRoot,
+  });
   deps.checkAlive();
   const warnings: string[] = [];
   try {
@@ -206,7 +248,7 @@ export async function runInitCommand(deps: InitCommandDeps): Promise<boolean> {
   if (!initNeedsHandoff(scaffold, warnings)) {
     return false;
   }
-  const text = composeInitPrompt(scaffold, deps.directory, warnings);
+  const text = composeInitPrompt(scaffold, deps.directory, warnings, deps.skillAccess ?? "name");
   try {
     await deps.deliver(text, deps.delivery);
   } catch (error) {

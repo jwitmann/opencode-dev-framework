@@ -39,6 +39,7 @@ import {
   preflightBlockReason,
 } from "../../core/harness.js";
 import { runInitCommand, runInitScaffold, scaffoldReportLines } from "../../core/init.js";
+import { DSH_SKILL_ROOTS } from "../../core/installer.js";
 import {
   createLintLimiter,
   detectPreCommitAvailability,
@@ -247,6 +248,12 @@ export interface DshContext {
   readonly commands: DshCommands;
   readonly tools?: DshTools;
   readonly goals?: DshGoals;
+  /**
+   * User-approval seam. Optional like `tools`/`goals`: the host throws on
+   * reading a non-injected service, so every read is guarded and absence
+   * degrades to allow+log. Declared structurally (no host import).
+   */
+  readonly approval?: unknown;
   on(
     event: "tools/pre-execute",
     listener: (exec: DshExec, next: () => Promise<DshPreDecision>) => Promise<DshPreDecision>,
@@ -390,13 +397,42 @@ function registerDshTool(
   }
 }
 
-function toPreDecision(result: GuardResult): DshPreDecision {
-  // `warn` never blocks on any host: it allows with a warn log, exactly like
-  // the OpenCode adapter. (`ask` is deliberately never emitted: without an
-  // approval service the host denies it, which would convert advisory
-  // warnings into blocks — the opposite of the warn contract. The `ask`
-  // variant stays in `DshPreDecision` because the host contract owns it.)
+/**
+ * Whether a guard `warn` can reach the human as an `ask` decision. Guarded
+ * read (same idiom as the tool/goal services): the host throws without
+ * inject, and absence means allow+log. Child sessions never ask — a child
+ * reports back and the parent decides (the host rejects child questions
+ * anyway); the caller ANDs this with `!isChildAgent(exec.agent)`.
+ */
+function canAskUser(ctx: DshContext): boolean {
+  try {
+    // Services are objects here (`subprocess`, `commands`, `tools`,
+    // `goals`); accept a callable too so a future function-shaped mount
+    // still reaches the human instead of silently degrading.
+    const approval = ctx.approval as unknown;
+    return approval !== null && (typeof approval === "object" || typeof approval === "function");
+  } catch {
+    return false;
+  }
+}
+
+function toPreDecision(result: GuardResult, askAvailable: boolean): DshPreDecision {
+  // Intent over mechanism: a `warn` is the framework asking the human, not
+  // a log line. Where the host exposes a user-approval seam (the
+  // interactive TUI mounts it with human answerers), emit `ask` so the
+  // human actually gets the question. Where the seam is absent (agent-run
+  // headless: the read throws without inject), allow with a warn log —
+  // exactly like the OpenCode adapter. Emitting `ask` with no answerers
+  // would fail closed and convert advisory warnings into blocks, the
+  // opposite of the warn contract. (`cancel` stays unused: nothing in the
+  // framework asks the model to stand down, only the human to decide.)
   if (result.decision !== "deny") {
+    if (result.decision === "warn" && askAvailable) {
+      // Fallback literal mirrors the deny armor below: core `enforce()`
+      // always sets `reason`, but a reason-less `ask` must still read
+      // as a request, never as an empty prompt.
+      return { kind: "ask", reason: result.reason ?? "review requested by guardrails" };
+    }
     return { kind: "allow" };
   }
   // Fallback literal is unreachable armor: core `enforce()` always sets
@@ -697,7 +733,7 @@ export function apply(ctx: DshContext): void {
         const verdict = decideShellGuard(state.config, command, undefined, exec.name);
         if (verdict.decision !== "allow") {
           await safeLog(state, "warn", verdict.reason ?? "shell call blocked", { tool: exec.name });
-          return toPreDecision(verdict);
+          return toPreDecision(verdict, canAskUser(ctx) && !isChildAgent(exec.agent));
         }
         for (const target of extractRedirectTargets(command)) {
           const fileVerdict = decideFileGuard(
@@ -712,7 +748,7 @@ export function apply(ctx: DshContext): void {
               tool: exec.name,
               target,
             });
-            return toPreDecision(fileVerdict);
+            return toPreDecision(fileVerdict, canAskUser(ctx) && !isChildAgent(exec.agent));
           }
         }
       }
@@ -729,7 +765,7 @@ export function apply(ctx: DshContext): void {
             tool: exec.name,
             filePath,
           });
-          return toPreDecision(verdict);
+          return toPreDecision(verdict, canAskUser(ctx) && !isChildAgent(exec.agent));
         }
       }
     } catch (error) {
@@ -1182,6 +1218,12 @@ export function apply(ctx: DshContext): void {
           directory: state.directory,
           run,
           delivery: undefined,
+          // Setup intent: the scaffold must leave the agent able to load
+          // the shipped skills through the host `skill` tool, so mirror
+          // them into a scanned root and word the brief for host-native
+          // tools (`skill` + `ask_user_question`).
+          skillMirrorRoot: DSH_SKILL_ROOTS[0],
+          skillAccess: "tool",
           checkAlive: () => invocation.signal?.throwIfAborted(),
           reload: async () => {
             clearConfigCache();

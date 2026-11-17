@@ -10,6 +10,7 @@ import {
   installTemplates,
   listMakefileTargets,
   listTemplateFiles,
+  mirrorSkillsToDsh,
   statusTemplates,
   trialRunDetectedCommands,
   writeDetectedConfig,
@@ -122,6 +123,49 @@ describe("writeDetectedConfig", () => {
     expect(result.action).toBe("overwritten");
     const content = await readFile(join(dir, ".opencode-dev-framework.yml"), "utf8");
     expect(content).toContain("profile: standard");
+  });
+});
+
+describe("mirrorSkillsToDsh", () => {
+  it("mirrors every bundled skill into the host-scanned root", async () => {
+    const result = await mirrorSkillsToDsh(dir, ".dsh/skills", { skipExisting: true });
+    for (const name of [
+      "code-review",
+      "ground-in-tests",
+      "match-patterns",
+      "peer-review",
+      "project-config",
+    ]) {
+      expect(result.created).toContain(`.dsh/skills/${name}/SKILL.md`);
+    }
+    expect(result.created).toHaveLength(5);
+    expect(result.skipped).toEqual([]);
+    expect(result.overwritten).toEqual([]);
+  });
+
+  it("skips identical mirrors on re-run", async () => {
+    await mirrorSkillsToDsh(dir, ".dsh/skills", { skipExisting: true });
+    const result = await mirrorSkillsToDsh(dir, ".dsh/skills", { skipExisting: true });
+    expect(result.created).toEqual([]);
+    expect(result.skipped.length).toBeGreaterThan(0);
+    expect(result.overwritten).toEqual([]);
+  });
+
+  it("preserves user-edited mirrors unless overwriteExisting", async () => {
+    await mirrorSkillsToDsh(dir, ".dsh/skills", { skipExisting: true });
+    const { writeFile } = await import("node:fs/promises");
+    await writeFile(join(dir, ".dsh/skills/peer-review/SKILL.md"), "custom", "utf8");
+    const skipped = await mirrorSkillsToDsh(dir, ".dsh/skills", { skipExisting: true });
+    expect(skipped.overwritten).toEqual([]);
+    expect(skipped.skipped).toContain(".dsh/skills/peer-review/SKILL.md");
+    const overwritten = await mirrorSkillsToDsh(dir, ".dsh/skills", { overwriteExisting: true });
+    expect(overwritten.overwritten).toContain(".dsh/skills/peer-review/SKILL.md");
+  });
+
+  it("leaves the template drift check untouched (mirrors are not templates)", async () => {
+    await mirrorSkillsToDsh(dir, ".dsh/skills", { skipExisting: true });
+    const status = await statusTemplates(dir);
+    expect(status.missing.length).toBeGreaterThan(0);
   });
 });
 
