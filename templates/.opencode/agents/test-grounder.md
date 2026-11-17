@@ -38,7 +38,7 @@ running the project's real commands and reading the output.
 ## How to work
 
 1. Determine the change scope (git diff) and what was claimed.
-2. Discover the project's commands: from `.opencode-dev-framework.yml`
+2. Discover the project's commands: from `.dev-framework.yml`
    (`commands.test`, `commands.typecheck`) if present, else from
    `package.json` scripts, `pyproject.toml`/`pytest`, `go test`, `Cargo.toml`,
    `Makefile`, etc.

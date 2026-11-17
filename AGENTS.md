@@ -108,7 +108,7 @@ OpenCode loads the plugin via Bun at runtime, but all development and CI on this
 - Keep `README.md` accurate with install/config instructions.
 - Keep `AGENTS.md` and the plan docs in `docs/plans/` accurate as the project
   evolves.
-- Prefer real YAML/JSON for `.opencode-dev-framework.yml`; support `.dev-framework.yml` only as a fallback.
+- Prefer real YAML/JSON for `.dev-framework.yml`; the legacy `.opencode-dev-framework.yml` name is still read as a fallback.
 
 ### Don't
 

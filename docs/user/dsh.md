@@ -29,8 +29,8 @@ no new dependency.
 
 Same core (`src/core/`), different wiring: the DSH adapter registers
 the ODF gates on a DeepSeek Harness Cordis context instead of OpenCode.
-Project config is the same `.opencode-dev-framework.yml` (fallback
-`.dev-framework.yml`) in the project directory.
+Project config is the same `.dev-framework.yml` (legacy
+`.opencode-dev-framework.yml` still read) in the project directory.
 
 ## Mount
 
@@ -127,7 +127,7 @@ budgeting, `protect_off` scope.
 
 - Gates silent: check the host log for `[odf]` lines — a config load
   failure disables everything by design. Run with a valid
-  `.opencode-dev-framework.yml` in the project directory.
+  `.dev-framework.yml` in the project directory.
 - Lint `block`s every edit with the same message: the linter itself is
   broken (missing binary, bad config) — but a healthy linter prints
   findings and exits nonzero, while infra stays accept. Check the

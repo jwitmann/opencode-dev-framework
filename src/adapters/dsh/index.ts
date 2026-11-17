@@ -22,7 +22,7 @@ import { join } from "node:path";
 import { createBlockStore, createStuckSnapshotStore } from "../../core/block-store.js";
 
 import { changeProfile, verifyGate } from "../../core/commands.js";
-import { clearConfigCache, loadConfig } from "../../core/config.js";
+import { CONFIG_FILE_PRECEDENCE, clearConfigCache, loadConfig } from "../../core/config.js";
 import { renderHelp, renderRuntimeStatus, renderStatus } from "../../core/format-status.js";
 import { createChangedFileTracker } from "../../core/gate.js";
 import {
@@ -31,11 +31,10 @@ import {
   isNativeGoalListed,
 } from "../../core/goal.js";
 import {
-  artifactState,
+  artifactStateFirst,
   childArtifactDenial,
   createPassCache,
   isReviewArtifact,
-  PREFLIGHT_ARTIFACT_REL,
   preflightBlockReason,
 } from "../../core/harness.js";
 import { runInitCommand, runInitScaffold, scaffoldReportLines } from "../../core/init.js";
@@ -52,6 +51,7 @@ import {
   summarizeLint,
 } from "../../core/lint.js";
 import type { LogFn } from "../../core/logger.js";
+import { PREFLIGHT_RELS } from "../../core/paths.js";
 import {
   decideFileGuard,
   decideShellGuard,
@@ -735,7 +735,7 @@ export function apply(ctx: DshContext): void {
       // already performs for paths.
       if (state.config.preflight.length > 0) {
         const preflightTool = exec.name === "apply_patch" ? "patch" : exec.name;
-        const artifact = await artifactState(state.directory, PREFLIGHT_ARTIFACT_REL);
+        const artifact = await artifactStateFirst(state.directory, PREFLIGHT_RELS);
         for (const filePath of paths) {
           const reason = preflightBlockReason(
             state.config,
@@ -1289,12 +1289,14 @@ export function apply(ctx: DshContext): void {
             );
             state.config = newConfig;
             state.constitution = newConstitution;
-            for (const name of [".opencode-dev-framework.yml", ".dev-framework.yml"]) {
+            for (const name of CONFIG_FILE_PRECEDENCE) {
               try {
-                state.configMtime = (await stat(join(state.directory, name))).mtimeMs;
-                break;
+                const mtimeMs = (await stat(join(state.directory, name))).mtimeMs;
+                if (state.configMtime === undefined || mtimeMs > state.configMtime) {
+                  state.configMtime = mtimeMs;
+                }
               } catch {
-                // continue to fallback name
+                // name absent
               }
             }
           },

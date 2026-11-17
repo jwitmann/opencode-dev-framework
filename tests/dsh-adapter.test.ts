@@ -368,16 +368,40 @@ describe("DSH adapter (plan 25 slice 4)", () => {
       name: "opencode-dev-framework",
       code: "preflight-deny",
     });
-    // The artifact itself stays writable so the session can comply.
+    // The artifact itself stays writable so the session can comply —
+    // through either home (old deployments comply via the legacy path).
     const artifactDecision = await captured.pre(
       {
         name: "write",
-        arguments: { file_path: ".opencode/opencode-dev-framework/preflight.md" },
+        arguments: { file_path: ".dev-framework/preflight.md" },
       },
       next,
     );
     expect(artifactDecision).toEqual({ kind: "allow" });
-    // Completing the artifact stand downs the duty.
+    // Completing the artifact stand downs the duty — in either home, with
+    // the new one winning when both exist (mid-migration writes converge).
+    mkdirSync(join(directory, ".dev-framework"), { recursive: true });
+    writeFileSync(
+      join(directory, ".dev-framework", "preflight.md"),
+      "# Preflight\n\n- [x] Do the thing\n",
+    );
+    const allowed = await captured.pre(
+      { name: "write", arguments: { file_path: "work.ts" } },
+      next,
+    );
+    expect(allowed).toEqual({ kind: "allow" });
+  });
+
+  it("reads a legacy-home pre-flight artifact (existing deployments)", async () => {
+    writeConfig(directory, 'profile: standard\npreflight:\n  - "Do the thing"\n');
+    const { ctx, captured } = stubContext();
+    apply(ctx);
+    const next = async (): Promise<DshPreDecision> => ({ kind: "allow" });
+    const blocked = await captured.pre(
+      { name: "write", arguments: { file_path: "work.ts" } },
+      next,
+    );
+    expect(blocked.kind).toBe("deny");
     mkdirSync(join(directory, ".opencode", "opencode-dev-framework"), { recursive: true });
     writeFileSync(
       join(directory, ".opencode", "opencode-dev-framework", "preflight.md"),
@@ -1075,7 +1099,8 @@ describe("DSH adapter (plan 25 slice 4)", () => {
     };
     expect(decision.kind).toBe("success");
     expect(followupImpl).toHaveBeenCalledTimes(1);
-    expect(existsSync(join(directory, ".opencode-dev-framework.yml"))).toBe(true);
+    expect(existsSync(join(directory, ".dev-framework.yml"))).toBe(true);
+    expect(existsSync(join(directory, ".opencode-dev-framework.yml"))).toBe(false);
   });
 
   it("pre-step keys injection by session identity, not just turn", async () => {
@@ -1146,12 +1171,7 @@ describe("DSH adapter (plan 25 slice 4)", () => {
     // The apply-time stamp is fire-and-forget: wait for it to land, then
     // remove it, so the null branch below is deterministic (no further
     // stamp fires on this path — stamps happen at apply + turn-stopping).
-    const snapshotPath = join(
-      directory,
-      ".opencode",
-      "opencode-dev-framework",
-      "runtime-status.json",
-    );
+    const snapshotPath = join(directory, ".dev-framework", "runtime-status.json");
     const deadline = Date.now() + 5000;
     while (!existsSync(snapshotPath) && Date.now() < deadline) {
       await new Promise((resolve) => setTimeout(resolve, 25));
@@ -1208,6 +1228,9 @@ describe("DSH adapter (plan 25 slice 4)", () => {
     expect(status).toMatch(/profile/i);
     const inited = (await find("dev_framework_init")?.execute({}, {})) as string;
     expect(inited.length).toBeGreaterThan(0);
+    // The legacy config already governs this deployment: init leaves it
+    // alone instead of writing a new-named file that would shadow it.
+    expect(existsSync(join(directory, ".dev-framework.yml"))).toBe(false);
     expect(existsSync(join(directory, ".opencode-dev-framework.yml"))).toBe(true);
     // The agent path kick-starts like the command: skills land where the
     // host `skill` tool scans, not only under `.opencode/skills`.

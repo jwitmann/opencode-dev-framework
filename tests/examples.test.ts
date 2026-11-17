@@ -21,7 +21,8 @@ describe("examples", () => {
   for (const name of names) {
     it(`${name} config loads with real checks`, () => {
       const dir = join(examplesDir, name);
-      expect(existsSync(join(dir, ".opencode-dev-framework.yml"))).toBe(true);
+      expect(existsSync(join(dir, ".dev-framework.yml"))).toBe(true);
+      expect(existsSync(join(dir, ".opencode-dev-framework.yml"))).toBe(false);
       const config = loadConfig(dir);
       expect(config.profile).toBe("standard");
       expect(config.gate.run_tests).toBe(true);

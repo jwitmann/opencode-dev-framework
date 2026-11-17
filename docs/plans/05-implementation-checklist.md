@@ -858,6 +858,25 @@ Dogfood the fork's V2 pre-terminal hook (upstream PR
   parent writes pass). 4 new tests green, fail-before proven by
   stash (without `src`, the child gets steered — the plan-23 replay).
 
+## Phase 44 — Harness-neutral framework home (DONE 2026-11-17)
+
+- [x] 44.1 Framework-private files move `.opencode/opencode-dev-framework/`
+  → `.dev-framework/` (review, preflight, runtime snapshot, local
+  rules); config `.opencode-dev-framework.yml` → `.dev-framework.yml`
+  (new name preferred, legacy still read). Harness-discovered dirs
+  (`.opencode/agents`, `.opencode/skills`, `.dsh/skills` mirror) untouched.
+- [x] 44.2 Single-owner `src/core/paths.ts` (new + legacy rels); readers
+  try new first and fall back (review/preflight/rules/snapshot/config
+  with native-shape sniffing + flat-key fallback); all writers use the
+  new home only, so deployments converge without a migration script.
+  Existing deployments never break: old config still loads, old
+  artifacts still gate, old rules still inject; no shadowing duplicates
+  (`df init`/`df-profile`/tools honor the established name).
+- [x] 44.3 Dual-path tests per reader (new-only/legacy-only/both/neither),
+  flipped-name config precedence, cross-shape config, no-shadow pins;
+  templates, examples, and living docs migrated to the neutral home.
+- [x] 44.4 Peer-review skill gate before commit; commit locally, never push.
+
 ## Peer-review gate (mandatory after EVERY phase 21–27)
 
 Run the **`peer-review` skill** (`templates/.opencode/skills/peer-review/SKILL.md`),

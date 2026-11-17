@@ -31,20 +31,20 @@ import { join } from "node:path";
 import { Plugin } from "@opencode/plugin";
 import type { Context } from "@opencode/plugin/promise/plugin";
 import { createBlockStore, createStuckSnapshotStore } from "../../core/block-store.js";
-import { loadConfig } from "../../core/config.js";
+import { CONFIG_FILE_PRECEDENCE, loadConfig } from "../../core/config.js";
 import { createChangedFileTracker } from "../../core/gate.js";
 import type { GoalDelegate } from "../../core/goal.js";
 import {
-  artifactState,
+  artifactStateFirst,
   childArtifactDenial,
   createPassCache,
   isReviewArtifact,
-  PREFLIGHT_ARTIFACT_REL,
   preflightBlockReason,
 } from "../../core/harness.js";
 import { runCommand } from "../../core/host.js";
 import { createLintLimiter } from "../../core/lint.js";
 import { createLogger } from "../../core/logger.js";
+import { PREFLIGHT_ARTIFACT_REL, PREFLIGHT_RELS } from "../../core/paths.js";
 import {
   checkToolCall,
   extractCommand,
@@ -178,12 +178,14 @@ const plugin = Plugin.define({
     }
 
     let configMtime: number | undefined;
-    for (const name of [".opencode-dev-framework.yml", ".dev-framework.yml"]) {
+    for (const name of CONFIG_FILE_PRECEDENCE) {
       try {
-        configMtime = (await stat(join(directory, name))).mtimeMs;
-        break;
+        const mtimeMs = (await stat(join(directory, name))).mtimeMs;
+        if (configMtime === undefined || mtimeMs > configMtime) {
+          configMtime = mtimeMs;
+        }
       } catch {
-        // continue
+        // name absent
       }
     }
 
@@ -505,7 +507,7 @@ const plugin = Plugin.define({
           // Pre-flight (mirrors execute.before; the artifact itself stays
           // writable). Deny/warn per profile, exactly like the backstop.
           if (state.config.preflight.length > 0 && action === "edit") {
-            const artifact = await artifactState(state.directory, PREFLIGHT_ARTIFACT_REL);
+            const artifact = await artifactStateFirst(state.directory, PREFLIGHT_RELS);
             const reason = preflightBlockReason(state.config, "edit", target, artifact);
             if (reason !== null) {
               if (state.config.profile === "advisory") {
@@ -651,7 +653,7 @@ const plugin = Plugin.define({
         // edits are denied (standard/strict) until the pre-flight artifact
         // exists. This is a true hard gate — it runs before the edit lands.
         if (state.config.preflight.length > 0) {
-          const artifact = await artifactState(state.directory, PREFLIGHT_ARTIFACT_REL);
+          const artifact = await artifactStateFirst(state.directory, PREFLIGHT_RELS);
           const reason = preflightBlockReason(
             state.config,
             toolName,
@@ -1034,12 +1036,14 @@ const plugin = Plugin.define({
                   const { constitution: newConstitution } = await lc2(newConfig, state.directory);
                   state.config = newConfig;
                   state.constitution = newConstitution;
-                  for (const name of [".opencode-dev-framework.yml", ".dev-framework.yml"]) {
+                  for (const name of CONFIG_FILE_PRECEDENCE) {
                     try {
-                      state.configMtime = (await stat(join(state.directory, name))).mtimeMs;
-                      break;
+                      const mtimeMs = (await stat(join(state.directory, name))).mtimeMs;
+                      if (state.configMtime === undefined || mtimeMs > state.configMtime) {
+                        state.configMtime = mtimeMs;
+                      }
                     } catch {
-                      // continue to fallback name
+                      // name absent
                     }
                   }
                 },

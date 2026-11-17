@@ -1873,6 +1873,23 @@ adds nothing over the human typing `/df-goal` with a plain objective
 the framework wraps exactly once and delegates. Do not revisit without
 a host-provided model goal seam.
 
+## Harness-neutral framework home (2026-11-17)
+
+Framework-private files move `.opencode/opencode-dev-framework/` →
+`.dev-framework/` (review, preflight, runtime snapshot, local rules)
+and the config gains the neutral `.dev-framework.yml` name. Harness-
+discovered dirs stay native (`.opencode/agents`, `.opencode/skills`,
+`.dsh/skills` mirror) — only the framework's own files move. Readers
+are new-first with legacy fallback, writers are new-only, and `df
+init`/`df-profile`/tools honor an established legacy name instead of
+writing a shadowing duplicate — so existing deployments converge with
+no migration and no breakage. Config parsing sniffs shape (native keys
+→ native validation, else flat mapping) instead of guessing by file
+name, which also fixes two previously-mangled combos (native shape
+under a flat-era name and vice versa) without masking nested
+validation errors. Timed before the DSH merge+release precisely so the
+DSH side has no installed base to migrate.
+
 ## References
 
 - OpenCode plugin docs: <https://opencode.ai/docs/plugins>

@@ -6,9 +6,9 @@ constitution and append a project-specific contract after it.
 
 ## Files
 
-- `.opencode-dev-framework.yml` — minimal config; the only hardening part
+- `.dev-framework.yml` — minimal config; the only hardening part
   is the `rules:` block at the bottom.
-- `.opencode/opencode-dev-framework/hardening.md` — the project contract,
+- `.dev-framework/hardening.md` — the project contract,
   written for a fictional Node service (`example-service`). Adapt the
   commands and paths; keep the five sections.
 

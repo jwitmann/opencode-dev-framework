@@ -5,8 +5,9 @@
  * Detection runs in code (`statusTemplates` — the same comparison `df init`
  * uses); diffing, presenting, and applying stay with the agent, which hands
  * each drifted file to the user before touching it. There is no auto-apply
- * path by construction. The user config (`.opencode-dev-framework.yml`) is
- * structurally out of scope: it was never in the template set.
+ * path by construction. The user config (`.dev-framework.yml`, or the legacy
+ * `.opencode-dev-framework.yml`) is structurally out of scope: it was never
+ * in the template set.
  */
 
 import type { TemplateStatus } from "./installer.js";
@@ -93,8 +94,9 @@ export function composeUpdatePrompt(drift: TemplateDrift, directory: string): st
     "Bring the deployment current from the lists above. For each refresh file, " +
       "run diff yourself against the shipped template, present the per-file diff, " +
       "and overwrite only what the user approves. For each add file, present what it " +
-      "is and add only what the user approves. Never touch " +
-      ".opencode-dev-framework.yml — it is user config, not a shipped template. " +
+      "is and add only what the user approves. Never touch the config file " +
+      "(`.dev-framework.yml`, or legacy `.opencode-dev-framework.yml`) — it is user " +
+      "config, not a shipped template. " +
       "Report what was applied and what was left alone.",
   );
   return lines.join("\n");

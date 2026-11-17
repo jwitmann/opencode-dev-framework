@@ -4,7 +4,8 @@ import type { Profile, ResolvedConfig } from "./types.js";
 /**
  * Config-weakening detection (plan 17 §2).
  *
- * The duties document (`.opencode-dev-framework.yml`) is freely rewritable
+ * The duties document (`.dev-framework.yml`, or the legacy
+ * `.opencode-dev-framework.yml`) is freely rewritable
  * mid-session and reloads on mtime — deleting checks, dropping
  * `require_review`, or lowering `max_blocks` silently moves the goalposts.
  * Rewriting the duties to make them pass is the canonical duty-escape, so

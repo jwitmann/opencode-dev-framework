@@ -18,7 +18,7 @@ written by one careful author.
 Given a set of changed files, check them against — in priority order:
 
 1. **An explicit project style guide**, if one exists. Look for it at the path
-   named in `.opencode-dev-framework.yml` (`style_guide:`), or common
+   named in `.dev-framework.yml` (`style_guide:`), or common
    locations: `STYLE.md`, `STYLEGUIDE.md`, `docs/style*.md`, `CONTRIBUTING.md`,
    `.editorconfig`, and lint configs (`.eslintrc*`, `ruff.toml`,
    `.rubocop.yml`, `pyproject.toml`, etc.).

@@ -197,6 +197,11 @@ describe("isReviewArtifact", () => {
     expect(isReviewArtifact(`./${REVIEW}`)).toBe(true);
   });
 
+  it("matches the neutral-home artifact path", () => {
+    expect(isReviewArtifact(".dev-framework/review.md")).toBe(true);
+    expect(isReviewArtifact(join("/proj", ".dev-framework/review.md"), "/proj")).toBe(true);
+  });
+
   it("matches absolute paths under the project directory", () => {
     expect(isReviewArtifact(join("/proj", REVIEW), "/proj")).toBe(true);
   });

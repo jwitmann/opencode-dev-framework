@@ -11,10 +11,8 @@
  * registration thin.
  */
 
-import { stat } from "node:fs/promises";
-import { join } from "node:path";
 import type { BlockStore, StuckSnapshotStore } from "./block-store.js";
-import { clearConfigCache, loadConfig } from "./config.js";
+import { clearConfigCache, configMtimeMs, loadConfig } from "./config.js";
 import type { ChangedFileTracker } from "./gate.js";
 import { type CompletionVerdict, evaluateCompletion, type PassCache } from "./harness.js";
 import type { RunCommand } from "./host.js";
@@ -161,22 +159,8 @@ export async function reloadConfigIfChanged(state: HookState): Promise<void> {
     return;
   }
   state.lastConfigCheck = now;
-  const primary = join(state.directory, ".opencode-dev-framework.yml");
-  const fallback = join(state.directory, ".dev-framework.yml");
-  // check both names; stat whichever exists
-  let configPath: string | null = null;
-  let mtime: number | undefined;
-  for (const p of [primary, fallback]) {
-    try {
-      const s = await stat(p);
-      configPath = p;
-      mtime = s.mtimeMs;
-      break;
-    } catch {
-      // continue
-    }
-  }
-  if (!configPath || mtime === undefined) {
+  const mtime = configMtimeMs(state.directory);
+  if (mtime === undefined) {
     return;
   }
   if (state.configMtime !== undefined && state.configMtime === mtime) {

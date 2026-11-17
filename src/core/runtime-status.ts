@@ -13,9 +13,12 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { FRAMEWORK_DIR, RUNTIME_STATUS_FILE, RUNTIME_STATUS_RELS } from "./paths.js";
+
+export { RUNTIME_STATUS_FILE };
+
 /** Snapshot location, relative to the project directory. */
-export const RUNTIME_STATUS_DIR = ".opencode/opencode-dev-framework";
-export const RUNTIME_STATUS_FILE = "runtime-status.json";
+export const RUNTIME_STATUS_DIR = FRAMEWORK_DIR;
 
 /** Which session hook the core accepted, or neither (DSH uses `agent/turn-stopping`). */
 export type IdleHookVia = "experimental.idle" | "idle" | "none" | "turn-stopping";
@@ -115,21 +118,27 @@ function isTemplateState(value: unknown): value is TemplateState {
 }
 
 export async function readRuntimeStatus(directory: string): Promise<RuntimeStatus | null> {
-  try {
-    const parsed = JSON.parse(
-      await readFile(snapshotPath(directory), "utf8"),
-    ) as Partial<RuntimeStatus>;
-    if (typeof parsed.frameworkVersion !== "string" || typeof parsed.updatedAt !== "string") {
-      return null;
+  // New home first, previous home as fallback; writers use the new home
+  // only, so old snapshots fade with the next stamp.
+  const candidates = RUNTIME_STATUS_RELS.map((rel) => join(directory, rel));
+  for (const candidate of candidates) {
+    try {
+      const parsed = JSON.parse(await readFile(candidate, "utf8")) as Partial<RuntimeStatus>;
+      if (typeof parsed.frameworkVersion !== "string" || typeof parsed.updatedAt !== "string") {
+        // Valid JSON, wrong shape: fall through to the legacy home
+        // rather than letting an invalid new snapshot shadow valid data.
+        continue;
+      }
+      return {
+        frameworkVersion: parsed.frameworkVersion,
+        idleHookVia: isIdleHookVia(parsed.idleHookVia) ? parsed.idleHookVia : "none",
+        continuation: isContinuationState(parsed.continuation) ? parsed.continuation : "armed",
+        ...(isTemplateState(parsed.templates) ? { templates: parsed.templates } : {}),
+        updatedAt: parsed.updatedAt,
+      };
+    } catch {
+      // try the next (legacy) location
     }
-    return {
-      frameworkVersion: parsed.frameworkVersion,
-      idleHookVia: isIdleHookVia(parsed.idleHookVia) ? parsed.idleHookVia : "none",
-      continuation: isContinuationState(parsed.continuation) ? parsed.continuation : "armed",
-      ...(isTemplateState(parsed.templates) ? { templates: parsed.templates } : {}),
-      updatedAt: parsed.updatedAt,
-    };
-  } catch {
-    return null;
   }
+  return null;
 }

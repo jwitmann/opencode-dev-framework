@@ -92,7 +92,7 @@ describe("writeDetectedConfig", () => {
     const result = await writeDetectedConfig(dir, { skipExisting: true });
     expect(result.action).toBe("created");
     const { readFile } = await import("node:fs/promises");
-    const content = await readFile(join(dir, ".opencode-dev-framework.yml"), "utf8");
+    const content = await readFile(join(dir, ".dev-framework.yml"), "utf8");
     expect(content).toContain("profile: standard");
     expect(content).toContain("protect:");
   });
@@ -103,7 +103,7 @@ describe("writeDetectedConfig", () => {
     const result = await writeDetectedConfig(dir, { skipExisting: true });
     expect(result.action).toBe("created");
     const { readFile } = await import("node:fs/promises");
-    const content = await readFile(join(dir, ".opencode-dev-framework.yml"), "utf8");
+    const content = await readFile(join(dir, ".dev-framework.yml"), "utf8");
     expect(content).toContain("test: go test ./...");
     expect(content).toContain("typecheck: go build ./...");
     expect(content).toContain("lint: golangci-lint run {dir}");
@@ -114,6 +114,8 @@ describe("writeDetectedConfig", () => {
     await writeFile(join(dir, ".opencode-dev-framework.yml"), "profile: strict\n", "utf8");
     const result = await writeDetectedConfig(dir, { skipExisting: true });
     expect(result.action).toBe("skipped");
+    const { existsSync } = await import("node:fs");
+    expect(existsSync(join(dir, ".dev-framework.yml"))).toBe(false);
   });
 
   it("overwrites an existing config when overwriteExisting is true", async () => {

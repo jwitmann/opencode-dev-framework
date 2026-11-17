@@ -18,7 +18,7 @@ you're about to make a claim about behavior you have not actually executed.
 
 ## Steps
 
-1. **Discover the commands.** Prefer `.opencode-dev-framework.yml`
+1. **Discover the commands.** Prefer `.dev-framework.yml`
    (`commands.test`, `commands.typecheck`). Else detect from the project
    (`package.json` scripts, `pytest`, `go test ./...`, `cargo test`,
    `Makefile`). If the project genuinely has no tests, say so explicitly and

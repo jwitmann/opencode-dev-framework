@@ -1,3 +1,4 @@
+import { PREFLIGHT_ARTIFACT_REL } from "./paths.js";
 import type { HookState } from "./registry.js";
 import type { RuntimeStatus, TemplateState } from "./runtime-status.js";
 import type { ResolvedConfig } from "./types.js";
@@ -114,7 +115,7 @@ export function renderConfigStatus(
   if (config.preflight.length === 0) {
     lines.push("  (disabled — no preflight tasks configured)");
   } else {
-    lines.push(`  artifact: .opencode/opencode-dev-framework/preflight.md`);
+    lines.push(`  artifact: ${PREFLIGHT_ARTIFACT_REL}`);
     lines.push("  tasks:");
     for (const task of config.preflight) {
       lines.push(`    - ${task}`);

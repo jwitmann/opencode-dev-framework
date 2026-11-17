@@ -2,11 +2,12 @@
 
 ## File precedence
 
-1. `.opencode-dev-framework.yml` (primary)
-2. `.opencode-dev-framework.yaml`
-3. `.opencode-dev-framework.json`
-4. `.dev-framework.yml` (fallback for compatibility)
-5. `.dev-framework.yaml`
+1. `.dev-framework.yml` (primary)
+2. `.dev-framework.yaml`
+3. `.dev-framework.json`
+4. `.opencode-dev-framework.yml` (legacy name, still read)
+5. `.opencode-dev-framework.yaml`
+6. `.opencode-dev-framework.json`
 
 The first file found wins. Project root is the current working directory (`ctx.directory`).
 
@@ -261,11 +262,18 @@ rules:
   - CONTRIBUTING.md
 ```
 
-## `.dev-framework.yml` compatibility mapping
+## Flat-key compatibility mapping
 
-When reading `.dev-framework.yml` as fallback, map flat keys to the native structure:
+Shape-sniffed, not filename-conditioned: any `.yml`/`.yaml` name
+parses natively when it uses native-only keys (`commands`, `gate`,
+`on_edit`, object-form `rules`); otherwise flat keys map to the native
+structure. Either name accepts either shape, so previously-working
+files keep working and previously-mangled combos (native shape under
+a flat-era name and vice versa) now load. JSON stays native-only.
+Scalar keys (`profile`, `protect`, `protect_mode`, …) are handled in
+both shapes.
 
-| `.dev-framework.yml` key | `.opencode-dev-framework.yml` key |
+| flat key | native key |
 |---|---|
 | `profile` | `profile` |
 | `test` | `commands.test` |

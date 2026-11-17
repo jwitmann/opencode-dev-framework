@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -45,8 +46,19 @@ describe("changeProfile helper", () => {
   it("creates the config file when missing", async () => {
     const message = await changeProfile(dir, "advisory");
     expect(message).toContain('profile set to "advisory"');
-    const content = await readFile(join(dir, ".opencode-dev-framework.yml"), "utf8");
+    const content = await readFile(join(dir, ".dev-framework.yml"), "utf8");
     expect(content).toContain("profile: advisory");
+    expect(existsSync(join(dir, ".opencode-dev-framework.yml"))).toBe(false);
+  });
+
+  it("edits a legacy config in place instead of shadowing it", async () => {
+    await writeFile(join(dir, ".opencode-dev-framework.yml"), "profile: standard\n");
+    clearConfigCache();
+    const message = await changeProfile(dir, "strict");
+    expect(message).toContain('profile set to "strict"');
+    const content = await readFile(join(dir, ".opencode-dev-framework.yml"), "utf8");
+    expect(content).toContain("profile: strict");
+    expect(existsSync(join(dir, ".dev-framework.yml"))).toBe(false);
   });
 });
 

@@ -1,6 +1,6 @@
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createBlockStore, createStuckSnapshotStore } from "../src/core/block-store";
 import { resolveConfig } from "../src/core/config";
@@ -196,7 +196,7 @@ describe("review substance at the gate", () => {
   }
 
   async function writeReview(content: string) {
-    await mkdir(join(dir, ".opencode", "opencode-dev-framework"), { recursive: true });
+    await mkdir(dirname(join(dir, REVIEW_ARTIFACT_REL)), { recursive: true });
     await writeFile(join(dir, REVIEW_ARTIFACT_REL), content);
   }
 
@@ -281,7 +281,7 @@ describe("review substance at the gate", () => {
   it("does not demand the review mention the plugin runtime snapshot", async () => {
     await writeReview(REVIEW_BODY);
     const { deps } = makeDeps(GREEN);
-    deps.tracker.add(".opencode/opencode-dev-framework/runtime-status.json");
+    deps.tracker.add(".dev-framework/runtime-status.json");
     expect((await evaluateCompletion(deps)).decision).toBe("pass");
   });
 

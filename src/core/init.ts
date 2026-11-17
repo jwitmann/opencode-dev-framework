@@ -178,13 +178,13 @@ export function composeInitPrompt(
             "Load the project-config skill with the `skill` tool and follow it to resolve the open questions — " +
             "ask at most 3 genuinely user-only questions with `ask_user_question`, resolve the rest yourself " +
             "by reading the repo and running the commands — " +
-            "then present .opencode-dev-framework.yml + hardening.md for review. Do not commit unreviewed.",
+            "then present .dev-framework.yml + .dev-framework/hardening.md for review. Do not commit unreviewed.",
         ]
       : [
           "Set up opencode-dev-framework for this project from the report and brief above. " +
             "Follow the project-config skill to resolve the open questions — ask at most 3 genuinely " +
             "user-only questions, resolve the rest yourself by reading the repo and running the commands — " +
-            "then present .opencode-dev-framework.yml + hardening.md for review. Do not commit unreviewed.",
+            "then present .dev-framework.yml + .dev-framework/hardening.md for review. Do not commit unreviewed.",
         ]),
   ].join("\n");
 }

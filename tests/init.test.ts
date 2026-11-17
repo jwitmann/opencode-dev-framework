@@ -110,7 +110,7 @@ describe("composeInitPrompt", () => {
     expect(text).toContain("Wizard brief");
     expect(text).toContain("at most 3 genuinely");
     expect(text).toContain("user-only questions");
-    expect(text).toContain(".opencode-dev-framework.yml + hardening.md for review");
+    expect(text).toContain(".dev-framework.yml + .dev-framework/hardening.md for review");
     expect(text).toContain("Do not commit unreviewed");
   });
 
@@ -147,7 +147,7 @@ describe("composeInitPrompt", () => {
     expect(text).toContain("Load the project-config skill with the `skill` tool");
     expect(text).toContain("`ask_user_question`");
     expect(text).toContain("at most 3 genuinely");
-    expect(text).toContain(".opencode-dev-framework.yml + hardening.md for review");
+    expect(text).toContain(".dev-framework.yml + .dev-framework/hardening.md for review");
     expect(text).toContain("Do not commit unreviewed");
   });
 

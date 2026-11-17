@@ -19,11 +19,12 @@
  * session changed. Same out-of-scope line — deliberate misnaming
  * (naming files without reviewing them) is sabotage, not eagerness.
  *
- * The artifact path literal mirrors `REVIEW_ARTIFACT_REL` in
- * `harness.ts` (kept inline to avoid a module cycle; both are
- * pinned by tests).
+ * The artifact path is an alias of `REVIEW_ARTIFACT_REL` from the shared
+ * paths module (`paths.ts`), the single owner — no cycle, no second spelling.
  */
-const REVIEW_REL = ".opencode/opencode-dev-framework/review.md";
+import { REVIEW_ARTIFACT_REL } from "./paths.js";
+
+const REVIEW_REL = REVIEW_ARTIFACT_REL;
 
 /** Trimmed-character floor for a substantive review. */
 export const REVIEW_MIN_CHARS = 200;

@@ -51,7 +51,7 @@ describe("renderDutyRoster", () => {
       "- [ ] test (all): `npm test`",
       "- [ ] lint changed files: `eslint {file}`",
       "- [ ] acceptance:e2e: `npm run e2e`",
-      `- [ ] review: write .opencode/opencode-dev-framework/review.md`,
+      `- [ ] review: write .dev-framework/review.md`,
       "- [ ] preflight: complete 1 task -> preflight.md before editing",
     ]);
   });

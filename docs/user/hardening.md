@@ -13,17 +13,17 @@ evidence standards so there is nothing left to interpret.
 
 Two pieces, both per-project, never global:
 
-1. **`rules: { mode: append }`** in `.opencode-dev-framework.yml` — keeps
+1. **`rules: { mode: append }`** in `.dev-framework.yml` — keeps
    the bundled constitution and adds your file after it:
 
    ```yaml
    rules:
      mode: append
      files:
-       - .opencode/opencode-dev-framework/hardening.md
+       - .dev-framework/hardening.md
    ```
 
-2. **`.opencode/opencode-dev-framework/hardening.md`** — the project-specific
+2. **`.dev-framework/hardening.md`** — the project-specific
    contract. It is appended *after* the bundled constitution, so it refines
    rather than replaces the quality bar. A complete example ships at
    [`../../examples/hardening/`](../../examples/hardening/).

@@ -3,7 +3,12 @@ import { dirname, join, resolve } from "node:path";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 import { splitCommand } from "./command-utils.js";
-import { checkConfigEnforceable, DEFAULT_PROTECT, resolveConfig } from "./config.js";
+import {
+  checkConfigEnforceable,
+  DEFAULT_PROTECT,
+  existingConfigPath,
+  resolveConfig,
+} from "./config.js";
 import { detectProject } from "./detect.js";
 import type { CommandResult, RunCommand } from "./host.js";
 import type { CommandsConfig, Profile } from "./types.js";
@@ -382,14 +387,14 @@ function buildDefaultConfigYaml(
   lines.push("  scope: all");
   lines.push("  lint_changed: false");
   lines.push("  # standard/strict default: sessions that changed files must produce a");
-  lines.push("  # peer-review artifact (.opencode/opencode-dev-framework/review.md).");
+  lines.push("  # peer-review artifact (.dev-framework/review.md).");
   lines.push("  require_review: true");
   lines.push("  timeout: 300");
   lines.push("  max_blocks: 3");
   lines.push("");
   lines.push("# Optional: pre-flight task list. When set, edit tools are denied");
   lines.push("# (standard/strict) until the agent writes its findings to");
-  lines.push("# .opencode/opencode-dev-framework/preflight.md. Use for work that");
+  lines.push("# .dev-framework/preflight.md. Use for work that");
   lines.push("# must establish baseline state/knowledge before editing.");
   lines.push("# preflight:");
   lines.push('#   - "Summarize the current state of the component you will change"');
@@ -402,9 +407,11 @@ function buildDefaultConfigYaml(
 }
 
 /**
- * Write a project-level `.opencode-dev-framework.yml` based on detected
+ * Write a project-level `.dev-framework.yml` based on detected
  * tooling. Respects the same overwrite/skip flags and prompt as
- * `installTemplates`.
+ * `installTemplates`. An existing legacy `.opencode-dev-framework.yml`
+ * is left alone (the loader still reads it) — new files use the
+ * neutral name.
  */
 export async function writeDetectedConfig(
   targetDir: string,
@@ -412,16 +419,17 @@ export async function writeDetectedConfig(
 ): Promise<ConfigWriteResult> {
   const { language, commands, hasPreCommitConfig } = detectProject(targetDir);
   const content = buildDefaultConfigYaml(language, commands, hasPreCommitConfig);
-  const destination = join(targetDir, ".opencode-dev-framework.yml");
-  const relativePath = ".opencode-dev-framework.yml";
+  // Honor the deployment's established name: a config under any supported
+  // name keeps its name (no shadowing duplicate); new deployments get the
+  // neutral one.
+  const destination = existingConfigPath(targetDir) ?? join(targetDir, ".dev-framework.yml");
+  const relativePath = destination.slice(targetDir.length + 1);
 
-  const exists = await fileExists(destination);
-  if (!exists) {
+  const existing = await readFileSafe(destination);
+  if (existing === null) {
     await fs.writeFile(destination, content, "utf8");
     return { action: "created" };
   }
-
-  const existing = await readFileSafe(destination);
   if (existing === content) {
     return { action: "skipped" };
   }
@@ -665,7 +673,7 @@ export function formatWizardBrief(brief: WizardBrief): string[] {
     "",
     "Handoff: follow the project-config skill (templates/.opencode/skills/project-config/SKILL.md) " +
       "to resolve the questions above, run the real commands, and present " +
-      ".opencode-dev-framework.yml + hardening.md for review. Do not write without review.",
+      ".dev-framework.yml + .dev-framework/hardening.md for review. Do not write without review.",
   );
   return lines;
 }
