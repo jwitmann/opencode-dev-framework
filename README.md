@@ -12,6 +12,8 @@ quality gates during AI coding sessions — and verifies whole tasks, not just
 edits, through `/df-goal`. Inspired by
 [anticomputer/dev-framework](https://github.com/anticomputer/dev-framework),
 reimplemented for OpenCode (the original supports Copilot, Claude, and Codex).
+The same core also ships a DSH adapter (Cordis wiring, same gates, host-native
+execution) — see [`docs/user/dsh.md`](docs/user/dsh.md).
 
 ## Quickstart
 
@@ -72,6 +74,10 @@ typecheck/tests. `/df-status` shows the live state at any time. Start with
   `df init / profile / status / version` from the shell.
 
 ## Minimal configuration
+
+Create `.dev-framework.yml` in your project root (the legacy
+`.opencode-dev-framework.yml` name is still read when no neutral-named
+file exists):
 
 ```yaml
 profile: standard
@@ -167,7 +173,8 @@ The TUI commands open instantly and never feed the LLM; `/df-init`,
 - The completion gate **steers, it does not veto**: it continues the turn
   via a synthetic message at the idle boundary — bounded by
   `gate.max_blocks` (fewer when the failure repeats with no new edits) —
-  and you can always close the session.
+  and you can always close the session. (On DSH the same verdict runs
+  pre-terminal in the same turn instead of re-prompting.)
 - A genuine pre-stop veto is proposed upstream
   ([`anomalyco/opencode#54487`](https://github.com/anomalyco/opencode/pull/54487),
   open) — if it lands, the gate vetoes there instead of continuing.
@@ -177,8 +184,9 @@ The TUI commands open instantly and never feed the LLM; `/df-init`,
   reimplement them.
 - The DSH adapter (same core, Cordis wiring: `opencode-dev-framework/dsh`)
   goes further where its host allows — pre-terminal same-turn gate and
-  model-facing lint `block`s — but is still awaiting live-fire
-  validation: [`docs/user/dsh.md`](docs/user/dsh.md).
+  model-facing lint `block`s — and is live-proven (headless guard/lint/
+  gate sessions plus TUI warn→ask and human-typed `/df-goal` runs):
+  [`docs/user/dsh.md`](docs/user/dsh.md).
 
 Full story: [`docs/user/enforcement.md`](docs/user/enforcement.md).
 
