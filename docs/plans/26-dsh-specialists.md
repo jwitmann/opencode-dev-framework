@@ -79,7 +79,7 @@ the changed-file list):
   findings folded into steer; degenerate-to-inline when seam absent.
 - 26.3 Remaining specialists + naming/budget caps + preset doc.
 - 26.4 Tests (stubbed `subagents` ctx) + live proofs (headless + TUI)
-  + `dsh.md`/matrix updates.
+  - `dsh.md`/matrix updates.
 
 ## Acceptance
 
