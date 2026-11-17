@@ -1860,6 +1860,19 @@ also lives server-side. After a plugin upgrade, restart the serve
 backend — then new and continued sessions both pick up the new code
 (in-memory seen-sets reset, so mentions re-arm).
 
+## `dev_framework_goal` tool considered and dropped (2026-11-17)
+
+Goal creation is human-initiated on both harnesses — DSH by an explicit
+`requireDirectHuman` gate in `tool-goal` (model-initiated `create_goal`
+calls are rejected; only the ungated `goals.create` service would
+bypass it), OpenCode architecturally (`/goal` is a user slash command;
+no model-facing goal tool exists in core). A model-invoked tool that
+creates goals would punch through DSH host policy; a draft-only tool
+adds nothing over the human typing `/df-goal` with a plain objective
+(the command already wraps). Single path stands: human runs `/df-goal`,
+the framework wraps exactly once and delegates. Do not revisit without
+a host-provided model goal seam.
+
 ## References
 
 - OpenCode plugin docs: <https://opencode.ai/docs/plugins>

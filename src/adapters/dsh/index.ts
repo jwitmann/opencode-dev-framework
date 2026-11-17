@@ -74,7 +74,13 @@ import {
 } from "../../core/run-hooks.js";
 import { readRuntimeStatus } from "../../core/runtime-status.js";
 import type { Profile, ResolvedConfig } from "../../core/types.js";
-import { checkTemplateUpdates, driftMentionLine, runUpdateCommand } from "../../core/update.js";
+import {
+  checkTemplateUpdates,
+  composeUpdatePrompt,
+  driftMentionLine,
+  needsAgentHandoff,
+  runUpdateCommand,
+} from "../../core/update.js";
 import { snapshotEnforceable } from "../../core/weakening.js";
 import {
   type DshExec,
@@ -1369,8 +1375,9 @@ export function apply(ctx: DshContext): void {
     },
   });
 
-  // Agent-invokable tools: the same four `dev_framework_*` tools the
-  // OpenCode adapter installs, over the same core functions. Definitions
+  // Agent-invokable tools: the same `dev_framework_*` tools the
+  // OpenCode adapter installs (verify, profile, status, init, update,
+  // runtime), over the same core functions. Definitions
   // are plain objects in the host's compiled `defineTool` shape (JSON
   // Schema parameters, canonical string value schema with a text
   // renderer) — see `DshToolDefinition`. Each registration is isolated:
@@ -1514,6 +1521,55 @@ export function apply(ctx: DshContext): void {
         skillMirrorRoot: DSH_SKILL_ROOTS[0],
       });
       return scaffoldReportLines(scaffold, targetDir).join("\n");
+    },
+  });
+
+  registerDshTool(ctx, state, {
+    name: "dev_framework_update",
+    description:
+      "Check the framework deployment for drift (bundled templates and the host-scanned skill mirror) and return the per-file refresh/add brief. Use when the setup may be stale; present each file for review before editing, exactly like df-update, and never commit unreviewed.",
+    parameters: {
+      type: "object",
+      properties: {
+        directory: {
+          type: "string",
+          description: "Target project directory (defaults to current project)",
+        },
+      },
+      additionalProperties: false,
+    },
+    isConcurrencySafe: () => true,
+    execute: async (input: unknown) => {
+      const args = input as { directory?: string };
+      const targetDir = args.directory ?? state.directory;
+      const drift = await checkTemplateUpdates(targetDir, DSH_SKILL_ROOTS[0]);
+      if (!needsAgentHandoff(drift)) {
+        return "templates current";
+      }
+      return composeUpdatePrompt(drift, targetDir);
+    },
+  });
+
+  registerDshTool(ctx, state, {
+    name: "dev_framework_runtime",
+    description:
+      "Show the live framework runtime snapshot for the project (hook registration, gate continuation posture, template drift). Read-only; use to inspect gate state mid-session.",
+    parameters: {
+      type: "object",
+      properties: {
+        directory: {
+          type: "string",
+          description: "Target project directory (defaults to current project)",
+        },
+      },
+      additionalProperties: false,
+    },
+    isConcurrencySafe: () => true,
+    execute: async (input: unknown) => {
+      const args = input as { directory?: string };
+      const targetDir = args.directory ?? state.directory;
+      const snapshot = await readRuntimeStatus(targetDir);
+      return renderRuntimeStatus(snapshot);
     },
   });
 }

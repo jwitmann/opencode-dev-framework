@@ -563,6 +563,8 @@ describe("DSH adapter (plan 25 slice 4)", () => {
       "dev_framework_set_profile",
       "dev_framework_status",
       "dev_framework_init",
+      "dev_framework_update",
+      "dev_framework_runtime",
     ]);
   });
 
@@ -1186,6 +1188,8 @@ describe("DSH adapter (plan 25 slice 4)", () => {
       "dev_framework_set_profile",
       "dev_framework_status",
       "dev_framework_init",
+      "dev_framework_update",
+      "dev_framework_runtime",
     ]);
     const find = (name: string) => captured.tools.find((t) => t.name === name);
     const verify = (await find("dev_framework_verify")?.execute({}, {})) as string;
@@ -1208,6 +1212,23 @@ describe("DSH adapter (plan 25 slice 4)", () => {
     // The agent path kick-starts like the command: skills land where the
     // host `skill` tool scans, not only under `.opencode/skills`.
     expect(existsSync(join(directory, ".dsh/skills/peer-review/SKILL.md"))).toBe(true);
+    const updated = (await find("dev_framework_update")?.execute({}, {})) as string;
+    expect(updated).toContain("templates current");
+    const runtime = (await find("dev_framework_runtime")?.execute({}, {})) as string;
+    expect(runtime.length).toBeGreaterThan(0);
+  });
+
+  it("agent update tool returns the drift brief on a stale tree", async () => {
+    writeConfig(directory, "profile: standard\n");
+    const { ctx, captured } = stubContext();
+    apply(ctx);
+    const find = (name: string) =>
+      captured.tools.find((t) => t.name === name) as unknown as {
+        execute: (args: unknown, exec: unknown) => Promise<string>;
+      };
+    const updated = (await find("dev_framework_update")?.execute({}, {})) as string;
+    // Fresh temp dir: every template missing, so the brief redirects.
+    expect(updated).toContain("Run /df-init");
   });
 
   it("registers df-help with the command list", async () => {

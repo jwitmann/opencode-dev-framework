@@ -7,20 +7,23 @@
 > (`agent/pre-step` constitution prepend), commands (`df-status`,
 > `df-goal`, `df-verify`, `df-profile`, `df-runtime`, `df-init`,
 > `df-update`),
-> and agent tools (`dev_framework_verify/set_profile/status/init`)
-> are wired and unit-proven; `dev_framework_status` since invoked
-> live by the model (full status text returned), and the child
-> artifact deny live-proven (subagent attempted `review.md`, got
-> the guard text, reported back as text). Deliberate
-> release still pending.
+> and agent tools (`dev_framework_verify/set_profile/status/init/
+> update/runtime`) are wired and unit-proven; `dev_framework_status`
+> since invoked live by the model (full status text returned), and
+> the child artifact deny live-proven (subagent attempted
+> `review.md`, got the guard text, reported back as text). No goal
+> tool by design (goal creation is human-initiated on both
+> harnesses). Deliberate release still pending.
 
 ## Agent tools
 
-The same four `dev_framework_*` agent tools the OpenCode adapter
+The same six `dev_framework_*` agent tools the OpenCode adapter
 installs, callable by the model mid-turn: `dev_framework_verify`
 (mid-session gate check, reports only), `dev_framework_set_profile`
 (applies immediately), `dev_framework_status` (live state),
-`dev_framework_init` (scaffold + report). The definitions are plain
+`dev_framework_init` (scaffold + report), `dev_framework_update`
+(drift brief, mirror included — present each file before editing),
+`dev_framework_runtime` (read-only snapshot). The definitions are plain
 objects in the host's compiled tool shape — no host-internal import,
 no new dependency.
 

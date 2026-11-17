@@ -863,6 +863,58 @@ const plugin = Plugin.define({
             };
           },
         });
+
+        editor.add({
+          name: "dev_framework_update",
+          description:
+            "Check the framework deployment for drift (bundled templates, including the skill set) and return the per-file refresh/add brief. Use when the setup may be stale; present each file for review before editing, exactly like /df-update, and never commit unreviewed.",
+          input: {
+            type: "object",
+            properties: {
+              directory: {
+                type: "string",
+                description: "Project directory (defaults to current project)",
+              },
+            },
+            additionalProperties: false,
+          },
+          async execute(input: unknown) {
+            const { checkTemplateUpdates, composeUpdatePrompt, needsAgentHandoff } = await import(
+              "../../core/update.js"
+            );
+            const args = input as { directory?: string };
+            const targetDir = args.directory ?? directory;
+            const drift = await checkTemplateUpdates(targetDir);
+            if (!needsAgentHandoff(drift)) {
+              return { content: "templates current" };
+            }
+            return { content: composeUpdatePrompt(drift, targetDir) };
+          },
+        });
+
+        editor.add({
+          name: "dev_framework_runtime",
+          description:
+            "Show the live framework runtime snapshot for the project (hook registration, gate continuation posture, template drift). Read-only; use to inspect gate state mid-session.",
+          input: {
+            type: "object",
+            properties: {
+              directory: {
+                type: "string",
+                description: "Project directory (defaults to current project)",
+              },
+            },
+            additionalProperties: false,
+          },
+          async execute(input: unknown) {
+            const { renderRuntimeStatus } = await import("../../core/format-status.js");
+            const { readRuntimeStatus } = await import("../../core/runtime-status.js");
+            const args = input as { directory?: string };
+            const targetDir = args.directory ?? directory;
+            const snapshot = await readRuntimeStatus(targetDir);
+            return { content: renderRuntimeStatus(snapshot) };
+          },
+        });
       }),
     );
 
