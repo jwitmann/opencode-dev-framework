@@ -91,6 +91,9 @@ budgeting, `protect_off` scope.
 - **`df-goal <objective>`**: checks native `/goal` and the profile,
   wraps the objective with the verification contract exactly once,
   and creates the host goal — the DSH-native shape of `/df-goal`.
+  Live-proven 2026-11-17 (`dsh-tui`, human-typed objective): agent did
+  the work, wrote a fresh review, `dev_framework_verify` returned
+  `DEV_FRAMEWORK_VERDICT: PASS`, and only then completed the goal.
 - **`df-verify`**: runs the full completion gate on demand and
   reports PASS/FAIL (side-effect-free: never retries, never steers).
 - **`df-profile <off|advisory|standard|strict>`**: switches profile
