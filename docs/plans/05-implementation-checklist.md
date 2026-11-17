@@ -877,6 +877,27 @@ Dogfood the fork's V2 pre-terminal hook (upstream PR
   templates, examples, and living docs migrated to the neutral home.
 - [x] 44.4 Peer-review skill gate before commit; commit locally, never push.
 
+## DSH message event ids — resume-shaping fix (DONE 2026-11-17)
+
+- [x] Live TUI session would not resume: 14 ODF-injected user messages
+  lacked host session-event ids (`DshUserMessage` had no `id`), and the
+  host validator requires non-empty `data.id` on every message event —
+  each injected message poisoned the log for the next resume.
+- [x] Fix in `src/adapters/dsh/index.ts`: `id?: string` on the type
+  (optional so host-owned incoming history stays id-tolerant) +
+  `randomUUID()` stamp in the single `dshUserMessage()` factory, which
+  covers every outbound path. Regression tests assert non-empty unique
+  ids; fail-before proven by stash for both assertions. Full suite
+  600/600, check/lint/typecheck/build green. Committed locally, never
+  pushed.
+- [x] Companion repair of the already-corrupted log (not repo work):
+  the first repair attempt recompressed all events as one zstd frame,
+  which the loader rejects (it requires the first frame to be exactly
+  the header line). Rebuilt frame-aware: 309 original frames kept
+  byte-identical, 13 touched frames recompressed from verified content
+  (322 frames, first frame identical, zero id-less events). Lesson
+  recorded in `08-notes.md`.
+
 ## Peer-review gate (mandatory after EVERY phase 21–27)
 
 Run the **`peer-review` skill** (`templates/.opencode/skills/peer-review/SKILL.md`),
