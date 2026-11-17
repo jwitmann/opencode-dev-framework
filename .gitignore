@@ -9,3 +9,6 @@ dist/
 /.operator/
 /.dsh/
 /.dev-framework/
+/.opencode-dev-framework/
+/.opencode-dev-framework.yml
+/.dev-framework.yml
