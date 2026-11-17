@@ -77,23 +77,45 @@ export function extractCommand(args: unknown): string | undefined {
 }
 
 /**
+ * Heredoc span: `<<`/`<<-` marker (not a `<<<` herestring) through the line
+ * that is exactly the delimiter. The body is stdin to the command, not shell
+ * syntax — scanning it for redirects turns code (`->`, `> 120`) into phantom
+ * file targets. Untouched when unterminated. The strip runs on the raw
+ * command before tokenizing, so a literal `<<DELIM` inside quoted prose
+ * still matches when a later bare `DELIM` line exists — accepted as rare.
+ */
+const HEREDOC_RE =
+  /(?<!<)<<-?(?!<)[ \t]*(["']?)(\S+)\1[ \t]*\r?\n[\s\S]*?\n[ \t]*\2[ \t]*(?=\r?$|\r?\n)/g;
+
+/** One token plus whether it came from inside quotes (prose, never an operator). */
+interface ShellToken {
+  text: string;
+  quoted: boolean;
+}
+
+/**
  * Extract probable file-write targets from a shell command: filenames after
  * output redirections (`>`, `>>`, with optional fd/`&` prefixes, glued or
  * spaced) and operands of `tee` in command position. Heredocs (`<<`) and
  * herestrings (`<<<`) carry input, never a target, so they are ignored.
  * Token-based and deliberately over-collecting within a command tail: that
  * is harmless because callers only act on exact artifact matches, while a
- * false negative would reopen a write path. Quote-aware.
+ * false negative would reopen a write path. Quote-aware: quoted spans are
+ * operands, never operators.
  */
 export function extractRedirectTargets(command: string): string[] {
   const targets: string[] = [];
+  // Heredoc bodies are stdin, not shell: strip them before tokenizing so
+  // code inside (`->`, `> 120`) never becomes a phantom file target.
+  const scannable = command.replace(HEREDOC_RE, "");
   // Operators and separators stay visible as tokens so `tee` is only
   // honored in command position (not inside quoted prose).
-  const tokens: string[] = [];
+  const tokens: ShellToken[] = [];
   const tokenRe = /"([^"]*)"|'([^']*)'|&&|\|\||[;|&()!<>]+|[^\s;|&<>()!]+/g;
-  for (let m = tokenRe.exec(command); m !== null; m = tokenRe.exec(command)) {
-    tokens.push(m[1] ?? m[2] ?? m[0]);
+  for (let m = tokenRe.exec(scannable); m !== null; m = tokenRe.exec(scannable)) {
+    tokens.push({ text: m[1] ?? m[2] ?? m[0], quoted: m[1] !== undefined || m[2] !== undefined });
   }
+  const tokenText = (t: ShellToken): string => t.text;
   const isSeparator = (t: string): boolean => /^(?:&&|\|\||[;|&()!<>]+)$/.test(t);
   const isBareRedirect = (t: string): boolean => /^(?:\d*>>?\|?|&>>?\|?)$/.test(t);
   // Wrappers that pass through to the real command: `sudo tee`, `env A=B
@@ -111,17 +133,21 @@ export function extractRedirectTargets(command: string): string[] {
   const collectOperands = (from: number): string[] => {
     const operands: string[] = [];
     for (let j = from; j < tokens.length; j++) {
-      const next = tokens[j];
+      const next = tokenText(tokens[j]);
       if (isSeparator(next) || isBareRedirect(next)) break;
       if (!next.startsWith("-") && next !== "") operands.push(next);
     }
     return operands;
   };
   for (let i = 0; i < tokens.length; i++) {
-    const token = tokens[i];
-    const atCommand = i === 0 || isSeparator(tokens[i - 1]) || isBareRedirect(tokens[i - 1]);
+    const token = tokenText(tokens[i]);
+    const quoted = tokens[i].quoted;
+    const prev = i === 0 ? "" : tokenText(tokens[i - 1]);
+    // Quoted spans are prose, never operators — but stay eligible as
+    // targets/operands below (e.g. `> "my file"`, `tee "a b"`).
+    const atCommand = !quoted && (i === 0 || isSeparator(prev) || isBareRedirect(prev));
     const base = cmdBase(token);
-    if (base === "tee" && (atCommand || isWrapper(tokens[i - 1] ?? ""))) {
+    if (base === "tee" && (atCommand || isWrapper(prev))) {
       // `tee` writes every non-flag operand that follows it.
       for (const next of collectOperands(i + 1)) {
         if (next === "tee") break;
@@ -138,7 +164,11 @@ export function extractRedirectTargets(command: string): string[] {
     if (
       atCommand &&
       base === "sed" &&
-      tokens.some((t, k) => k > i && (t === "-i" || t === "--in-place" || /^-i./.test(t)))
+      tokens.some(
+        (t, k) =>
+          k > i &&
+          (tokenText(t) === "-i" || tokenText(t) === "--in-place" || /^-i./.test(tokenText(t))),
+      )
     ) {
       // First non-flag operand is the script; the rest are files.
       let skippedScript = false;
@@ -151,14 +181,24 @@ export function extractRedirectTargets(command: string): string[] {
       }
       continue;
     }
-    if (isBareRedirect(token)) {
+    if (!quoted && isBareRedirect(token)) {
       const next = tokens[i + 1];
-      if (next !== undefined && next !== "" && !isSeparator(next)) targets.push(next);
+      const nextText = next === undefined ? "" : tokenText(next);
+      if (nextText !== "" && !isSeparator(nextText)) targets.push(nextText);
       continue;
     }
-    // Glued forms: `2>file`, `>file`, `&>>file`. Exclude `<<`/`<<<`.
-    if (token.includes(">") && !token.includes("<")) {
-      const after = token.replace(/^.*?(?:\d*>>?|&>>?)/, "").replace(/^["']|["']$/g, "");
+    // Glued-form backstop: the tokenizer splits every glued operator
+    // (`2>file`, `>file`, `&>>file`) into bare-redirect + next-token, so
+    // this branch only fires on unforeseen token shapes — never on
+    // separators or quoted prose (see guards above). Exclude `<<`/`<<<`.
+    // Quoted spans never act as operators (prose like `->` is not a
+    // redirect), and separator tokens (`>&` in `2>&1`) carry no target —
+    // only real redirections name files.
+    if (!quoted && !isSeparator(token) && token.includes(">") && !token.includes("<")) {
+      const after = token
+        .replace(/^.*?(?:\d*>>?|&>>?)/, "")
+        .replace(/^["']|["']$/g, "")
+        .trim();
       if (after !== "") targets.push(after);
     }
   }

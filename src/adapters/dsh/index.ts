@@ -354,7 +354,15 @@ function registerDshTool(
     execute: (input: unknown) => Promise<string>;
   },
 ): void {
-  const register = ctx.tools?.register;
+  // The host throws on reading a non-injected service (rather than
+  // yielding undefined), so the read itself is guarded: a host without
+  // the service keeps every command, exactly as documented.
+  let register: DshTools["register"] | undefined;
+  try {
+    register = ctx.tools?.register;
+  } catch {
+    register = undefined;
+  }
   if (typeof register !== "function") {
     void safeLog(state, "warn", `tool service unavailable; skipping agent tool ${def.name}`);
     return;
@@ -1077,13 +1085,23 @@ export function apply(ctx: DshContext): void {
         if (!built.ok) {
           return { kind: "error", text: built.error };
         }
-        if (typeof ctx.goals?.create !== "function") {
+        // The host throws on reading a non-injected service, so the
+        // read itself is guarded (same as the agent-tool registration).
+        // The service object (not the bare method) is captured so the
+        // `create` call keeps its receiver.
+        let goals: DshGoals | undefined;
+        try {
+          goals = ctx.goals;
+        } catch {
+          goals = undefined;
+        }
+        if (typeof goals?.create !== "function") {
           return {
             kind: "error",
             text: "Cannot start a verified goal: the host goal service is not available on this core. Run the objective without verification where a goal service exists.",
           };
         }
-        await ctx.goals.create(invocation.agent, { objective: built.text });
+        await goals.create(invocation.agent, { objective: built.text });
         return {
           kind: "success",
           text:

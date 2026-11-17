@@ -147,10 +147,23 @@ describe("helpers", () => {
     expect(extractRedirectTargets("echo hi | tee a.md b.md")).toEqual(["a.md", "b.md"]);
     expect(extractRedirectTargets('tee -a "my file.md"')).toEqual(["my file.md"]);
     expect(extractRedirectTargets("2>glued.md")).toEqual(["glued.md"]);
-    // Reads and heredoc bodies name no file target.
+    // Reads, log-capture idioms (`2>&1`), and heredoc bodies name no file target.
     expect(extractRedirectTargets("grep review.md src/")).toEqual([]);
     expect(extractRedirectTargets("cat .opencode/opencode-dev-framework/review.md")).toEqual([]);
     expect(extractRedirectTargets("cat <<'EOF'\nreview.md\nEOF")).toEqual([]);
+    expect(extractRedirectTargets("ls -la 2>&1 | head -n 5")).toEqual([]);
+    expect(extractRedirectTargets("pytest test_greet.py -v 2>&1; echo EXIT=$?")).toEqual([]);
+    expect(extractRedirectTargets("python3 -c \"print('hello() ->', greet.hello())\"")).toEqual([]);
+    expect(extractRedirectTargets('echo "x > y"')).toEqual([]);
+    expect(
+      extractRedirectTargets(
+        "python3 - <<'EOF'\nimport re\nif len(line) > 120:\n    print(line)\nEOF",
+      ),
+    ).toEqual([]);
+    // A `<<<` herestring word reappearing as a later line must not start
+    // a heredoc strip: the real redirect inside stays visible (no missed
+    // write for the guard).
+    expect(extractRedirectTargets("cat <<< hello\n> real.md\nhello")).toEqual(["real.md"]);
   });
 
   it("catches wrapper-prefixed tee, noclobber redirects, and argv writers", () => {

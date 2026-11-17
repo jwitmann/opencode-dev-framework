@@ -508,6 +508,30 @@ describe("DSH adapter (plan 25 slice 4)", () => {
     expect(captured.registered).toEqual([]);
   });
 
+  it("survives a host that throws on uninjected service reads", async () => {
+    writeConfig(directory, "profile: standard\n");
+    const { ctx, captured } = stubContext();
+    // The host throws on reading a non-injected service instead of
+    // yielding undefined: the adapter must degrade to warn+skip, never
+    // take the gates down with it.
+    const hardened = new Proxy(ctx, {
+      get: (target, prop) => {
+        if (prop === "tools" || prop === "goals") {
+          throw new Error(`cannot get property "${String(prop)}" without inject`);
+        }
+        return Reflect.get(target as object, prop);
+      },
+    });
+    expect(() => apply(hardened as unknown as DshContext)).not.toThrow();
+    expect(captured.registered.map((r) => r.name)).toContain("df-status");
+    expect(captured.tools).toEqual([]);
+    expect(captured.warns.some((w) => w.includes("tool service unavailable"))).toBe(true);
+    // Gates still fire without the tool service.
+    const next = async (): Promise<DshPreDecision> => ({ kind: "allow" });
+    const decision = await captured.pre({ name: "write", arguments: { file_path: ".env" } }, next);
+    expect(decision.kind).toBe("deny");
+  });
+
   it("no-ops every hook when the kill switch is set", async () => {
     writeConfig(directory, "profile: off\n");
     const { ctx, captured } = stubContext();
