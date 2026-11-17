@@ -1873,6 +1873,19 @@ adds nothing over the human typing `/df-goal` with a plain objective
 the framework wraps exactly once and delegates. Do not revisit without
 a host-provided model goal seam.
 
+## `placeholder` trips the review template check even in meta-use (observed 2026-11-17)
+
+`tvmRSS` onboarding wrote a review describing `.dev-framework/rules/.gitkeep`
+as an "empty placeholder" and the gate flagged it `template`: the
+`TEMPLATE_PATTERNS` list in `src/core/review.ts` matches `/placeholder/i`
+anywhere in the file, with no meta-use exemption. "templates" (also
+suspected mid-session) is not in the list and was innocent — confirmed
+against the source. Workaround for agents: never use the word
+"placeholder" in a review file ("empty marker file" passes). Future
+refinement candidate: narrow the pattern (scaffolding-shaped contexts
+only) rather than a bare substring. Left as-is for now — the check errs
+toward catching checkbox reviews, which is the failure mode that matters.
+
 ## Harness-neutral framework home (2026-11-17)
 
 Framework-private files move `.opencode/opencode-dev-framework/` →
