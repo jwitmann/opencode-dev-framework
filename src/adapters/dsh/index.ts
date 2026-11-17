@@ -23,7 +23,7 @@ import { createBlockStore, createStuckSnapshotStore } from "../../core/block-sto
 
 import { changeProfile, verifyGate } from "../../core/commands.js";
 import { clearConfigCache, loadConfig } from "../../core/config.js";
-import { renderStatus } from "../../core/format-status.js";
+import { renderRuntimeStatus, renderStatus } from "../../core/format-status.js";
 import { createChangedFileTracker } from "../../core/gate.js";
 import {
   buildVerifiedObjective,
@@ -36,7 +36,7 @@ import {
   PREFLIGHT_ARTIFACT_REL,
   preflightBlockReason,
 } from "../../core/harness.js";
-import { runInitCommand } from "../../core/init.js";
+import { runInitCommand, runInitScaffold, scaffoldReportLines } from "../../core/init.js";
 import {
   createLintLimiter,
   detectPreCommitAvailability,
@@ -59,6 +59,7 @@ import { renderDutyRoster } from "../../core/roster.js";
 import { loadConstitution } from "../../core/rules.js";
 import {
   actOnVerdict,
+  getActiveState,
   getFallbackLog,
   type HookState,
   reloadConfigIfChanged,
@@ -66,7 +67,9 @@ import {
   safeLog,
   setActiveState,
   setFallbackLog,
+  stampRuntimeStatus,
 } from "../../core/run-hooks.js";
+import { readRuntimeStatus } from "../../core/runtime-status.js";
 import type { Profile, ResolvedConfig } from "../../core/types.js";
 import { checkTemplateUpdates, driftMentionLine, runUpdateCommand } from "../../core/update.js";
 import { snapshotEnforceable } from "../../core/weakening.js";
@@ -200,11 +203,38 @@ export interface DshToolResult {
   readonly isError: boolean;
 }
 
+/** Host tool service (`ctx.tools`), used only for agent-invokable tools. */
+export interface DshTools {
+  register(definition: DshToolDefinition): void;
+}
+
+/**
+ * Minimal tool definition twin: the plain-object shape the host's
+ * `ctx.tools.register` consumes. Deliberately NOT imported from the
+ * host's `@deepseek-ai/dsh-tools` package — that package is workspace
+ * internal (not published), and this plugin keeps zero runtime
+ * dependencies. The shape mirrors `defineTool` output: JSON-Schema
+ * parameters, a canonical string value schema with a text renderer,
+ * and an async execute returning the canonical value.
+ */
+export interface DshToolDefinition {
+  readonly name: string;
+  readonly description: string;
+  readonly parameters: Record<string, unknown>;
+  readonly output: {
+    readonly schema: Record<string, unknown>;
+    render: (args: unknown, value: unknown) => Array<{ type: "text"; text: string }>;
+  };
+  readonly isConcurrencySafe?: (args: unknown) => boolean;
+  execute: (args: unknown, exec: unknown) => Promise<unknown>;
+}
+
 /** Structural plugin context: only the seams the adapter touches. */
 export interface DshContext {
   readonly subprocess: DshSubprocess;
   readonly logger: DshLogger;
   readonly commands: DshCommands;
+  readonly tools?: DshTools;
   readonly goals?: DshGoals;
   on(
     event: "tools/pre-execute",
@@ -293,6 +323,50 @@ function runOverSubprocess(ctx: DshContext, directory: string) {
       clearTimeout(timer);
     }
   };
+}
+
+/**
+ * Register one agent-invokable tool, isolated: a host that rejects one
+ * definition (shape drift, name clash) still gets the rest, and a host
+ * without a tool service keeps every command. The definition is built in
+ * the host's compiled `defineTool` shape (see `DshToolDefinition`) so no
+ * host-internal import is needed.
+ */
+function registerDshTool(
+  ctx: DshContext,
+  state: HookState,
+  def: {
+    name: string;
+    description: string;
+    parameters: Record<string, unknown>;
+    isConcurrencySafe?: (args: unknown) => boolean;
+    execute: (input: unknown) => Promise<string>;
+  },
+): void {
+  const register = ctx.tools?.register;
+  if (typeof register !== "function") {
+    void safeLog(state, "warn", `tool service unavailable; skipping agent tool ${def.name}`);
+    return;
+  }
+  try {
+    register({
+      name: def.name,
+      description: def.description,
+      parameters: def.parameters,
+      output: {
+        schema: { type: "string" },
+        render: (_args, value) => [
+          { type: "text", text: typeof value === "string" ? value : String(value) },
+        ],
+      },
+      ...(def.isConcurrencySafe === undefined ? {} : { isConcurrencySafe: def.isConcurrencySafe }),
+      execute: (args: unknown, _exec: unknown) => def.execute(args),
+    });
+  } catch (error) {
+    void safeLog(state, "warn", `agent tool ${def.name} rejected by host; commands still work`, {
+      error: String((error as Error)?.message ?? error),
+    });
+  }
 }
 
 function toPreDecision(result: GuardResult): DshPreDecision {
@@ -481,6 +555,9 @@ export function apply(ctx: DshContext): void {
     lastIdleHandled: new Map<string, number>(),
   };
   setActiveState(state);
+  // Runtime snapshot for `df-runtime` (fire-and-forget, never throws):
+  // "armed" until a gate evaluation reports otherwise.
+  stampRuntimeStatus(state.directory, "turn-stopping", "armed");
 
   // Re-entrancy guard: `formatFile` mutates, so it re-fires `post-execute`.
   // The guard lives here, never in core (plan 25 §Risks).
@@ -821,6 +898,10 @@ export function apply(ctx: DshContext): void {
       const sessionID = sessionOf(agent, turn);
       const verdict = await runCompletion(state, sessionID);
       const message = await actOnVerdict(state, verdict);
+      // Refresh the `df-runtime` snapshot: a block steers the same turn
+      // ("idle" = gate failures continue the same execution); pass and
+      // standdown leave the gate armed for the next turn.
+      stampRuntimeStatus(state.directory, "turn-stopping", message === null ? "armed" : "idle");
       if (message === null) {
         return;
       }
@@ -875,6 +956,26 @@ export function apply(ctx: DshContext): void {
     name: "odf-status",
     description: "Show opencode-dev-framework gate status (profile, config, enforcement level).",
     handler: () => ({ kind: "success", text: renderStatus(state.config, state) }),
+  });
+
+  // Runtime snapshot: hook registration, gate continuation posture, and
+  // template drift — the console-text shape of the TUI `/df-runtime`
+  // modal (a DSH host has no dialog surface; the text IS the surface).
+  // The snapshot is stamped by `apply()` ("armed") and refreshed by every
+  // turn-stopping evaluation; absent until the first stamp lands.
+  ctx.commands.register({
+    name: "df-runtime",
+    description:
+      "Show plugin version and live hook/gate runtime state (hook registration, continuation posture, template drift).",
+    handler: async () => {
+      try {
+        await reloadConfigIfChanged(state);
+        const snapshot = await readRuntimeStatus(state.directory);
+        return { kind: "success", text: renderRuntimeStatus(snapshot) };
+      } catch (error) {
+        return { kind: "error", text: `df-runtime failed: ${(error as Error)?.message ?? error}` };
+      }
+    },
   });
 
   // Verified goal: availability check + pure verified-objective build, then
@@ -1080,6 +1181,147 @@ export function apply(ctx: DshContext): void {
       } catch (error) {
         return { kind: "error", text: `df-update failed: ${(error as Error)?.message ?? error}` };
       }
+    },
+  });
+
+  // Agent-invokable tools: the same four `dev_framework_*` tools the
+  // OpenCode adapter installs, over the same core functions. Definitions
+  // are plain objects in the host's compiled `defineTool` shape (JSON
+  // Schema parameters, canonical string value schema with a text
+  // renderer) — see `DshToolDefinition`. Each registration is isolated:
+  // a host that rejects one definition still gets the rest.
+  registerDshTool(ctx, state, {
+    name: "dev_framework_verify",
+    description:
+      "Run the full opencode-dev-framework completion contract now (typecheck, tests, changed-file lint, peer-review state) and return the summary. The first line is DEV_FRAMEWORK_VERDICT: PASS or FAIL, reporting the raw inspection outcome. Use for a mid-session gate check without waiting for turn-stopping; unlike the gate this never steers, it only reports.",
+    parameters: {
+      type: "object",
+      properties: {
+        directory: {
+          type: "string",
+          description: "Project directory (defaults to current project)",
+        },
+      },
+      additionalProperties: false,
+    },
+    isConcurrencySafe: () => true,
+    execute: async (input: unknown) => {
+      const args = input as { directory?: string };
+      const targetDir = args.directory ?? state.directory;
+      const liveState = getActiveState();
+      const live = liveState !== null && liveState.directory === targetDir ? liveState : null;
+      const own = state.directory === targetDir ? state : null;
+      const holder = live ?? own;
+      // Live tracker's changed files beat the empty default: a mid-session
+      // verify scopes `changed` steps to real edits (mirror of opencode).
+      const cfg = holder?.config ?? loadConfig(targetDir);
+      const changed = holder !== null ? holder.tracker.getChangedFiles() : [];
+      const { summary } = await verifyGate(run, targetDir, cfg, changed);
+      return summary;
+    },
+  });
+
+  registerDshTool(ctx, state, {
+    name: "dev_framework_set_profile",
+    description:
+      "Change the opencode-dev-framework profile (off, advisory, standard, strict) for the current project and apply it immediately.",
+    parameters: {
+      type: "object",
+      properties: {
+        profile: {
+          type: "string",
+          description: "New profile: off, advisory, standard, or strict",
+        },
+        directory: {
+          type: "string",
+          description: "Project directory (defaults to current project)",
+        },
+      },
+      required: ["profile"],
+      additionalProperties: false,
+    },
+    execute: async (input: unknown) => {
+      const args = input as { profile: string; directory?: string };
+      const targetDir = args.directory ?? state.directory;
+      const profile = args.profile.trim().toLowerCase();
+      const valid = ["off", "advisory", "standard", "strict"] as const;
+      if (!(valid as readonly string[]).includes(profile)) {
+        return `Invalid profile "${args.profile}". Valid values: ${valid.join(", ")}.`;
+      }
+      const message = await changeProfile(targetDir, profile as Profile);
+      clearConfigCache();
+      const newConfig = loadConfig(targetDir);
+      const { constitution: newConstitution } = await loadConstitution(newConfig, targetDir);
+      if (state.directory === targetDir) {
+        state.config = newConfig;
+        state.constitution = newConstitution;
+      }
+      const liveState = getActiveState();
+      if (liveState !== null && liveState !== state && liveState.directory === targetDir) {
+        liveState.config = newConfig;
+        liveState.constitution = newConstitution;
+      }
+      return `${message} Change applied immediately.`;
+    },
+  });
+
+  registerDshTool(ctx, state, {
+    name: "dev_framework_status",
+    description:
+      "Show the current opencode-dev-framework state for the project: active profile, guardrails, completion gate, on-edit behavior, tracked changed files, and block counts.",
+    parameters: {
+      type: "object",
+      properties: {
+        directory: {
+          type: "string",
+          description: "Project directory (defaults to current project)",
+        },
+      },
+      additionalProperties: false,
+    },
+    isConcurrencySafe: () => true,
+    execute: async (input: unknown) => {
+      const args = input as { directory?: string };
+      const targetDir = args.directory ?? state.directory;
+      const liveState = getActiveState();
+      const live = liveState !== null && liveState.directory === targetDir ? liveState : null;
+      const own = state.directory === targetDir ? state : null;
+      const holder = live ?? own;
+      const cfg = holder?.config ?? loadConfig(targetDir);
+      return renderStatus(cfg, holder ?? state);
+    },
+  });
+
+  registerDshTool(ctx, state, {
+    name: "dev_framework_init",
+    description:
+      "Scaffold opencode-dev-framework project files (agents, skills, commands, default config) into the current project. Missing files are created; existing files are skipped unless overwrite is true. With wizard:true, appends a wizard brief (detection, trial-run, Makefile targets, open questions) when the scaffold changed anything, or a status note when already configured.",
+    parameters: {
+      type: "object",
+      properties: {
+        directory: {
+          type: "string",
+          description: "Target project directory (defaults to current project)",
+        },
+        overwrite: {
+          type: "boolean",
+          description: "Overwrite existing files that differ from templates",
+        },
+        wizard: {
+          type: "boolean",
+          description: "Append a wizard brief for agent-led handoff to the project-config skill",
+        },
+      },
+      additionalProperties: false,
+    },
+    execute: async (input: unknown) => {
+      const args = input as { directory?: string; overwrite?: boolean; wizard?: boolean };
+      const targetDir = args.directory ?? state.directory;
+      const scaffold = await runInitScaffold(targetDir, run, {
+        wizard: args.wizard,
+        overwrite: args.overwrite,
+      });
+      return scaffoldReportLines(scaffold, targetDir).join("\n");
     },
   });
 }

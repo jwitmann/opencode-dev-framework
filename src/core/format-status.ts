@@ -219,7 +219,9 @@ export function renderRuntimeStatus(snapshot: RuntimeStatus | null): string {
   lines.push(
     snapshot.idleHookVia === "none"
       ? "Idle hook: not registered — event-subscribe fallback only"
-      : `Idle hook: registered via ${snapshot.idleHookVia}`,
+      : snapshot.idleHookVia === "turn-stopping"
+        ? "Turn-stopping hook: pre-terminal — gate failures steer the same turn, no idle boundary"
+        : `Idle hook: registered via ${snapshot.idleHookVia}`,
   );
   if (snapshot.continuation === "idle") {
     lines.push("Continuation: active — gate failures continue the same execution");

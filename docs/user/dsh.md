@@ -4,10 +4,21 @@
 > enforcement live-proven 2026-11-16 on stock `headless`
 > (sessions `931700f5` + `9487c152`, model
 > `muse-spark-1.3-contributor`). Instruction pillar
-> (`agent/pre-step` constitution prepend) and commands
-> (`df-goal`, `df-verify`, `df-profile`, `df-init`, `df-update`) are
-> wired and unit-proven; their live-fire runs next. Deliberate
+> (`agent/pre-step` constitution prepend), commands (`df-goal`,
+> `df-verify`, `df-profile`, `df-runtime`, `df-init`, `df-update`),
+> and agent tools (`dev_framework_verify/set_profile/status/init`)
+> are wired and unit-proven; their live-fire runs next. Deliberate
 > release still pending.
+
+## Agent tools
+
+The same four `dev_framework_*` agent tools the OpenCode adapter
+installs, callable by the model mid-turn: `dev_framework_verify`
+(mid-session gate check, reports only), `dev_framework_set_profile`
+(applies immediately), `dev_framework_status` (live state),
+`dev_framework_init` (scaffold + report). The definitions are plain
+objects in the host's compiled tool shape — no host-internal import,
+no new dependency.
 
 Same core (`src/core/`), different wiring: the DSH adapter registers
 the ODF gates on a DeepSeek Harness Cordis context instead of OpenCode.

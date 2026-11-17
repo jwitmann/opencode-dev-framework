@@ -17,8 +17,8 @@ import { fileURLToPath } from "node:url";
 export const RUNTIME_STATUS_DIR = ".opencode/opencode-dev-framework";
 export const RUNTIME_STATUS_FILE = "runtime-status.json";
 
-/** Which session-hook key the core accepted, or neither. */
-export type IdleHookVia = "experimental.idle" | "idle" | "none";
+/** Which session hook the core accepted, or neither (DSH uses `agent/turn-stopping`). */
+export type IdleHookVia = "experimental.idle" | "idle" | "none" | "turn-stopping";
 
 /** Dispatch history this session: hook-fired, net-fired, or neither yet. */
 export type ContinuationState = "idle" | "fallback" | "armed";
@@ -90,7 +90,12 @@ export async function writeRuntimeStatus(
 }
 
 function isIdleHookVia(value: unknown): value is IdleHookVia {
-  return value === "experimental.idle" || value === "idle" || value === "none";
+  return (
+    value === "experimental.idle" ||
+    value === "idle" ||
+    value === "none" ||
+    value === "turn-stopping"
+  );
 }
 
 function isContinuationState(value: unknown): value is ContinuationState {

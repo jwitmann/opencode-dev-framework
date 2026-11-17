@@ -57,6 +57,14 @@ interface Captured {
   }>;
   goalsCreated: Array<{ objective: string }>;
   commandNames: string[] | undefined;
+  tools: Array<{
+    name: string;
+    description: string;
+    parameters: unknown;
+    output: unknown;
+    isConcurrencySafe?: (args: unknown) => boolean;
+    execute: (args: unknown, exec: unknown) => Promise<unknown>;
+  }>;
   warns: string[];
 }
 
@@ -75,6 +83,7 @@ function stubContext(
     registered: [],
     warns: [],
     goalsCreated: [],
+    tools: [],
     commandNames,
   } as unknown as Captured;
   const spawned: string[][] = [];
@@ -104,6 +113,18 @@ function stubContext(
         captured.registered.push(def);
       },
       list: async () => (captured.commandNames ?? []).map((name) => ({ name })),
+    },
+    tools: {
+      register: (def: {
+        name: string;
+        description: string;
+        parameters: unknown;
+        output: unknown;
+        isConcurrencySafe?: (args: unknown) => boolean;
+        execute: (args: unknown, exec: unknown) => Promise<unknown>;
+      }) => {
+        captured.tools.push(def);
+      },
     },
     goals: {
       create: (agent: unknown, request: { objective: string }) => {
@@ -898,6 +919,71 @@ describe("DSH adapter (plan 25 slice 4)", () => {
     expect(decision.kind).toBe("success");
     expect(decision.text).toMatch(/current|nothing to do/i);
     expect(followup).not.toHaveBeenCalled();
+  });
+
+  it("df-runtime reports no snapshot before the first stamp, then live state", async () => {
+    writeConfig(directory, "profile: standard\n");
+    const { ctx, captured } = stubContext();
+    apply(ctx);
+    // The apply-time stamp is fire-and-forget: wait for it to land, then
+    // remove it, so the null branch below is deterministic (no further
+    // stamp fires on this path — stamps happen at apply + turn-stopping).
+    const snapshotPath = join(directory, ".opencode", "opencode-dev-framework", "runtime-status.json");
+    const deadline = Date.now() + 5000;
+    while (!existsSync(snapshotPath) && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+    rmSync(snapshotPath, { force: true });
+    const runtime = captured.registered.find((r) => r.name === "df-runtime");
+    const empty = (await runtime?.handler({ agent: {}, rawInput: "" })) as {
+      kind: string;
+      text: string;
+    };
+    expect(empty.kind).toBe("success");
+    expect(empty.text).toContain("No runtime snapshot");
+    const { writeRuntimeStatus } = await import("../src/core/runtime-status.js");
+    await writeRuntimeStatus(directory, {
+      idleHookVia: "turn-stopping",
+      continuation: "armed",
+      templates: undefined,
+    });
+    const live = (await runtime?.handler({ agent: {}, rawInput: "" })) as {
+      kind: string;
+      text: string;
+    };
+    expect(live.kind).toBe("success");
+    expect(live.text).toContain("Turn-stopping hook");
+  });
+
+  it("agent tools verify, profile, status, and init over core", async () => {
+    writeConfig(directory, "profile: standard\n");
+    const { ctx, captured } = stubContext();
+    apply(ctx);
+    const names = captured.tools.map((t) => t.name);
+    expect(names).toEqual([
+      "dev_framework_verify",
+      "dev_framework_set_profile",
+      "dev_framework_status",
+      "dev_framework_init",
+    ]);
+    const find = (name: string) => captured.tools.find((t) => t.name === name);
+    const verify = (await find("dev_framework_verify")?.execute({}, {})) as string;
+    expect(verify).toContain("DEV_FRAMEWORK_VERDICT");
+    const switched = (await find("dev_framework_set_profile")?.execute(
+      { profile: "advisory" },
+      {},
+    )) as string;
+    expect(switched).toContain("advisory");
+    const rejected = (await find("dev_framework_set_profile")?.execute(
+      { profile: "bogus" },
+      {},
+    )) as string;
+    expect(rejected).toContain("Invalid profile");
+    const status = (await find("dev_framework_status")?.execute({}, {})) as string;
+    expect(status).toMatch(/profile/i);
+    const inited = (await find("dev_framework_init")?.execute({}, {})) as string;
+    expect(inited.length).toBeGreaterThan(0);
+    expect(existsSync(join(directory, ".opencode-dev-framework.yml"))).toBe(true);
   });
 
   it("df-update hands the refresh list via followup when drift is detected", async () => {
