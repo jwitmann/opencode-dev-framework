@@ -905,8 +905,12 @@ Dogfood the fork's V2 pre-terminal hook (upstream PR
   `startActivation`, async delivery-to-parent, `spawn`/`fork`
   providers present on headless). Interim docs fix shipped
   (`40-delegation.md` harness rule: DSH inline is primary).
-- [ ] 26.1 Probe `subagents` inject + `startActivation` from adapter
-  ctx (throwaway patch, echo child).
+- [x] 26.1 Probe `subagents` inject + `startActivation` from adapter
+  ctx (throwaway patch, echo child). DONE 2026-11-17: full loop green
+  (tool result `spawned child: odf-probe-echo`, notice + `PROBE-OK`
+  verbatim in plan doc). Evidence: `/tmp/odf-probe26/` (never
+  committed) + headless session `session-eaa96a9b` (run 1) and the
+  `odf_probe_spawn` session (run 2).
 - [ ] 26.2 Spawn path at gate block (pattern-guardian first),
   findings folded into steer; degrade to inline when seam absent.
 - [ ] 26.3 Remaining specialists + caps + Agent Preset doc.

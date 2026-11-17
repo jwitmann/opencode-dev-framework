@@ -1,7 +1,7 @@
 # Plan 26 — DSH specialist subagents (close the delegation gap)
 
-Status: scoped, not started. Probe results + design below; implementation
-is phased work, not a quick patch.
+Status: 26.1 PROBED 2026-11-17 (full loop green, see evidence below).
+Slices 26.2–26.4 remain.
 
 ## Problem
 
@@ -69,13 +69,25 @@ the changed-file list):
 
 ## Unknowns requiring live probes (not more source reading)
 
-1. Exact runtime inject name + probe behavior for `subagents` from a
-   plugin-owned context.
-2. Parent scoping: does a plugin-spawned activation with `parent`
-   attach correctly outside a tool-exec ctx? Signal/abort semantics.
-3. Completion-notice shape for folding findings into the steer.
-4. Agent Preset story: minimal read-only preset doc for `dsh.md`;
-   behavior without one (prompt-only restriction + guards).
+Closed by the 26.1 probe (headless, model
+`muse-spark-1.3-contributor`, throwaway plugin
+`/tmp/odf-probe26/probe.mjs` + patch, never committed):
+
+1. Inject name runtime check — CLOSED: `inject: [tools, subagents]`
+   mounts clean, no throw; guarded-read pattern holds.
+2. Parent scoping — CLOSED: tool `execute(args, exec)` receives
+   `exec.agent`; passing it as `parent` to `startActivation` works
+   (`spawned child: odf-probe-echo`).
+3. Completion-notice shape — CLOSED, verbatim: `Background subagent
+   odf-probe-echo finished and will do no further work unless you send
+   it more. Its closing message: PROBE-OK`. Child replied exactly
+   `PROBE-OK`. (Side finding: the model reached for the equivalent
+   model-facing `subagent` tool when the probe was a *command* —
+   headless models invoke tools, not slash commands; the probe was
+   rewritten as a registered agent tool, which is also the adapter's
+   path.)
+4. Agent Preset story: minimal read-only preset doc; behavior without
+   one (prompt-only restriction + guards).
 5. Turn-stopping ergonomics: spawn-and-return (notices steer the next
    step) vs any await shape — deadlock check with the child running
    its own turns.

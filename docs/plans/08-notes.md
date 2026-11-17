@@ -1922,6 +1922,23 @@ under a flat-era name and vice versa) without masking nested
 validation errors. Timed before the DSH merge+release precisely so the
 DSH side has no installed base to migrate.
 
+## DSH specialist probe (2026-11-17, plan 26 slice 26.1)
+
+`ctx.subagents` resolves from a plugin-owned context with
+`inject: [tools, subagents]` (mount clean, guarded-read pattern
+holds); a plugin-registered agent tool can `startActivation` with
+`parent: exec.agent` on the `spawn` provider and the completion
+arrives via `delivery: "parent"` (`Background subagent <name>
+finished … Its closing message: …`). Side finding with docs impact:
+on headless the model invokes *tools*, not slash commands — the first
+probe (command-shaped) was bypassed by the model in favor of the
+`subagent` tool, the tool-shaped rewrite ran first try. Adapter
+`df-*` commands are human-invoked surfaces; model-invoked paths must
+be tools (`dev_framework_*`). Preset selection is spawn-only (`fork`
+inherits the parent preset and rejects independent selection), so
+reviewers spawn self-contained — the adapter packs context into the
+child prompt.
+
 ## References
 
 - OpenCode plugin docs: <https://opencode.ai/docs/plugins>
