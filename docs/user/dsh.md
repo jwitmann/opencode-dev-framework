@@ -69,7 +69,7 @@ mount.
 | Pre-flight gate | `tools/pre-execute` deny, before guardrails | **Hard block**; advisory warns and continues; the artifact path stays writable (relative or absolute spelling). |
 | Per-edit lint + format | `tools/post-execute` | Findings **fail the tool call** (`block` with the linter output as model-facing feedback) so the agent fixes its edit in the same turn — the OpenCode `execute.after` can only log a landed edit. Live: marker edit → `[odf post-execute] your edit introduced lint findings; fix them and retry` + `lint failed for greet.js (exit 1)` + `{"code":"lint-block"}`; the agent retried clean in the same turn. Timeouts, exit-127, and silent nonzero exits stay accept + error-log with the file tracked (infra the model cannot fix). Feedback is capped (4000 chars/body, 5 files + named tail). |
 | Completion gate | `agent/turn-stopping` + `steer` | **Pre-terminal**: the host awaits listeners, then continues the SAME turn on steer — no re-prompt round-trip, unlike the OpenCode idle continuation. Live: after a one-edit task said "Done", the gate blocked on the missing review and steered turn 1 onward — the agent ran a style/test/correctness review loop, wrote the review artifact, and only then did the turn end (15 steps, one turn, no new turn). Steer is dropped when the turn already aborted. Budget exhaustion stands down silently. |
-| Warn tier | allow + warn log on every hook | **Ceiling, verified**: nothing provides the `approval` service on headless, so `ask` would unconditionally deny — advisory never blocks by construction. |
+| Warn tier | allow + warn log on every hook | **Ceiling, verified**: nothing provides the `approval` service on headless, so `ask` would unconditionally deny — advisory never blocks by construction. **TUI half live-proven 2026-11-17** (`dsh-tui`, model `muse-spark-1.3-contributor`, `proj-ask` with `protect_mode: warn`): `.env` edit surfaced a human approval prompt, approved once, edit landed. |
 | Kill switch | profile `off` skips everything; `protect_off` stands down guardrails only | Pre-flight, lint, and the gate still fire under `protect_off` — exactly the OpenCode scope. |
 
 ## Differences from the OpenCode adapter
@@ -114,7 +114,8 @@ budgeting, `protect_off` scope.
   decision when the approval seam is injected, so it prompts instead
   of scrolling by in the log. Child sessions never ask (they report
   back; the parent decides). Without the seam, warn allows with a
-  warn log.
+  warn log. Live-proven 2026-11-17 (`dsh-tui`, `proj-ask`,
+  `protect_mode: warn`): `.env` edit prompted, approved once, landed.
 - **Child sessions**: the turn-stopping gate skips subagents (they owe
   no review duty — the parent answers for the shared tree), and
   children cannot write `review.md` (`child-artifact-deny`; advisory
