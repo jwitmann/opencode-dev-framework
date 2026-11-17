@@ -3,13 +3,18 @@ import { dirname, join, resolve } from "node:path";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 import { splitCommand } from "./command-utils.js";
-import { checkConfigEnforceable, DEFAULT_PROTECT, resolveConfig } from "./config.js";
+import {
+  checkConfigEnforceable,
+  DEFAULT_PROTECT,
+  existingConfigPath,
+  resolveConfig,
+} from "./config.js";
 import { detectProject } from "./detect.js";
 import type { CommandResult, RunCommand } from "./host.js";
 import type { CommandsConfig, Profile } from "./types.js";
 
 /** Directory containing the project templates shipped with the package. */
-export const TEMPLATES_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "templates");
+export const TEMPLATES_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "templates");
 
 export type OverwriteDecision = "overwrite" | "skip" | "overwrite-all" | "skip-all";
 
@@ -34,6 +39,99 @@ export interface TemplateStatus {
   missing: string[];
   present: string[];
   different: string[];
+}
+
+/**
+ * DSH skill roots scanned by the host skill-filesystem provider, highest
+ * rank first. `.opencode/skills` (the OpenCode layout `installTemplates`
+ * writes) is not among them, so a DSH `df-init` must mirror the bundled
+ * skills here or the `skill` tool never catalogs them and the setup brief
+ * names something the agent cannot load — the framework would not start.
+ */
+export const DSH_SKILL_ROOTS = [".dsh/skills", ".agents/skills"] as const;
+
+/**
+ * Mirror the bundled `.opencode/skills` templates into a DSH-scanned skill
+ * root so the host `skill` tool catalogs them. Same skip/overwrite
+ * semantics as `installTemplates`: never clobber user files unasked.
+ * Returns created/skipped/overwritten paths relative to the target dir.
+ * `statusTemplates` only iterates the template set, so these copies never
+ * read as drift.
+ */
+export async function mirrorSkillsToDsh(
+  targetDir: string,
+  root: string = DSH_SKILL_ROOTS[0],
+  options: InstallOptions = {},
+): Promise<InstallResult> {
+  const result: InstallResult = { created: [], skipped: [], overwritten: [] };
+  const prompt = options.prompt ?? defaultPrompt;
+  /** Sticky decision set when the user answers "all" or "none". */
+  let stickyDecision: "overwrite" | "skip" | null = null;
+
+  // Loud like `listTemplateFiles`: a missing/unreadable skills dir is
+  // packaging breakage, and silence would present a clean init whose brief
+  // names a skill the host can never catalog.
+  const names = await listSkillNames();
+  const skillsDir = join(TEMPLATES_DIR, ".opencode", "skills");
+
+  for (const name of names) {
+    const source = join(skillsDir, name, "SKILL.md");
+    const sourceContent = await readFileSafe(source);
+    if (sourceContent === null) {
+      continue;
+    }
+    const relative = `${root}/${name}/SKILL.md`;
+    const destination = join(targetDir, relative);
+
+    if (!(await fileExists(destination))) {
+      await fs.mkdir(dirname(destination), { recursive: true });
+      await fs.writeFile(destination, sourceContent, "utf8");
+      result.created.push(relative);
+      continue;
+    }
+
+    if ((await readFileSafe(destination)) === sourceContent) {
+      result.skipped.push(relative);
+      continue;
+    }
+
+    let decision: OverwriteDecision;
+    if (stickyDecision !== null) {
+      decision = stickyDecision;
+    } else if (options.skipExisting) {
+      decision = "skip";
+    } else if (options.overwriteExisting) {
+      decision = "overwrite";
+    } else {
+      decision = await prompt(relative);
+    }
+
+    if (decision === "overwrite-all") {
+      stickyDecision = "overwrite";
+      decision = "overwrite";
+    } else if (decision === "skip-all") {
+      stickyDecision = "skip";
+      decision = "skip";
+    }
+
+    if (decision === "overwrite") {
+      await fs.writeFile(destination, sourceContent, "utf8");
+      result.overwritten.push(relative);
+    } else {
+      result.skipped.push(relative);
+    }
+  }
+
+  return result;
+}
+
+/** List the bundled skill names (subdirectories of `.opencode/skills`). */
+export async function listSkillNames(): Promise<string[]> {
+  const skillsDir = join(TEMPLATES_DIR, ".opencode", "skills");
+  return (await fs.readdir(skillsDir, { withFileTypes: true }))
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => entry.name)
+    .sort();
 }
 
 /** List all template files relative to TEMPLATES_DIR. */
@@ -170,6 +268,38 @@ export async function installTemplates(
 }
 
 /**
+ * Compare a skill mirror root against its `.opencode/skills` sources.
+ * Returns mirror-relative drift: absent mirrors read as `add`, differing
+ * ones as `refresh`. Orphaned mirrors (no template source — a skill the
+ * shipment dropped) are ignored: never nag about files we no longer ship.
+ * Like `statusTemplates`, a broken source dir throws instead of reading
+ * as clean. Shares the `TemplateStatus` shape so drift merges trivially.
+ */
+export async function statusMirror(
+  targetDir: string,
+  root: string = DSH_SKILL_ROOTS[0],
+): Promise<TemplateStatus> {
+  const drift: TemplateStatus = { present: [], different: [], missing: [] };
+  const skillsDir = join(TEMPLATES_DIR, ".opencode", "skills");
+  for (const name of await listSkillNames()) {
+    const sourceContent = await readFileSafe(join(skillsDir, name, "SKILL.md"));
+    if (sourceContent === null) {
+      continue;
+    }
+    const relative = `${root}/${name}/SKILL.md`;
+    const existing = await readFileSafe(join(targetDir, relative));
+    if (existing === null) {
+      drift.missing.push(relative);
+    } else if (existing === sourceContent) {
+      drift.present.push(relative);
+    } else {
+      drift.different.push(relative);
+    }
+  }
+  return drift;
+}
+
+/**
  * Compare the target project against the bundled templates.
  */
 export async function statusTemplates(targetDir: string): Promise<TemplateStatus> {
@@ -257,14 +387,14 @@ function buildDefaultConfigYaml(
   lines.push("  scope: all");
   lines.push("  lint_changed: false");
   lines.push("  # standard/strict default: sessions that changed files must produce a");
-  lines.push("  # peer-review artifact (.opencode/opencode-dev-framework/review.md).");
+  lines.push("  # peer-review artifact (.dev-framework/review.md).");
   lines.push("  require_review: true");
   lines.push("  timeout: 300");
   lines.push("  max_blocks: 3");
   lines.push("");
   lines.push("# Optional: pre-flight task list. When set, edit tools are denied");
   lines.push("# (standard/strict) until the agent writes its findings to");
-  lines.push("# .opencode/opencode-dev-framework/preflight.md. Use for work that");
+  lines.push("# .dev-framework/preflight.md. Use for work that");
   lines.push("# must establish baseline state/knowledge before editing.");
   lines.push("# preflight:");
   lines.push('#   - "Summarize the current state of the component you will change"');
@@ -277,9 +407,11 @@ function buildDefaultConfigYaml(
 }
 
 /**
- * Write a project-level `.opencode-dev-framework.yml` based on detected
+ * Write a project-level `.dev-framework.yml` based on detected
  * tooling. Respects the same overwrite/skip flags and prompt as
- * `installTemplates`.
+ * `installTemplates`. An existing legacy `.opencode-dev-framework.yml`
+ * is left alone (the loader still reads it) — new files use the
+ * neutral name.
  */
 export async function writeDetectedConfig(
   targetDir: string,
@@ -287,16 +419,17 @@ export async function writeDetectedConfig(
 ): Promise<ConfigWriteResult> {
   const { language, commands, hasPreCommitConfig } = detectProject(targetDir);
   const content = buildDefaultConfigYaml(language, commands, hasPreCommitConfig);
-  const destination = join(targetDir, ".opencode-dev-framework.yml");
-  const relativePath = ".opencode-dev-framework.yml";
+  // Honor the deployment's established name: a config under any supported
+  // name keeps its name (no shadowing duplicate); new deployments get the
+  // neutral one.
+  const destination = existingConfigPath(targetDir) ?? join(targetDir, ".dev-framework.yml");
+  const relativePath = destination.slice(targetDir.length + 1);
 
-  const exists = await fileExists(destination);
-  if (!exists) {
+  const existing = await readFileSafe(destination);
+  if (existing === null) {
     await fs.writeFile(destination, content, "utf8");
     return { action: "created" };
   }
-
-  const existing = await readFileSafe(destination);
   if (existing === content) {
     return { action: "skipped" };
   }
@@ -540,7 +673,7 @@ export function formatWizardBrief(brief: WizardBrief): string[] {
     "",
     "Handoff: follow the project-config skill (templates/.opencode/skills/project-config/SKILL.md) " +
       "to resolve the questions above, run the real commands, and present " +
-      ".opencode-dev-framework.yml + hardening.md for review. Do not write without review.",
+      ".dev-framework.yml + .dev-framework/hardening.md for review. Do not write without review.",
   );
   return lines;
 }

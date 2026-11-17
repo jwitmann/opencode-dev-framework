@@ -2,8 +2,8 @@ import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { clearConfigCache } from "../src/config";
-import plugin from "../src/index";
+import plugin from "../src/adapters/opencode/index";
+import { clearConfigCache } from "../src/core/config";
 
 describe("Phase 26.1: dev_framework_verify tool (server-side gate, reshaped ship)", () => {
   let directory: string;
@@ -81,6 +81,8 @@ describe("Phase 26.1: dev_framework_verify tool (server-side gate, reshaped ship
     expect(addedTools.has("dev_framework_set_profile")).toBe(true);
     expect(addedTools.has("dev_framework_status")).toBe(true);
     expect(addedTools.has("dev_framework_verify")).toBe(true);
+    expect(addedTools.has("dev_framework_update")).toBe(true);
+    expect(addedTools.has("dev_framework_runtime")).toBe(true);
   });
 
   it("runs the gate and returns the summary (marker proof, no re-prompt)", async () => {
@@ -131,5 +133,40 @@ describe("Phase 26.1: dev_framework_verify tool (server-side gate, reshaped ship
     // Manual verification only reports: no re-prompt, no synthetic continuation.
     expect(ctx.session.prompt).not.toHaveBeenCalled();
     expect(ctx.session.synthetic).not.toHaveBeenCalled();
+  });
+
+  it("reports drift via dev_framework_update on a stale deployment", async () => {
+    writeConfig("profile: standard\n");
+    const { ctx, addedTools } = createMockCtx();
+    const mod = plugin as unknown as { setup: (c: unknown) => Promise<unknown> };
+    cleanup = (await mod.setup(ctx)) as () => Promise<void> | void;
+    const tool = addedTools.get("dev_framework_update");
+    expect(tool).toBeDefined();
+    const result = await tool?.execute({ directory });
+    // Fresh temp dir: every template missing, so the brief lists adds.
+    expect(result?.content).toContain("Run /df-init");
+  });
+
+  it("returns the runtime snapshot text via dev_framework_runtime", async () => {
+    writeConfig("profile: standard\n");
+    const { ctx, addedTools } = createMockCtx();
+    const mod = plugin as unknown as { setup: (c: unknown) => Promise<unknown> };
+    cleanup = (await mod.setup(ctx)) as () => Promise<void> | void;
+    const tool = addedTools.get("dev_framework_runtime");
+    expect(tool).toBeDefined();
+    const result = await tool?.execute({ directory });
+    expect(result?.content.length).toBeGreaterThan(0);
+  });
+
+  it("reports templates current via dev_framework_update on a fresh scaffold", async () => {
+    writeConfig("profile: standard\n");
+    const { ctx, addedTools } = createMockCtx();
+    const mod = plugin as unknown as { setup: (c: unknown) => Promise<unknown> };
+    cleanup = (await mod.setup(ctx)) as () => Promise<void> | void;
+    const init = addedTools.get("dev_framework_init");
+    await init?.execute({ directory });
+    const tool = addedTools.get("dev_framework_update");
+    const result = await tool?.execute({ directory });
+    expect(result?.content).toContain("templates current");
   });
 });

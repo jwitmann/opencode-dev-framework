@@ -27,4 +27,4 @@ on_edit:
 rules:
   mode: append
   files:
-    - .opencode/opencode-dev-framework/hardening.md
+    - .dev-framework/hardening.md

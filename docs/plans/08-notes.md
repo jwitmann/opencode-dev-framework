@@ -1860,6 +1860,110 @@ also lives server-side. After a plugin upgrade, restart the serve
 backend — then new and continued sessions both pick up the new code
 (in-memory seen-sets reset, so mentions re-arm).
 
+## `dev_framework_goal` tool considered and dropped (2026-11-17)
+
+Goal creation is human-initiated on both harnesses — DSH by an explicit
+`requireDirectHuman` gate in `tool-goal` (model-initiated `create_goal`
+calls are rejected; only the ungated `goals.create` service would
+bypass it), OpenCode architecturally (`/goal` is a user slash command;
+no model-facing goal tool exists in core). A model-invoked tool that
+creates goals would punch through DSH host policy; a draft-only tool
+adds nothing over the human typing `/df-goal` with a plain objective
+(the command already wraps). Single path stands: human runs `/df-goal`,
+the framework wraps exactly once and delegates. Do not revisit without
+a host-provided model goal seam.
+
+## DSH messages need host session-event ids (resume-shaping, fixed 2026-11-17)
+
+Every message the DSH adapter injects (`dshUserMessage()`:
+constitution prepend, duty roster, drift mention, `[odf post-execute]`
+contexts, gate steers) is committed by the host as a user/message
+session event, and the host resume validator requires a non-empty
+`data.id` on every message event. The factory minted messages with no id
+at all, so each injected message poisoned the log for the next resume —
+a live TUI session accumulated 14 id-less events and could not restart
+until the log was repaired by hand (UUIDs stamped onto the corrupt
+events). Fix: `id?: string` on `DshUserMessage` (optional so the shared
+type stays tolerant of host-owned incoming history) + `randomUUID()`
+from `node:crypto` stamped in the factory, which is the single producer
+of all outbound messages. Regression tests pin non-empty + unique ids
+(fail-before proven via stash). Lesson for future adapters: any object
+the host commits as a session event must carry the host's identity
+fields at creation — the validator is doing its job, the writer is at
+fault.
+
+## `placeholder` trips the review template check even in meta-use (observed 2026-11-17)
+
+`tvmRSS` onboarding wrote a review describing `.dev-framework/rules/.gitkeep`
+as an "empty placeholder" and the gate flagged it `template`: the
+`TEMPLATE_PATTERNS` list in `src/core/review.ts` matches `/placeholder/i`
+anywhere in the file, with no meta-use exemption. "templates" (also
+suspected mid-session) is not in the list and was innocent — confirmed
+against the source. Workaround for agents: never use the word
+"placeholder" in a review file ("empty marker file" passes). Future
+refinement candidate: narrow the pattern (scaffolding-shaped contexts
+only) rather than a bare substring. Left as-is for now — the check errs
+toward catching checkbox reviews, which is the failure mode that matters.
+
+## Harness-neutral framework home (2026-11-17)
+
+Framework-private files move `.opencode/opencode-dev-framework/` →
+`.dev-framework/` (review, preflight, runtime snapshot, local rules)
+and the config gains the neutral `.dev-framework.yml` name. Harness-
+discovered dirs stay native (`.opencode/agents`, `.opencode/skills`,
+`.dsh/skills` mirror) — only the framework's own files move. Readers
+are new-first with legacy fallback, writers are new-only, and `df
+init`/`df-profile`/tools honor an established legacy name instead of
+writing a shadowing duplicate — so existing deployments converge with
+no migration and no breakage. Config parsing sniffs shape (native keys
+→ native validation, else flat mapping) instead of guessing by file
+name, which also fixes two previously-mangled combos (native shape
+under a flat-era name and vice versa) without masking nested
+validation errors. Timed before the DSH merge+release precisely so the
+DSH side has no installed base to migrate.
+
+## DSH specialist probe (2026-11-17, plan 26 slice 26.1)
+
+`ctx.subagents` resolves from a plugin-owned context with
+`inject: [tools, subagents]` (mount clean, guarded-read pattern
+holds); a plugin-registered agent tool can `startActivation` with
+`parent: exec.agent` on the `spawn` provider and the completion
+arrives via `delivery: "parent"` (`Background subagent <name>
+finished … Its closing message: …`). Side finding with docs impact:
+on headless the model invokes *tools*, not slash commands — the first
+probe (command-shaped) was bypassed by the model in favor of the
+`subagent` tool, the tool-shaped rewrite ran first try. Adapter
+`df-*` commands are human-invoked surfaces; model-invoked paths must
+be tools (`dev_framework_*`). Preset selection is spawn-only (`fork`
+inherits the parent preset and rejects independent selection), so
+reviewers spawn self-contained — the adapter packs context into the
+child prompt.
+
+## DSH specialist dispatch live (2026-11-17, plan 26 slice 26.3)
+
+Two deployment-truth lessons from proving the loop on stock headless:
+
+- **Never inject a service the profile does not provide.** Adding
+  `agentPresets` to the patch inject list pended the *entire*
+  `odf-gates` plugin (`entry did not activate … pending (waiting for
+  service: agentPresets)` — stock headless has no `agentPresets`
+  registry, only dsh-tui does). The adapter code degrades gracefully
+  by design, but the inject list itself is a hard activation gate:
+  one missing service silences every hook with only a stderr warning.
+  Rule: inject lists name only services verified present in that
+  profile's `--dump-config`; everything else stays a guarded runtime
+  read. Headless therefore spawns preset-less (prompt + guards);
+  the read-only preset path is TUI-only until proven otherwise.
+- **Review freshness is file-name coverage, not diff coverage.** A
+  stale review that names the changed file still grades `present` —
+  re-editing `greet.js` under a `greet.js` review passes. Forcing a
+  review-block needs a change in a file the review does not name
+  (new `util.js` did it). Test fixtures and live self-tests should
+  use fresh files, not re-edits, when the block itself is the
+  objective. (Bonus dogfood: the constitution made the model refuse
+  a direct "skip the review" order twice and route around a
+  read-only review.md — the gates hold against the operator too.)
+
 ## References
 
 - OpenCode plugin docs: <https://opencode.ai/docs/plugins>

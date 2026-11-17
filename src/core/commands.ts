@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import { loadConfig } from "./config.js";
+import { existingConfigPath, loadConfig } from "./config.js";
 import type { GateReport } from "./gate.js";
 import { type CompletionInspection, inspectCompletion } from "./harness.js";
 import type { RunCommand } from "./host.js";
@@ -15,7 +15,9 @@ import type { Profile, ResolvedConfig } from "./types.js";
  * `dev_framework_set_profile` custom tool.
  */
 export async function changeProfile(directory: string, profile: Profile): Promise<string> {
-  const configPath = join(directory, ".opencode-dev-framework.yml");
+  // New file only when no config exists under any supported name; an
+  // established deployment is edited in place, never shadowed.
+  const configPath = existingConfigPath(directory) ?? join(directory, ".dev-framework.yml");
   await setProfileInFile(configPath, profile);
   return `opencode-dev-framework profile set to "${profile}". Change applies on the next tool call / gate run.`;
 }

@@ -5,23 +5,27 @@
  * docs/plans/03-config-spec.md.
  */
 
-import { existsSync, readFileSync } from "node:fs";
-import { basename, join } from "node:path";
+import { existsSync, readFileSync, statSync } from "node:fs";
+import { join } from "node:path";
 import { parse as parseYaml } from "yaml";
 import { z } from "zod";
 import { normalizeCommandMap } from "./command-utils.js";
 import type { Config, Profile, ProtectMode, ResolvedConfig } from "./types.js";
 
-/** Config file precedence, highest first. The first file found wins. */
+/**
+ * Config file precedence, highest first. The first file found wins.
+ * The neutral `.dev-framework.*` names are canonical; the
+ * `.opencode-dev-framework.*` names stay readable so existing
+ * deployments keep working without moving their config.
+ */
 export const CONFIG_FILE_PRECEDENCE = [
+  ".dev-framework.yml",
+  ".dev-framework.yaml",
+  ".dev-framework.json",
   ".opencode-dev-framework.yml",
   ".opencode-dev-framework.yaml",
   ".opencode-dev-framework.json",
-  ".dev-framework.yml",
-  ".dev-framework.yaml",
 ] as const;
-
-const FALLBACK_FILES: ReadonlySet<string> = new Set([".dev-framework.yml", ".dev-framework.yaml"]);
 
 /** Sensible default protected paths, used when `protect` is omitted. */
 export const DEFAULT_PROTECT: string[] = [
@@ -116,6 +120,29 @@ const configSchema = z.object({
   precommit: z.enum(["auto", "off"]).optional(),
 });
 
+/** Highest-precedence existing config path, or undefined when no
+ * config file exists under any supported name. Writers use this so a
+ * legacy-named deployment is edited in place instead of shadowed. */
+export function existingConfigPath(directory: string): string | undefined {
+  return findConfigFile(directory);
+}
+
+/** Newest mtime across all six supported config names; undefined when none exists. */
+export function configMtimeMs(directory: string): number | undefined {
+  let newest: number | undefined;
+  for (const name of CONFIG_FILE_PRECEDENCE) {
+    try {
+      const mtimeMs = statSync(join(directory, name)).mtimeMs;
+      if (newest === undefined || mtimeMs > newest) {
+        newest = mtimeMs;
+      }
+    } catch {
+      // name absent
+    }
+  }
+  return newest;
+}
+
 /** Find the highest-precedence config file in a directory, if any. */
 export function findConfigFile(directory: string): string | undefined {
   for (const name of CONFIG_FILE_PRECEDENCE) {
@@ -166,8 +193,9 @@ function toNumber(value: unknown): number | undefined {
 }
 
 /**
- * Map a flat-key `.dev-framework.yml` document onto the native config shape.
- * Unknown keys are ignored. See the compatibility table in
+ * Map a flat-key YAML document onto the native config shape. Tried
+ * whenever the native shape fails to validate (any `.yml`/`.yaml`
+ * name); unknown keys are ignored. See the compatibility table in
  * docs/plans/03-config-spec.md.
  */
 export function mapFlatConfig(flat: Record<string, unknown>): Config {
@@ -193,6 +221,12 @@ export function mapFlatConfig(flat: Record<string, unknown>): Config {
   };
 
   for (const [key, value] of Object.entries(flat)) {
+    // Skip commented-out debris: an explicitly empty key parses as null
+    // and must not coerce to a live value (`String(null)` → "null" as a
+    // gate command, `splitGlobs(null)` → [] silently disabling protection).
+    if (value === null || value === undefined) {
+      continue;
+    }
     if (key.startsWith("format.")) {
       const ext = key.slice("format.".length);
       formatByExt[ext.startsWith(".") ? ext : `.${ext}`] = String(value);
@@ -468,6 +502,72 @@ function validateConfig(data: unknown, configPath: string): Config {
 
 const configCache = new Map<string, ResolvedConfig>();
 
+/** Keys that only exist in the native config shape (the flat mapper
+ * drops them). Their presence means the document is attempting native
+ * shape — see selectConfigRecord below. Scalar keys (`profile`,
+ * `protect`, `protect_mode`, `exclude`, `preflight`, ...) are
+ * dual-shape — the flat mapper handles both forms — as are
+ * string/array `rules` (only the `{ mode, files }` object form counts
+ * as native here). */
+const NATIVE_OBJECT_KEYS: ReadonlyArray<string> = ["commands", "gate", "on_edit"];
+
+/** Keys the native schema strips but the flat mapper honors: present
+ * alongside a native key, they would be silently dropped. */
+const FLAT_ONLY_KEYS: ReadonlySet<string> = new Set([
+  "test",
+  "typecheck",
+  "format",
+  "lint",
+  "test_changed",
+  "format_on_edit",
+  "lint_on_edit",
+  "gate_run_typecheck",
+  "gate_run_tests",
+  "gate_block_on_failure",
+  "gate_skip_unchanged",
+  "gate_scope",
+  "gate_lint_changed",
+  "gate_require_review",
+  "gate_timeout",
+  "gate_max_blocks",
+]);
+
+function isFlatDottedKey(key: string): boolean {
+  return key.startsWith("format.") || key.startsWith("lint.");
+}
+
+/** Select the document validateConfig will check: native shape when the
+ * document uses native-only keys, flat mapping otherwise. Null-valued
+ * keys (commented-out YAML debris) count as absent for sniffing. A
+ * document mixing both shapes fails loudly naming the dropped flat
+ * keys, instead of silently running a different gate than written.
+ * Either name accepts either shape; JSON stays native-only. */
+function selectConfigRecord(configPath: string, asRecord: Record<string, unknown>): unknown {
+  const keys = Object.keys(asRecord).filter(
+    (key) => asRecord[key] !== null && asRecord[key] !== undefined,
+  );
+  if (configPath.endsWith(".json")) {
+    return asRecord;
+  }
+  const nativeHit =
+    NATIVE_OBJECT_KEYS.some((key) => keys.includes(key)) ||
+    (typeof asRecord["rules"] === "object" &&
+      asRecord["rules"] !== null &&
+      !Array.isArray(asRecord["rules"]));
+  if (!nativeHit) {
+    return mapFlatConfig(asRecord);
+  }
+  const dropped = keys.filter((key) => FLAT_ONLY_KEYS.has(key) || isFlatDottedKey(key));
+  if (dropped.length > 0) {
+    throw new Error(
+      `Invalid configuration in ${configPath}: mixes native and flat keys ` +
+        `(flat keys ${dropped.join(", ")} are ignored when native keys are present). ` +
+        `Move them into commands:/gate:/on_edit: or drop the native keys to use flat shape.`,
+    );
+  }
+  return asRecord;
+}
+
 /** Clear the per-session config cache (mainly for tests). */
 export function clearConfigCache(): void {
   configCache.clear();
@@ -493,8 +593,12 @@ export function loadConfig(directory: string): ResolvedConfig {
       typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)
         ? (parsed as Record<string, unknown>)
         : {};
-    const mapped = FALLBACK_FILES.has(basename(configPath)) ? mapFlatConfig(asRecord) : asRecord;
-    resolved = resolveConfig(validateConfig(mapped, configPath), configPath);
+    // Shape-sniffed: native keys validate natively, flat keys map over.
+    // Either name accepts either shape.
+    resolved = resolveConfig(
+      validateConfig(selectConfigRecord(configPath, asRecord), configPath),
+      configPath,
+    );
   }
 
   configCache.set(directory, resolved);

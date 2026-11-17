@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { resolveConfig } from "../src/config";
+import { resolveConfig } from "../src/core/config";
 import {
   BUNDLED_CONSTITUTION_DIR,
   CONSTITUTION_PREFIX_LENGTH,
@@ -10,8 +10,8 @@ import {
   injectConstitution,
   LOCAL_RULES_DIR,
   loadConstitution,
-} from "../src/rules";
-import type { Config, ResolvedConfig } from "../src/types";
+} from "../src/core/rules";
+import type { Config, ResolvedConfig } from "../src/core/types";
 
 const CONFIG_PATH = "/project/.opencode-dev-framework.yml";
 
@@ -86,7 +86,7 @@ describe("loadConstitution", () => {
     );
   });
 
-  it("discovers local .opencode/opencode-dev-framework/rules/*.md overrides", async () => {
+  it("discovers local .dev-framework/rules/*.md overrides", async () => {
     const localDir = join(dir, LOCAL_RULES_DIR);
     await mkdir(localDir, { recursive: true });
     await writeFile(join(localDir, "99-local.md"), "# Local Rule");
@@ -94,6 +94,27 @@ describe("loadConstitution", () => {
     expect(result.source).toBe("custom");
     expect(result.constitution).toContain("Local Rule");
     expect(result.constitution).not.toContain("Quality Bar");
+  });
+
+  it("reads legacy-home local rules when no new-home rules exist", async () => {
+    const legacyDir = join(dir, ".opencode/opencode-dev-framework/rules");
+    await mkdir(legacyDir, { recursive: true });
+    await writeFile(join(legacyDir, "99-legacy.md"), "# Legacy Rule");
+    const result = await loadConstitution(resolve({ profile: "standard" }), dir);
+    expect(result.source).toBe("custom");
+    expect(result.constitution).toContain("Legacy Rule");
+  });
+
+  it("prefers new-home rules when both homes exist", async () => {
+    const legacyDir = join(dir, ".opencode/opencode-dev-framework/rules");
+    await mkdir(legacyDir, { recursive: true });
+    await writeFile(join(legacyDir, "99-legacy.md"), "# Legacy Rule");
+    const localDir = join(dir, LOCAL_RULES_DIR);
+    await mkdir(localDir, { recursive: true });
+    await writeFile(join(localDir, "99-local.md"), "# Local Rule");
+    const result = await loadConstitution(resolve({ profile: "standard" }), dir);
+    expect(result.constitution).toContain("Local Rule");
+    expect(result.constitution).not.toContain("Legacy Rule");
   });
 
   it("falls back to bundled rules when the local override directory is empty", async () => {

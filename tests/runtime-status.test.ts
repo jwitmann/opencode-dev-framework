@@ -2,13 +2,13 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { renderRuntimeStatus } from "../src/format-status";
+import { renderRuntimeStatus } from "../src/core/format-status";
 import {
   type RuntimeStatus,
   readRuntimeStatus,
   snapshotPath,
   writeRuntimeStatus,
-} from "../src/runtime-status";
+} from "../src/core/runtime-status";
 
 describe("runtime status snapshot", () => {
   let dir: string;
@@ -30,9 +30,7 @@ describe("runtime status snapshot", () => {
     expect(typeof snapshot?.frameworkVersion).toBe("string");
     expect(snapshot?.frameworkVersion.length).toBeGreaterThan(0);
     expect(typeof snapshot?.updatedAt).toBe("string");
-    expect(snapshotPath(dir)).toBe(
-      join(dir, ".opencode/opencode-dev-framework/runtime-status.json"),
-    );
+    expect(snapshotPath(dir)).toBe(join(dir, ".dev-framework/runtime-status.json"));
   });
 
   it("resolves the real plugin version from the repo package.json", async () => {
@@ -46,13 +44,13 @@ describe("runtime status snapshot", () => {
   });
 
   it("returns null for corrupt snapshots instead of throwing", async () => {
-    mkdirSync(join(dir, ".opencode/opencode-dev-framework"), { recursive: true });
+    mkdirSync(join(dir, ".dev-framework"), { recursive: true });
     writeFileSync(snapshotPath(dir), "{ not json", "utf8");
     await expect(readRuntimeStatus(dir)).resolves.toBeNull();
   });
 
   it("defaults unknown enum values instead of rejecting the snapshot", async () => {
-    mkdirSync(join(dir, ".opencode/opencode-dev-framework"), { recursive: true });
+    mkdirSync(join(dir, ".dev-framework"), { recursive: true });
     writeFileSync(
       snapshotPath(dir),
       JSON.stringify({
@@ -80,7 +78,7 @@ describe("runtime status snapshot", () => {
   });
 
   it("tolerates snapshots without template state (older servers)", async () => {
-    mkdirSync(join(dir, ".opencode/opencode-dev-framework"), { recursive: true });
+    mkdirSync(join(dir, ".dev-framework"), { recursive: true });
     writeFileSync(
       snapshotPath(dir),
       JSON.stringify({
@@ -97,7 +95,7 @@ describe("runtime status snapshot", () => {
   });
 
   it("drops invalid template state instead of rejecting the snapshot", async () => {
-    mkdirSync(join(dir, ".opencode/opencode-dev-framework"), { recursive: true });
+    mkdirSync(join(dir, ".dev-framework"), { recursive: true });
     writeFileSync(
       snapshotPath(dir),
       JSON.stringify({
@@ -112,6 +110,39 @@ describe("runtime status snapshot", () => {
     const snapshot = await readRuntimeStatus(dir);
     expect(snapshot).not.toBeNull();
     expect(snapshot?.templates).toBeUndefined();
+  });
+
+  it("reads a legacy-home snapshot when no new snapshot exists", async () => {
+    mkdirSync(join(dir, ".opencode/opencode-dev-framework"), { recursive: true });
+    writeFileSync(
+      join(dir, ".opencode/opencode-dev-framework/runtime-status.json"),
+      JSON.stringify({
+        frameworkVersion: "1.9.0",
+        idleHookVia: "idle",
+        continuation: "armed",
+        updatedAt: new Date().toISOString(),
+      }),
+      "utf8",
+    );
+    const snapshot = await readRuntimeStatus(dir);
+    expect(snapshot?.frameworkVersion).toBe("1.9.0");
+  });
+
+  it("prefers the new home when both snapshots exist", async () => {
+    const legacy = {
+      frameworkVersion: "1.8.0",
+      idleHookVia: "idle",
+      continuation: "armed",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    };
+    mkdirSync(join(dir, ".opencode/opencode-dev-framework"), { recursive: true });
+    writeFileSync(
+      join(dir, ".opencode/opencode-dev-framework/runtime-status.json"),
+      JSON.stringify(legacy),
+      "utf8",
+    );
+    await writeRuntimeStatus(dir, { idleHookVia: "experimental.idle", continuation: "armed" });
+    expect((await readRuntimeStatus(dir))?.idleHookVia).toBe("experimental.idle");
   });
 });
 

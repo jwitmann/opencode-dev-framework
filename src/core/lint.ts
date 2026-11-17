@@ -1,7 +1,8 @@
 /**
  * Per-edit lint: resolve the linter command for a changed file and run it
- * through an injectable command runner. Pure orchestration — the OpenCode
- * hook wiring lives in src/index.ts.
+ * through an injectable command runner. Pure orchestration — the hook flows
+ * live in `src/core/run-hooks.ts`, driven by thin registration in
+ * `src/adapters/opencode/index.ts`.
  */
 
 import { existsSync } from "node:fs";
@@ -17,6 +18,12 @@ import type { ResolvedConfig } from "./types.js";
 
 /** Fallback per-lint timeout (seconds) when the config sets none. */
 export const DEFAULT_LINT_TIMEOUT_SECONDS = 60;
+
+/**
+ * Fallback per-format timeout (seconds). Same value as the lint default —
+ * a separate name so each concern can be tuned (and audited) independently.
+ */
+export const DEFAULT_FORMAT_TIMEOUT_SECONDS = 60;
 
 /** Cap on concurrent linter subprocesses; per-edit and gate lints share one limiter per session. */
 export const MAX_CONCURRENT_LINTS = 4;
@@ -213,4 +220,117 @@ export function summarizeLint(outcome: LintOutcome): string {
     return `lint failed for ${outcome.filePath} (exit ${result.exitCode})`;
   }
   return `lint passed for ${outcome.filePath}`;
+}
+
+export interface FormatOutcome {
+  /** True when no formatter ran (file excluded or no command configured). */
+  skipped: boolean;
+  /** Why the file was skipped, when it was. */
+  reason?: string;
+  filePath: string;
+  /** The argv that was executed, when a formatter ran. */
+  command?: string[];
+  result?: CommandResult;
+}
+
+/**
+ * Resolve the format command for a file: the per-extension override wins over
+ * the default command. The `{file}` token is replaced with the file path and
+ * `{dir}` with the file's directory (same package-context rationale as lint —
+ * some formatters resolve config per directory); commands with neither token
+ * run as-is. Returns undefined when no format command is configured at all.
+ */
+export function resolveFormatCommand(
+  config: ResolvedConfig,
+  filePath: string,
+): string[] | undefined {
+  const { default: defaultCommand, byExtension } = normalizeCommandMap(config.commands.format);
+  const template = byExtension[extname(filePath)] ?? defaultCommand;
+  if (template === undefined) {
+    return undefined;
+  }
+  const dir = dirname(filePath);
+  return splitCommand(template).map((token) =>
+    token.replaceAll("{file}", filePath).replaceAll("{dir}", dir),
+  );
+}
+
+/**
+ * Format a single file. Excluded files and file types without a configured
+ * formatter are skipped; everything else runs through the injected runner.
+ * Files that no longer exist (deleted mid-session but still tracked) are
+ * skipped with reason "file no longer exists" — never failed. Relative
+ * `filePath` values resolve against `options.cwd`; pass `cwd` at call
+ * sites (no production caller yet — the opencode adapter intentionally
+ * never calls `formatFile`; see plan 25).
+ */
+export async function formatFile(
+  run: RunCommand,
+  config: ResolvedConfig,
+  filePath: string,
+  options?: {
+    cwd?: string;
+    timeout?: number;
+  },
+): Promise<FormatOutcome> {
+  const excluded = matchExclude(config, filePath, options?.cwd);
+  if (excluded !== undefined) {
+    return { skipped: true, reason: `excluded by "${excluded}"`, filePath };
+  }
+
+  const command = resolveFormatCommand(config, filePath);
+
+  if (command === undefined) {
+    return { skipped: true, reason: "no format command configured for this file type", filePath };
+  }
+
+  // Ghost entries: the tracker holds every file touched this session and
+  // only clears on pass, so files deleted mid-session are still listed.
+  // There is nothing to format in a file that isn't there — skip, never fail.
+  // (A file deleted between this probe and the formatter spawn is excused by
+  // the re-probe below.)
+  const absolute = toAbsolutePath(filePath, options?.cwd);
+  if (!existsSync(absolute)) {
+    return { skipped: true, reason: "file no longer exists", filePath };
+  }
+
+  const result = await run(command, {
+    cwd: options?.cwd,
+    timeout: options?.timeout ?? DEFAULT_FORMAT_TIMEOUT_SECONDS,
+  });
+  if (result.timedOut || result.exitCode !== 0) {
+    // TOCTOU safety net: the file may have vanished between the probe
+    // above and the formatter spawn. A missing file can never be at fault,
+    // so re-probe before blaming it — skip rather than fail on a ghost.
+    if (!existsSync(absolute)) {
+      return { skipped: true, reason: "file no longer exists", filePath };
+    }
+  }
+  return { skipped: false, filePath, command, result };
+}
+
+/** True when a format outcome represents a failure (non-zero exit or timeout). */
+export function isFormatFailure(outcome: FormatOutcome): boolean {
+  if (outcome.skipped || outcome.result === undefined) {
+    return false;
+  }
+  return outcome.result.timedOut || outcome.result.exitCode !== 0;
+}
+
+/** One-line summary of a format outcome for logging. */
+export function summarizeFormat(outcome: FormatOutcome): string {
+  if (outcome.skipped) {
+    return `format skipped for ${outcome.filePath}: ${outcome.reason ?? "unknown reason"}`;
+  }
+  const result = outcome.result;
+  if (result === undefined) {
+    return `format produced no result for ${outcome.filePath}`;
+  }
+  if (result.timedOut) {
+    return `format timed out for ${outcome.filePath}`;
+  }
+  if (result.exitCode !== 0) {
+    return `format failed for ${outcome.filePath} (exit ${result.exitCode})`;
+  }
+  return `format passed for ${outcome.filePath}`;
 }

@@ -6,3 +6,9 @@ dist/
 /.opencode/
 # project-root only: local plugin registration, never committed
 /opencode.jsonc
+/.operator/
+/.dsh/
+/.dev-framework/
+/.opencode-dev-framework/
+/.opencode-dev-framework.yml
+/.dev-framework.yml

@@ -2,7 +2,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { installTemplates, listTemplateFiles } from "../src/installer";
+import { installTemplates, listTemplateFiles, mirrorSkillsToDsh } from "../src/core/installer";
 import {
   checkTemplateUpdates,
   composeUpdatePrompt,
@@ -10,7 +10,7 @@ import {
   needsAgentHandoff,
   runUpdateCommand,
   summarizeDrift,
-} from "../src/update";
+} from "../src/core/update";
 
 let dir: string;
 
@@ -74,6 +74,36 @@ describe("checkTemplateUpdates", () => {
     expect(drift.add.length).toBeGreaterThan(0);
     expect(drift.add).not.toContain(first);
   });
+
+  it("ignores the skill mirror unless asked (OpenCode parity)", async () => {
+    await installAll();
+    const drift = await checkTemplateUpdates(dir);
+    expect(drift.add).not.toContain(".dsh/skills/peer-review/SKILL.md");
+    expect(drift.refresh).toEqual([]);
+  });
+
+  it("reads a missing or edited mirror as drift when asked", async () => {
+    await installAll();
+    const before = await checkTemplateUpdates(dir, ".dsh/skills");
+    expect(before.add).toContain(".dsh/skills/peer-review/SKILL.md");
+    await mirrorSkillsToDsh(dir, ".dsh/skills", { skipExisting: true });
+    const current = await checkTemplateUpdates(dir, ".dsh/skills");
+    expect(current.add).not.toContain(".dsh/skills/peer-review/SKILL.md");
+    await writeFile(join(dir, ".dsh/skills/peer-review/SKILL.md"), "customized", "utf8");
+    const edited = await checkTemplateUpdates(dir, ".dsh/skills");
+    expect(edited.refresh).toEqual([".dsh/skills/peer-review/SKILL.md"]);
+  });
+
+  it("ignores orphaned mirrors with no template source", async () => {
+    await installAll();
+    const { mkdir } = await import("node:fs/promises");
+    await mkdir(join(dir, ".dsh/skills/dropped-skill"), { recursive: true });
+    await writeFile(join(dir, ".dsh/skills/dropped-skill/SKILL.md"), "gone", "utf8");
+    const drift = await checkTemplateUpdates(dir, ".dsh/skills");
+    expect(drift.add).not.toContain(".dsh/skills/dropped-skill/SKILL.md");
+    expect(drift.refresh).not.toContain(".dsh/skills/dropped-skill/SKILL.md");
+    expect(drift.current).not.toContain(".dsh/skills/dropped-skill/SKILL.md");
+  });
 });
 
 describe("shipped template set", () => {
@@ -114,13 +144,13 @@ describe("composeUpdatePrompt", () => {
 });
 
 describe("driftMentionLine", () => {
-  it("names refresh/add counts and /df-update on drift", async () => {
+  it("names refresh/add counts and dev_framework_update on drift", async () => {
     const first = await installFirstOnly();
     await writeFile(join(dir, first), "customized", "utf8");
     const drift = await checkTemplateUpdates(dir);
     const line = driftMentionLine(drift);
     expect(line).not.toBeNull();
-    expect(line as string).toContain("/df-update");
+    expect(line as string).toContain("dev_framework_update");
     expect(line as string).toContain("1 to refresh");
     expect(line as string).toContain("to add");
   });

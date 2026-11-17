@@ -1,24 +1,28 @@
 import { mkdir, mkdtemp, rm, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { createBlockStore, createStuckSnapshotStore } from "../src/block-store";
-import { resolveConfig } from "../src/config";
-import { createChangedFileTracker } from "../src/gate";
+import { createBlockStore, createStuckSnapshotStore } from "../src/core/block-store";
+import { resolveConfig } from "../src/core/config";
+import { createChangedFileTracker } from "../src/core/gate";
 import {
   artifactState,
+  artifactStateFirst,
   createPassCache,
   evaluateCompletion,
   gitChangedFiles,
   inspectCompletion,
+  LEGACY_PREFLIGHT_ARTIFACT_REL,
+  LEGACY_REVIEW_ARTIFACT_REL,
   mergeChangedFiles,
   PREFLIGHT_ARTIFACT_REL,
   preflightBlockReason,
   REVIEW_ARTIFACT_REL,
-} from "../src/harness";
-import type { CommandResult, RunCommand, RunCommandOptions } from "../src/host";
-import type { LogFn, LogLevel } from "../src/logger";
-import type { Config } from "../src/types";
+  readReviewState,
+} from "../src/core/harness";
+import type { CommandResult, RunCommand, RunCommandOptions } from "../src/core/host";
+import type { LogFn, LogLevel } from "../src/core/logger";
+import type { Config } from "../src/core/types";
 
 function resolve(raw: Config) {
   return resolveConfig(raw, "/project/.opencode-dev-framework.yml");
@@ -103,6 +107,53 @@ describe("artifactState", () => {
   });
 });
 
+describe("dual-home artifacts (neutral home with legacy fallback)", () => {
+  let dir: string;
+
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), "df-harness-dual-"));
+  });
+
+  afterEach(async () => {
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  async function writeLegacyReview(content: string) {
+    await mkdir(dirname(join(dir, LEGACY_REVIEW_ARTIFACT_REL)), { recursive: true });
+    await writeFile(join(dir, LEGACY_REVIEW_ARTIFACT_REL), content);
+  }
+
+  async function writeNewReview(content: string) {
+    await mkdir(dirname(join(dir, REVIEW_ARTIFACT_REL)), { recursive: true });
+    await writeFile(join(dir, REVIEW_ARTIFACT_REL), content);
+  }
+
+  it("reads a legacy-home review when no new review exists", async () => {
+    await writeLegacyReview(`${REVIEW_BODY}\n`);
+    expect(await readReviewState(dir, [])).toBe("present");
+  });
+
+  it("prefers the new home when both reviews exist", async () => {
+    await writeLegacyReview(`${REVIEW_BODY}\n`);
+    await writeNewReview("short");
+    expect(await readReviewState(dir, [])).toBe("thin");
+  });
+
+  it("artifactStateFirst finds the legacy pre-flight artifact", async () => {
+    await mkdir(dirname(join(dir, LEGACY_PREFLIGHT_ARTIFACT_REL)), { recursive: true });
+    await writeFile(join(dir, LEGACY_PREFLIGHT_ARTIFACT_REL), "# Preflight\n\n- [x] done\n");
+    expect(
+      await artifactStateFirst(dir, [PREFLIGHT_ARTIFACT_REL, LEGACY_PREFLIGHT_ARTIFACT_REL]),
+    ).toBe("present");
+  });
+
+  it("artifactStateFirst reports missing when neither home has the file", async () => {
+    expect(
+      await artifactStateFirst(dir, [PREFLIGHT_ARTIFACT_REL, LEGACY_PREFLIGHT_ARTIFACT_REL]),
+    ).toBe("missing");
+  });
+});
+
 describe("parseGitStatusPorcelain (via gitChangedFiles)", () => {
   it("parses modified, staged, untracked, and renamed entries", async () => {
     const { run } = stubRun((cmd) =>
@@ -155,6 +206,12 @@ describe("preflightBlockReason", () => {
     expect(preflightBlockReason(config, "write", PREFLIGHT_ARTIFACT_REL, "missing")).toBeNull();
   });
 
+  it("allows the artifact by absolute spelling too", () => {
+    const abs = join("/project", PREFLIGHT_ARTIFACT_REL);
+    expect(preflightBlockReason(config, "write", abs, "missing", "/project")).toBeNull();
+    expect(preflightBlockReason(config, "write", "src/a.ts", "missing", "/project")).not.toBeNull();
+  });
+
   it("never blocks read-only tools", () => {
     for (const tool of ["read", "grep", "glob", "bash", "task"]) {
       expect(preflightBlockReason(config, tool, undefined, "missing")).toBeNull();
@@ -185,7 +242,7 @@ describe("evaluateCompletion", () => {
   });
 
   const writeArtifact = async (rel: string, content = REVIEW_BODY) => {
-    await mkdir(join(dir, ".opencode", "opencode-dev-framework"), { recursive: true });
+    await mkdir(dirname(join(dir, rel)), { recursive: true });
     await writeFile(join(dir, rel), content);
   };
 
@@ -513,7 +570,7 @@ describe("inspectCompletion (side-effect-free inspection)", () => {
   });
 
   const writeArtifact = async (rel: string, content = REVIEW_BODY) => {
-    await mkdir(join(dir, ".opencode", "opencode-dev-framework"), { recursive: true });
+    await mkdir(dirname(join(dir, rel)), { recursive: true });
     await writeFile(join(dir, rel), content);
   };
 
@@ -833,7 +890,7 @@ describe("passCache", () => {
     const passCache = createPassCache();
     const deps = { run, config, directory: dir, trackerFiles: ["a.ts"], passCache };
 
-    await mkdir(join(dir, ".opencode/opencode-dev-framework"), { recursive: true });
+    await mkdir(dirname(join(dir, REVIEW_ARTIFACT_REL)), { recursive: true });
     await writeFile(join(dir, REVIEW_ARTIFACT_REL), `${REVIEW_BODY}\n`);
 
     expect((await inspectCompletion(deps)).ok).toBe(true);

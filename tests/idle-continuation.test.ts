@@ -2,19 +2,19 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createBlockStore, type StorageLike } from "../src/block-store";
-import { clearConfigCache, loadConfig } from "../src/config";
-import { renderStatus } from "../src/format-status";
-import { createChangedFileTracker } from "../src/gate";
-import plugin from "../src/index";
-import type { HookState } from "../src/registry";
+import plugin from "../src/adapters/opencode/index";
+import { createBlockStore, type StorageLike } from "../src/core/block-store";
+import { clearConfigCache, loadConfig } from "../src/core/config";
+import { renderStatus } from "../src/core/format-status";
+import { createChangedFileTracker } from "../src/core/gate";
+import type { HookState } from "../src/core/registry";
 
 // Hermetic stub (same idiom as tests/teardown.test.ts): no child process
 // ever spawns. `false` mimics /bin/false (exit 1, gate-failing); `git`
 // mimics "not a repo" so gitChangedFiles fails fast to []; everything else
 // passes (so `true` is a gate-passing typecheck).
-vi.mock("../src/host", async (importOriginal) => {
-  const original = await importOriginal<typeof import("../src/host")>();
+vi.mock("../src/core/host", async (importOriginal) => {
+  const original = await importOriginal<typeof import("../src/core/host")>();
   const runCommand: typeof original.runCommand = async (command) => {
     if (command[0] === "false") {
       return { stdout: "", stderr: "", exitCode: 1, timedOut: false };
@@ -188,6 +188,8 @@ describe("idle-first continuation (§12 cutover)", () => {
     });
     const first = synthetic.mock.calls[0]?.[0] as { text?: string } | undefined;
     expect(first?.text).toContain("(block 1/3)");
+    expect(first?.text).toContain("dev_framework_runtime");
+    expect(first?.text).toContain("dev_framework_update");
     expect(await createBlockStore(storage).get("blocked-s1")).toBe(1);
 
     // A new boundary after the double-fire window blocks again (count+1).

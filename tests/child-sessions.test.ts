@@ -2,16 +2,16 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { clearConfigCache } from "../src/config";
-import { isReviewArtifact } from "../src/harness";
-import plugin from "../src/index";
+import plugin from "../src/adapters/opencode/index";
+import { clearConfigCache } from "../src/core/config";
+import { isReviewArtifact } from "../src/core/harness";
 import {
   clearSessionDirectory,
   resetRegistry,
   resolveChildSession,
   resolveIsChildSession,
   resolveSessionDepth,
-} from "../src/registry";
+} from "../src/core/registry";
 
 const REVIEW = ".opencode/opencode-dev-framework/review.md";
 
@@ -195,6 +195,11 @@ describe("isReviewArtifact", () => {
   it("matches the project-relative artifact path", () => {
     expect(isReviewArtifact(REVIEW)).toBe(true);
     expect(isReviewArtifact(`./${REVIEW}`)).toBe(true);
+  });
+
+  it("matches the neutral-home artifact path", () => {
+    expect(isReviewArtifact(".dev-framework/review.md")).toBe(true);
+    expect(isReviewArtifact(join("/proj", ".dev-framework/review.md"), "/proj")).toBe(true);
   });
 
   it("matches absolute paths under the project directory", () => {

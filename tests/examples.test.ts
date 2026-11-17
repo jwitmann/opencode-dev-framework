@@ -1,7 +1,7 @@
 import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { loadConfig } from "../src/config";
+import { loadConfig } from "../src/core/config";
 
 /**
  * Anti-rot pin for `examples/`: every shipped example config must load.
@@ -21,7 +21,8 @@ describe("examples", () => {
   for (const name of names) {
     it(`${name} config loads with real checks`, () => {
       const dir = join(examplesDir, name);
-      expect(existsSync(join(dir, ".opencode-dev-framework.yml"))).toBe(true);
+      expect(existsSync(join(dir, ".dev-framework.yml"))).toBe(true);
+      expect(existsSync(join(dir, ".opencode-dev-framework.yml"))).toBe(false);
       const config = loadConfig(dir);
       expect(config.profile).toBe("standard");
       expect(config.gate.run_tests).toBe(true);

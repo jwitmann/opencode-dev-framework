@@ -30,36 +30,21 @@ import { stat } from "node:fs/promises";
 import { join } from "node:path";
 import { Plugin } from "@opencode/plugin";
 import type { Context } from "@opencode/plugin/promise/plugin";
+import { createBlockStore, createStuckSnapshotStore } from "../../core/block-store.js";
+import { CONFIG_FILE_PRECEDENCE, loadConfig } from "../../core/config.js";
+import { createChangedFileTracker } from "../../core/gate.js";
+import type { GoalDelegate } from "../../core/goal.js";
 import {
-  type BlockStore,
-  createBlockStore,
-  createStuckSnapshotStore,
-  type StuckSnapshotStore,
-} from "./block-store.js";
-import { clearConfigCache, loadConfig } from "./config.js";
-import { type ChangedFileTracker, createChangedFileTracker } from "./gate.js";
-import type { GoalDelegate } from "./goal.js";
-import {
-  artifactState,
-  type CompletionVerdict,
+  artifactStateFirst,
   childArtifactDenial,
   createPassCache,
-  evaluateCompletion,
   isReviewArtifact,
-  type PassCache,
-  PREFLIGHT_ARTIFACT_REL,
   preflightBlockReason,
-} from "./harness.js";
-import { type RunCommand, runCommand } from "./host.js";
-import {
-  createLintLimiter,
-  detectPreCommitAvailability,
-  isLintFailure,
-  type LintLimiter,
-  lintFile,
-  summarizeLint,
-} from "./lint.js";
-import { createLogger, type LogFn, type LogLevel } from "./logger.js";
+} from "../../core/harness.js";
+import { runCommand } from "../../core/host.js";
+import { createLintLimiter } from "../../core/lint.js";
+import { createLogger } from "../../core/logger.js";
+import { PREFLIGHT_ARTIFACT_REL, PREFLIGHT_RELS } from "../../core/paths.js";
 import {
   checkToolCall,
   extractCommand,
@@ -68,243 +53,33 @@ import {
   FILE_TOOLS,
   SHELL_TOOLS,
   toPermissionGuard,
-} from "./protect.js";
+} from "../../core/protect.js";
 import {
   clearSessionDirectory,
   hasSeenSessionStart,
   markSessionStartSeen,
   resolveChildSession,
-} from "./registry.js";
-import { findRosterIndex, renderDutyRoster, rosterPresent } from "./roster.js";
-import { constitutionPresent, loadConstitution } from "./rules.js";
-import { type IdleHookVia, type TemplateState, writeRuntimeStatus } from "./runtime-status.js";
-import type { ResolvedConfig } from "./types.js";
-import { checkTemplateUpdates, driftMentionLine, summarizeDrift } from "./update.js";
-import { type EnforceableSnapshot, snapshotEnforceable } from "./weakening.js";
-
-// ---------------------------------------------------------------------------
-// Internal state — single plugin instance per location.directory.
-// HookState is kept in module scope, not in a registry keyed by directory,
-// because V2 Context is already per-location. The map is still used for
-// legacy test helpers (buildHooks) that inject a fake directory.
-// ---------------------------------------------------------------------------
-
-export interface HookState {
-  directory: string;
-  config: ResolvedConfig;
-  /**
-   * Session-start enforceable snapshot (plan 17 §2). Compared against the
-   * live config at every gate evaluation so mid-session duty reductions
-   * surface in the verdict. Never re-baselined — including across
-   * `set_profile` — so a profile downgrade reads as the weakening it is.
-   */
-  initialEnforceable: EnforceableSnapshot;
-  log: LogFn;
-  run: RunCommand;
-  tracker: ChangedFileTracker;
-  constitution: string | null;
-  blockCounts: Map<string, number>;
-  /**
-   * Persistent block-count store over `ctx.storage`, write-through into
-   * `blockCounts` (which stays the live L1 cache for status rendering).
-   * Survives plugin reload / session_move / server restart.
-   * Note: this `HookState` is intentionally forked from `registry.ts`
-   * `HookState` (module state is per-location here, not registry-keyed);
-   * `format-status.ts` reads the `blockCounts` Map projection, which the
-   * store keeps live on every get/increment/clear.
-   */
-  blocks: BlockStore;
-  /**
-   * Last-blocked-evaluation snapshots for no-progress early stand-down
-   * (docs/plans/14-stuck-detection.md). Same storage-backed, best-effort pattern as `blocks`;
-   * memory-only here (no status projection needed).
-   */
-  stuckSnapshots: StuckSnapshotStore;
-  precommitAvailable?: boolean;
-  configMtime?: number;
-  /**
-   * Shared FIFO limiter bounding concurrent linter subprocesses across
-   * per-edit lints and gate lint steps.
-   */
-  lintLimiter: LintLimiter;
-  /** Fingerprint of the last clean gate pass; skips redundant suites. */
-  passCache: PassCache;
-  /**
-   * `Date.now()` of the last config-mtime check. Hook fires are far more
-   * frequent than config edits, so mtime stats are throttled to a 1s window.
-   */
-  lastConfigCheck: number;
-  /**
-   * Which lever completed a gate evaluation most recently in this process:
-   * `"idle"` once the `experimental.idle` hook has (same-execution
-   * continuation active), `"fallback"` when only the `event.subscribe`
-   * idle re-prompt net has. Absent until either fires. Memory-only: a
-   * reload re-derives it on the next idle boundary. `/df-status` renders
-   * the active level.
-   */
-  continuationLevel?: "idle" | "fallback";
-  /**
-   * Dedup map for the idle-first cutover: sessionID → `Date.now()` at the
-   * last COMPLETED hook evaluation (pass, blocked-admitted, and standdown
-   * all stamp; throw/early-return do not). The `event.subscribe` idle net
-   * skips when the stamp is fresh so one boundary never runs the gate
-   * twice. Memory-only; worst case on reload is one extra suite run.
-   */
-  lastIdleHandled: Map<string, number>;
-}
-
-let activeState: HookState | null = null;
-let fallbackLog: LogFn = async () => {};
-
-/**
- * Minimum interval between config-mtime checks. Every hook fire calls
- * `reloadConfigIfChanged`, but the config file almost never changes
- * mid-session, so a 1s staleness window is invisible.
- */
-const CONFIG_RELOAD_MIN_INTERVAL_MS = 1000;
-
-function safeLog(
-  state: HookState | null,
-  level: LogLevel,
-  message: string,
-  extra?: Record<string, unknown>,
-): Promise<void> {
-  const fn = state && typeof state.log === "function" ? state.log : fallbackLog;
-  return fn(level, message, extra);
-}
-
-async function reloadConfigIfChanged(state: HookState): Promise<void> {
-  // Throttle mtime checks: every hook fire calls this, but the config file
-  // almost never changes mid-session. A 1s staleness window is invisible.
-  const now = Date.now();
-  if (now - state.lastConfigCheck < CONFIG_RELOAD_MIN_INTERVAL_MS) {
-    return;
-  }
-  state.lastConfigCheck = now;
-  const primary = join(state.directory, ".opencode-dev-framework.yml");
-  const fallback = join(state.directory, ".dev-framework.yml");
-  // check both names; stat whichever exists
-  let configPath: string | null = null;
-  let mtime: number | undefined;
-  for (const p of [primary, fallback]) {
-    try {
-      const s = await stat(p);
-      configPath = p;
-      mtime = s.mtimeMs;
-      break;
-    } catch {
-      // continue
-    }
-  }
-  if (!configPath || mtime === undefined) {
-    return;
-  }
-  if (state.configMtime !== undefined && state.configMtime === mtime) {
-    return;
-  }
-  try {
-    clearConfigCache();
-    const next = loadConfig(state.directory);
-    const { constitution } = await loadConstitution(next, state.directory);
-    state.config = next;
-    state.constitution = constitution;
-    state.configMtime = mtime;
-  } catch {
-    // keep current state on read failure
-  }
-}
-
-/**
- * Turn a completion verdict into the continuation message fed back to the
- * agent when blocked. Shared by the `experimental.idle` hook (same
- * execution, via synthetic) and the `event.subscribe` idle re-prompt
- * fallback so wording (and block counting) is identical on every
- * enforcement level.
- */
-function continuationMessage(verdict: Extract<CompletionVerdict, { decision: "blocked" }>): string {
-  const why =
-    verdict.reason === "review"
-      ? "the peer-review requirement is unmet"
-      : verdict.reason === "weakened"
-        ? "the completion contract was weakened mid-session"
-        : "the repo's checks are failing";
-  return (
-    `opencode-dev-framework completion gate blocked you from finishing because ${why} ` +
-    `(block ${verdict.blockCount}/${verdict.maxBlocks}).\n\n${verdict.summary}\n\n` +
-    `Fix the underlying cause and continue. Do NOT disable, skip, or weaken these checks to ` +
-    `get past the gate. If a failure is pre-existing and unrelated to your work, prove it ` +
-    `(show it fails on a clean tree) and report it to the user.`
-  );
-}
-
-/** Log pass/standdown verdicts; returns the continuation message when blocked. */
-async function actOnVerdict(state: HookState, verdict: CompletionVerdict): Promise<string | null> {
-  if (verdict.decision === "pass") {
-    if (verdict.note) {
-      await safeLog(state, "info", verdict.note, { changedFiles: verdict.changedFiles });
-    }
-    return null;
-  }
-  if (verdict.decision === "standdown") {
-    // evaluateCompletion already logged the stand-down loudly.
-    return null;
-  }
-  return continuationMessage(verdict);
-}
-
-/**
- * Per-edit lint flow, shared by the `execute.after` hook (primary) and the
- * `filesystem.changed` fallback. Skipped files log at debug; passes at info;
- * failures log loudly at error (the edit already landed, so unlike
- * `execute.before` this never throws — it only reports).
- */
-async function runPerEditLint(state: HookState, filePath: string): Promise<void> {
-  if (!state.config.on_edit.lint) return;
-  if (state.config.precommit === "auto" && state.precommitAvailable === undefined) {
-    state.precommitAvailable = await detectPreCommitAvailability(state.run, state.directory);
-  }
-  const outcome = await state.lintLimiter.run(() =>
-    lintFile(state.run, state.config, filePath, {
-      cwd: state.directory,
-      timeout: state.config.gate?.timeout,
-      precommitAvailable: state.precommitAvailable,
-    }),
-  );
-  if (outcome.skipped) {
-    await safeLog(state, "debug", summarizeLint(outcome), {
-      filePath,
-      reason: outcome.reason,
-    });
-    return;
-  }
-  if (!isLintFailure(outcome)) {
-    await safeLog(state, "info", summarizeLint(outcome), { filePath });
-    return;
-  }
-  await safeLog(state, "error", summarizeLint(outcome), {
-    filePath,
-    command: outcome.command?.join(" "),
-    stdout: outcome.result?.stdout,
-    stderr: outcome.result?.stderr,
-  });
-}
-
-/** Assemble the completion verdict with the state's live dependencies. */
-function runCompletion(state: HookState, sessionID: string): Promise<CompletionVerdict> {
-  return evaluateCompletion({
-    run: state.run,
-    config: state.config,
-    directory: state.directory,
-    sessionID,
-    tracker: state.tracker,
-    blockCounts: state.blocks,
-    stuckSnapshots: state.stuckSnapshots,
-    lintLimiter: state.lintLimiter,
-    passCache: state.passCache,
-    baseline: state.initialEnforceable,
-    log: (level, message, extra) => safeLog(state, level, message, extra),
-  });
-}
+} from "../../core/registry.js";
+import { findRosterIndex, renderDutyRoster, rosterPresent } from "../../core/roster.js";
+import { constitutionPresent, loadConstitution } from "../../core/rules.js";
+import {
+  actOnVerdict,
+  getActiveState,
+  type HookState,
+  reloadConfigIfChanged,
+  runCompletion,
+  runPerEditLint,
+  safeLog,
+  setActiveState,
+  setFallbackLog,
+  stampIdleHandled,
+  stampRuntimeStatus,
+  wasIdleHandledRecently,
+} from "../../core/run-hooks.js";
+import type { IdleHookVia } from "../../core/runtime-status.js";
+import type { ResolvedConfig } from "../../core/types.js";
+import { checkTemplateUpdates, driftMentionLine } from "../../core/update.js";
+import { snapshotEnforceable } from "../../core/weakening.js";
 
 /**
  * Build the host session lookup for child detection, defensively: older
@@ -323,46 +98,6 @@ function childSessionGetter(
   // Called as a method so the receiver is preserved (a detached `get`
   // could throw on `this`-dependent adapters and fail open to top-level).
   return (id: string) => session.get({ sessionID: id });
-}
-
-/**
- * Record a completed idle-hook evaluation for the dedup map. Stamp ONLY on
- * the completed-evaluation paths (pass, blocked-admitted, standdown);
- * throw/early-return paths must not stamp so the subscriber net retries.
- */
-function stampIdleHandled(state: HookState, sessionID: string): void {
-  state.lastIdleHandled.set(sessionID, Date.now());
-}
-
-/**
- * Best-effort runtime snapshot for `/df-runtime`: hook state plus template
- * drift, fire-and-forget (never throws, never blocks the caller).
- */
-function stampRuntimeStatus(
-  directory: string,
-  idleHookVia: IdleHookVia,
-  continuation: "idle" | "fallback" | "armed",
-): void {
-  void (async () => {
-    let templates: TemplateState | undefined;
-    try {
-      templates = summarizeDrift(await checkTemplateUpdates(directory));
-    } catch {
-      // Best-effort: the snapshot renders without template state.
-    }
-    await writeRuntimeStatus(directory, { idleHookVia, continuation, templates });
-  })();
-}
-
-/**
- * True when the idle hook completed an evaluation for this session inside
- * `windowMs`. The hook itself uses a short window (same-boundary
- * double-fire guard for the dual key registration below); the subscriber
- * net uses the full window (one boundary, one gate run).
- */
-function wasIdleHandledRecently(state: HookState, sessionID: string, windowMs = 5_000): boolean {
-  const at = state.lastIdleHandled.get(sessionID);
-  return at !== undefined && Date.now() - at < windowMs;
 }
 
 // Helpers to normalize V2 event shapes (data vs properties vs direct)
@@ -424,7 +159,7 @@ const plugin = Plugin.define({
   id: "opencode-dev-framework",
   async setup(ctx: Context) {
     const log = createLogger();
-    fallbackLog = log;
+    setFallbackLog(log);
 
     const directory = ctx.location.directory as string;
     let config: ResolvedConfig;
@@ -443,12 +178,14 @@ const plugin = Plugin.define({
     }
 
     let configMtime: number | undefined;
-    for (const name of [".opencode-dev-framework.yml", ".dev-framework.yml"]) {
+    for (const name of CONFIG_FILE_PRECEDENCE) {
       try {
-        configMtime = (await stat(join(directory, name))).mtimeMs;
-        break;
+        const mtimeMs = (await stat(join(directory, name))).mtimeMs;
+        if (configMtime === undefined || mtimeMs > configMtime) {
+          configMtime = mtimeMs;
+        }
       } catch {
-        // continue
+        // name absent
       }
     }
 
@@ -474,7 +211,7 @@ const plugin = Plugin.define({
       lastConfigCheck: 0,
       lastIdleHandled: new Map<string, number>(),
     };
-    activeState = state;
+    setActiveState(state);
     // Child-session detection for the review-duty guard (plan 23 phase 1):
     // one cached host lookup per session lifetime; undefined on older
     // cores, where every session reads as top-level (behavior unchanged).
@@ -523,7 +260,7 @@ const plugin = Plugin.define({
     // 1) Constitution injection — per model request (V1: experimental.chat.system.transform -> V2: session.hook("context", ...))
     trackRegistration(
       await ctx.session.hook("context", async (event) => {
-        if (activeState !== state) return;
+        if (getActiveState() !== state) return;
         await reloadConfigIfChanged(state);
         if (state.config.profile === "off") return;
         const constitution = state.constitution;
@@ -553,7 +290,7 @@ const plugin = Plugin.define({
         // 1a) Startup template-drift mention — once per session, best-effort.
         // First `context` sighting of a sessionID is session startup (plugin
         // `setup()` has no session to mention into). Drifted installs get one
-        // line pointing at `/df-update`; current and empty trees stay silent.
+        // line pointing at `dev_framework_update`; current and empty trees stay silent.
         // Never throws into prompt assembly; never writes.
         const startupID = getEventSessionID(event);
         if (startupID !== undefined && !hasSeenSessionStart(startupID)) {
@@ -578,7 +315,7 @@ const plugin = Plugin.define({
     for (const kind of ["generate", "compaction", "title"] as const) {
       trackRegistration(
         await ctx.session.hook(kind, async (event) => {
-          if (activeState !== state) return;
+          if (getActiveState() !== state) return;
           const constitution = state.constitution;
           if (state.config.profile === "off" || !constitution) return;
           // generate/compaction/title also have system — inject similarly if present
@@ -607,7 +344,7 @@ const plugin = Plugin.define({
     // key the core accepted, so the TUI can report the hook method.
     let idleHookVia: IdleHookVia = "none";
     const handleIdleContinuation = async (event: unknown): Promise<void> => {
-      if (activeState !== state) return;
+      if (getActiveState() !== state) return;
       if (event === null || typeof event !== "object") return;
       // Never let a gate failure escape into core: an uncaught throw fails
       // the drain (Failed terminal), it does NOT fail open to idle. So on
@@ -745,7 +482,7 @@ const plugin = Plugin.define({
     try {
       trackRegistration(
         await ctx.permission.hook("evaluate", async (event) => {
-          if (activeState !== state) return;
+          if (getActiveState() !== state) return;
           await reloadConfigIfChanged(state);
           if (state.config.profile === "off") return;
           const action = event.action;
@@ -770,7 +507,7 @@ const plugin = Plugin.define({
           // Pre-flight (mirrors execute.before; the artifact itself stays
           // writable). Deny/warn per profile, exactly like the backstop.
           if (state.config.preflight.length > 0 && action === "edit") {
-            const artifact = await artifactState(state.directory, PREFLIGHT_ARTIFACT_REL);
+            const artifact = await artifactStateFirst(state.directory, PREFLIGHT_RELS);
             const reason = preflightBlockReason(state.config, "edit", target, artifact);
             if (reason !== null) {
               if (state.config.profile === "advisory") {
@@ -865,8 +602,8 @@ const plugin = Plugin.define({
     // global is cleared between awaits. See issue #1.
     trackRegistration(
       await ctx.tool.hook("execute.before", async (event) => {
-        if (activeState !== state) {
-          if (activeState === null) {
+        if (getActiveState() !== state) {
+          if (getActiveState() === null) {
             await safeLog(
               null,
               "warn",
@@ -916,12 +653,13 @@ const plugin = Plugin.define({
         // edits are denied (standard/strict) until the pre-flight artifact
         // exists. This is a true hard gate — it runs before the edit lands.
         if (state.config.preflight.length > 0) {
-          const artifact = await artifactState(state.directory, PREFLIGHT_ARTIFACT_REL);
+          const artifact = await artifactStateFirst(state.directory, PREFLIGHT_RELS);
           const reason = preflightBlockReason(
             state.config,
             toolName,
             extractFilePath(input),
             artifact,
+            state.directory,
           );
           if (reason !== null) {
             const extra = { tool: toolName, sessionID, artifact: PREFLIGHT_ARTIFACT_REL };
@@ -956,13 +694,15 @@ const plugin = Plugin.define({
     // The edit already landed, so this hook only reports — it never throws.
     trackRegistration(
       await ctx.tool.hook("execute.after", async (event) => {
-        if (activeState !== state) return;
+        if (getActiveState() !== state) return;
         await reloadConfigIfChanged(state);
         if (state.config.profile === "off") return;
         const filePath = extractFilePath(event.input);
         if (!filePath) return;
         if (!FILE_TOOLS.has(event.tool)) return;
-        state.tracker.add(filePath, state.directory);
+        // Out-of-tree absolute paths (sibling repos, home dir) are outside
+        // the gate's jurisdiction: not tracked, not linted.
+        if (!state.tracker.add(filePath, state.directory)) return;
         if (event.status !== "completed") {
           await safeLog(
             state,
@@ -1003,7 +743,7 @@ const plugin = Plugin.define({
             additionalProperties: false,
           },
           async execute(input: unknown) {
-            const { runInitScaffold, scaffoldReportLines } = await import("./init.js");
+            const { runInitScaffold, scaffoldReportLines } = await import("../../core/init.js");
             const args = input as { directory?: string; overwrite?: boolean; wizard?: boolean };
             const targetDir = args.directory ?? directory;
             const scaffold = await runInitScaffold(targetDir, state.run, {
@@ -1034,9 +774,9 @@ const plugin = Plugin.define({
             additionalProperties: false,
           },
           async execute(input: unknown) {
-            const { clearConfigCache: ccc, loadConfig: lc } = await import("./config.js");
-            const { changeProfile } = await import("./commands.js");
-            const { loadConstitution: lc2 } = await import("./rules.js");
+            const { clearConfigCache: ccc, loadConfig: lc } = await import("../../core/config.js");
+            const { changeProfile } = await import("../../core/commands.js");
+            const { loadConstitution: lc2 } = await import("../../core/rules.js");
             const args = input as { profile: string; directory?: string };
             const targetDir = args.directory ?? directory;
             const profile = args.profile.trim().toLowerCase() as ResolvedConfig["profile"];
@@ -1054,9 +794,10 @@ const plugin = Plugin.define({
               state.config = newConfig;
               state.constitution = newConstitution;
             }
-            if (activeState && activeState !== state && activeState.directory === targetDir) {
-              activeState.config = newConfig;
-              activeState.constitution = newConstitution;
+            const liveState = getActiveState();
+            if (liveState && liveState !== state && liveState.directory === targetDir) {
+              liveState.config = newConfig;
+              liveState.constitution = newConstitution;
             }
             return { content: `${message} Change applied immediately.` };
           },
@@ -1077,10 +818,11 @@ const plugin = Plugin.define({
             additionalProperties: false,
           },
           async execute(input: unknown) {
-            const { verifyGate } = await import("./commands.js");
+            const { verifyGate } = await import("../../core/commands.js");
             const args = input as { directory?: string };
             const targetDir = args.directory ?? directory;
-            const live = activeState && activeState.directory === targetDir ? activeState : null;
+            const liveState = getActiveState();
+            const live = liveState && liveState.directory === targetDir ? liveState : null;
             const own = state.directory === targetDir ? state : null;
             const holder = live ?? own;
             // Live tracker's changed files beat the TUI's empty default: a
@@ -1107,10 +849,11 @@ const plugin = Plugin.define({
             additionalProperties: false,
           },
           async execute(input: unknown) {
-            const { renderStatus } = await import("./format-status.js");
+            const { renderStatus } = await import("../../core/format-status.js");
             const args = input as { directory?: string };
             const targetDir = args.directory ?? directory;
-            const live = activeState && activeState.directory === targetDir ? activeState : null;
+            const liveState = getActiveState();
+            const live = liveState && liveState.directory === targetDir ? liveState : null;
             const own = state.directory === targetDir ? state : null;
             const cfg = (live ?? own)?.config ?? loadConfig(targetDir);
             // renderStatus expects HookState? pass live ?? own (may be null for other dirs)
@@ -1120,6 +863,58 @@ const plugin = Plugin.define({
                 (live ?? own) as unknown as Parameters<typeof renderStatus>[1],
               ),
             };
+          },
+        });
+
+        editor.add({
+          name: "dev_framework_update",
+          description:
+            "Check the framework deployment for drift (bundled templates, including the skill set) and return the per-file refresh/add brief. Use when the setup may be stale; present each file for review before editing, exactly like /df-update, and never commit unreviewed.",
+          input: {
+            type: "object",
+            properties: {
+              directory: {
+                type: "string",
+                description: "Project directory (defaults to current project)",
+              },
+            },
+            additionalProperties: false,
+          },
+          async execute(input: unknown) {
+            const { checkTemplateUpdates, composeUpdatePrompt, needsAgentHandoff } = await import(
+              "../../core/update.js"
+            );
+            const args = input as { directory?: string };
+            const targetDir = args.directory ?? directory;
+            const drift = await checkTemplateUpdates(targetDir);
+            if (!needsAgentHandoff(drift)) {
+              return { content: "templates current" };
+            }
+            return { content: composeUpdatePrompt(drift, targetDir) };
+          },
+        });
+
+        editor.add({
+          name: "dev_framework_runtime",
+          description:
+            "Show the live framework runtime snapshot for the project (hook registration, gate continuation posture, template drift). Read-only; use to inspect gate state mid-session.",
+          input: {
+            type: "object",
+            properties: {
+              directory: {
+                type: "string",
+                description: "Project directory (defaults to current project)",
+              },
+            },
+            additionalProperties: false,
+          },
+          async execute(input: unknown) {
+            const { renderRuntimeStatus } = await import("../../core/format-status.js");
+            const { readRuntimeStatus } = await import("../../core/runtime-status.js");
+            const args = input as { directory?: string };
+            const targetDir = args.directory ?? directory;
+            const snapshot = await readRuntimeStatus(targetDir);
+            return { content: renderRuntimeStatus(snapshot) };
           },
         });
       }),
@@ -1141,7 +936,7 @@ const plugin = Plugin.define({
             description:
               "Start a verified native goal: appends a dev_framework_verify contract to the objective and delegates to native /goal exactly once. Requires native /goal, a blocking profile, and at least one configured completion check.",
             execute: async (invocation) => {
-              if (activeState !== state) {
+              if (getActiveState() !== state) {
                 throw new Error(
                   "Cannot start a verified goal: the plugin session state changed " +
                     "(teardown or reload raced the command); retry /df-goal.",
@@ -1149,7 +944,7 @@ const plugin = Plugin.define({
               }
               await reloadConfigIfChanged(state);
               const { extractObjectiveText, isNativeGoalListed, runGoalCommand } = await import(
-                "./goal.js"
+                "../../core/goal.js"
               );
               let nativeGoalAvailable = false;
               try {
@@ -1212,19 +1007,19 @@ const plugin = Plugin.define({
             description:
               "Set up opencode-dev-framework for the current project: scaffold templates, write the detected config, trial-run it, and hand the brief to the agent. Safe to re-run; reports status when already configured.",
             execute: async (invocation) => {
-              if (activeState !== state) {
+              if (getActiveState() !== state) {
                 throw new Error(
                   "Cannot start project setup: the plugin session state changed " +
                     "(teardown or reload raced the command); retry /df-init.",
                 );
               }
-              const { runInitCommand } = await import("./init.js");
+              const { runInitCommand } = await import("../../core/init.js");
               const delivered = await runInitCommand({
                 directory: state.directory,
                 run: state.run,
                 delivery: invocation.delivery,
                 checkAlive: () => {
-                  if (activeState !== state) {
+                  if (getActiveState() !== state) {
                     throw new Error(
                       "Project setup was superseded mid-scaffold (teardown or reload raced the command); " +
                         "retry /df-init — a re-run reports status without touching anything.",
@@ -1232,19 +1027,23 @@ const plugin = Plugin.define({
                   }
                 },
                 reload: async () => {
-                  const { clearConfigCache: ccc, loadConfig: lc } = await import("./config.js");
-                  const { loadConstitution: lc2 } = await import("./rules.js");
+                  const { clearConfigCache: ccc, loadConfig: lc } = await import(
+                    "../../core/config.js"
+                  );
+                  const { loadConstitution: lc2 } = await import("../../core/rules.js");
                   ccc();
                   const newConfig = lc(state.directory);
                   const { constitution: newConstitution } = await lc2(newConfig, state.directory);
                   state.config = newConfig;
                   state.constitution = newConstitution;
-                  for (const name of [".opencode-dev-framework.yml", ".dev-framework.yml"]) {
+                  for (const name of CONFIG_FILE_PRECEDENCE) {
                     try {
-                      state.configMtime = (await stat(join(state.directory, name))).mtimeMs;
-                      break;
+                      const mtimeMs = (await stat(join(state.directory, name))).mtimeMs;
+                      if (state.configMtime === undefined || mtimeMs > state.configMtime) {
+                        state.configMtime = mtimeMs;
+                      }
                     } catch {
-                      // continue to fallback name
+                      // name absent
                     }
                   }
                 },
@@ -1295,18 +1094,18 @@ const plugin = Plugin.define({
             description:
               "Check the project's installed templates against the shipped set and hand the drift to the agent: refresh differing files, add missing ones, each with user approval. Detection only, never writes.",
             execute: async (invocation) => {
-              if (activeState !== state) {
+              if (getActiveState() !== state) {
                 throw new Error(
                   "Cannot check for updates: the plugin session state changed " +
                     "(teardown or reload raced the command); retry /df-update.",
                 );
               }
-              const { runUpdateCommand } = await import("./update.js");
+              const { runUpdateCommand } = await import("../../core/update.js");
               const delivered = await runUpdateCommand({
                 directory: state.directory,
                 delivery: invocation.delivery,
                 checkAlive: () => {
-                  if (activeState !== state) {
+                  if (getActiveState() !== state) {
                     throw new Error(
                       "Update check was superseded mid-run (teardown or reload raced the command); " +
                         "retry /df-update — it only reads, never writes.",
@@ -1355,7 +1154,7 @@ const plugin = Plugin.define({
         for await (const rawEvent of ctx.event.subscribe({ signal: controller.signal })) {
           // Stale-loop guard: a previous setup's loop must exit rather than
           // hijack a newer setup's state (duplicate gate re-prompts / lint).
-          if (activeState !== state) return;
+          if (getActiveState() !== state) return;
           const event = rawEvent as { type: string; data?: unknown; properties?: unknown } & Record<
             string,
             unknown
@@ -1377,7 +1176,7 @@ const plugin = Plugin.define({
           }
 
           if (isFilesystemChangedEvent(type)) {
-            if (activeState !== state) return;
+            if (getActiveState() !== state) return;
             await reloadConfigIfChanged(state);
             if (state.config.profile === "off") continue;
             const filePath = getEventFilePath(event);
@@ -1400,7 +1199,7 @@ const plugin = Plugin.define({
           }
 
           if (isIdleEvent(event as { type: string; data?: unknown; properties?: unknown })) {
-            if (activeState !== state) return;
+            if (getActiveState() !== state) return;
             await reloadConfigIfChanged(state);
             if (state.config.profile === "off") continue;
             if (!state.config.gate) {
@@ -1494,7 +1293,7 @@ const plugin = Plugin.define({
       // Unregister every hook/transform registered by this setup() so a
       // teardown/reload (e.g. session_move into a worktree) does not leave
       // stale closures alive. Disposal failures are ignored — the
-      // stale-hook guard (`activeState !== state` → no-op / fail-open) keeps
+      // stale-hook guard (`getActiveState() !== state` → no-op / fail-open) keeps
       // the session usable regardless.
       for (const registration of registrations) {
         try {
@@ -1505,8 +1304,8 @@ const plugin = Plugin.define({
       }
       // Only clear the singleton if it is still ours; a newer setup() may
       // already have replaced it (reload race).
-      if (activeState === state) {
-        activeState = null;
+      if (getActiveState() === state) {
+        setActiveState(null);
       }
     };
   },

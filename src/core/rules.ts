@@ -1,6 +1,7 @@
 import { readdir, readFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { RULES_DIR_RELS } from "./paths.js";
 import type { ResolvedConfig } from "./types.js";
 
 /**
@@ -11,11 +12,12 @@ import type { ResolvedConfig } from "./types.js";
 export const BUNDLED_CONSTITUTION_DIR = join(
   dirname(fileURLToPath(import.meta.url)),
   "..",
+  "..",
   "rules",
 );
 
 /** Namespaced directory inside the project for local rule overrides. */
-export const LOCAL_RULES_DIR = ".opencode/opencode-dev-framework/rules";
+export const LOCAL_RULES_DIR = RULES_DIR_RELS[0];
 
 /** Default style-guide filenames the plugin auto-discovers. */
 export const STYLE_GUIDE_CANDIDATES = [
@@ -70,6 +72,21 @@ async function readRuleDir(dir: string): Promise<string | null> {
   }
 }
 
+/**
+ * Local rule overrides, new home first: `.dev-framework/rules/`, falling
+ * back to the previous `.opencode/opencode-dev-framework/rules/` so
+ * existing deployments keep their overrides without moving them.
+ */
+async function readLocalRules(cwd: string): Promise<string | null> {
+  for (const rel of RULES_DIR_RELS) {
+    const local = await readRuleDir(resolve(cwd, rel));
+    if (local !== null) {
+      return local;
+    }
+  }
+  return null;
+}
+
 async function readRulesFiles(
   paths: string[],
   directory: string,
@@ -107,7 +124,8 @@ async function discoverStyleGuide(directory: string): Promise<string | null> {
  *   - `rules: { mode: append, files: [...] }` loads the bundled/local rules
  *     first, then the listed files.
  * - If no explicit `rules` config is set, the plugin auto-discovers
- *   `.opencode/opencode-dev-framework/rules/*.md` in the project root. If that
+ *   `.dev-framework/rules/*.md` in the project root (falling back to the
+ *   previous `.opencode/opencode-dev-framework/rules/*.md`). If that
  *   directory exists and contains markdown files, it replaces the bundled
  *   rules.
  * - If no local override exists, the bundled `rules/*.md` files are used.
@@ -139,7 +157,7 @@ export async function loadConstitution(
     }
     warnings.push(...rulesResult.warnings);
     if (config.rules.mode === "append") {
-      const local = await readRuleDir(resolve(cwd, LOCAL_RULES_DIR));
+      const local = await readLocalRules(cwd);
       const bundled = await readRuleDir(BUNDLED_CONSTITUTION_DIR);
       const base = local ?? bundled;
       if (base !== null) {
@@ -148,7 +166,7 @@ export async function loadConstitution(
       }
     }
   } else {
-    const local = await readRuleDir(resolve(cwd, LOCAL_RULES_DIR));
+    const local = await readLocalRules(cwd);
     if (local !== null) {
       parts.push(local);
       source = "custom";

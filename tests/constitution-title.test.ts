@@ -2,8 +2,8 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { clearConfigCache } from "../src/config";
-import plugin from "../src/index";
+import plugin from "../src/adapters/opencode/index";
+import { clearConfigCache } from "../src/core/config";
 
 describe("constitution injection on title hook (Phase 22)", () => {
   let directory: string;

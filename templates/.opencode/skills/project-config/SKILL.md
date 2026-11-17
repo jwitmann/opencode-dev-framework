@@ -15,7 +15,7 @@ build system, not guessed. You propose; the user disposes.
 ## When to use
 
 Setting up the plugin on a project for the first time, instead of
-hand-writing `.opencode-dev-framework.yml` or trusting `df init`
+hand-writing `.dev-framework.yml` or trusting `df init`
 detection alone. Also when the existing config smells wrong — gate
 passing vacuously, commands that don't match CI, a red tree nobody can
 explain.
@@ -87,7 +87,7 @@ list assumptions.
 
 ## Output
 
-+ The proposed `.opencode-dev-framework.yml` and `hardening.md` content
++ The proposed `.dev-framework.yml` and `.dev-framework/hardening.md` content
   as a reviewable diff, each command annotated verified-by-running,
   inferred-from-files, or needs-confirmation.
 + The enforceability self-check result (blocking profile + at least one

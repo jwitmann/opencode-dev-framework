@@ -1,10 +1,11 @@
+import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { changeProfile, verifyGate } from "../src/commands";
-import { clearConfigCache, resolveConfig } from "../src/config";
-import type { RunCommand } from "../src/host";
+import { changeProfile, verifyGate } from "../src/core/commands";
+import { clearConfigCache, resolveConfig } from "../src/core/config";
+import type { RunCommand } from "../src/core/host";
 
 let dir: string;
 
@@ -45,8 +46,19 @@ describe("changeProfile helper", () => {
   it("creates the config file when missing", async () => {
     const message = await changeProfile(dir, "advisory");
     expect(message).toContain('profile set to "advisory"');
-    const content = await readFile(join(dir, ".opencode-dev-framework.yml"), "utf8");
+    const content = await readFile(join(dir, ".dev-framework.yml"), "utf8");
     expect(content).toContain("profile: advisory");
+    expect(existsSync(join(dir, ".opencode-dev-framework.yml"))).toBe(false);
+  });
+
+  it("edits a legacy config in place instead of shadowing it", async () => {
+    await writeFile(join(dir, ".opencode-dev-framework.yml"), "profile: standard\n");
+    clearConfigCache();
+    const message = await changeProfile(dir, "strict");
+    expect(message).toContain('profile set to "strict"');
+    const content = await readFile(join(dir, ".opencode-dev-framework.yml"), "utf8");
+    expect(content).toContain("profile: strict");
+    expect(existsSync(join(dir, ".dev-framework.yml"))).toBe(false);
   });
 });
 

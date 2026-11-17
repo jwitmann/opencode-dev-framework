@@ -1,15 +1,15 @@
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { createBlockStore, createStuckSnapshotStore } from "../src/block-store";
-import { resolveConfig } from "../src/config";
-import { createChangedFileTracker } from "../src/gate";
-import { evaluateCompletion, inspectCompletion, REVIEW_ARTIFACT_REL } from "../src/harness";
-import type { CommandResult, RunCommand } from "../src/host";
-import type { LogFn, LogLevel } from "../src/logger";
-import type { Config } from "../src/types";
-import { diffWeakening, snapshotEnforceable } from "../src/weakening";
+import { createBlockStore, createStuckSnapshotStore } from "../src/core/block-store";
+import { resolveConfig } from "../src/core/config";
+import { createChangedFileTracker } from "../src/core/gate";
+import { evaluateCompletion, inspectCompletion, REVIEW_ARTIFACT_REL } from "../src/core/harness";
+import type { CommandResult, RunCommand } from "../src/core/host";
+import type { LogFn, LogLevel } from "../src/core/logger";
+import type { Config } from "../src/core/types";
+import { diffWeakening, snapshotEnforceable } from "../src/core/weakening";
 
 function resolve(raw: Config) {
   return resolveConfig(raw, "/project/.opencode-dev-framework.yml");
@@ -204,7 +204,7 @@ describe("weakening at the gate", () => {
   } as const;
 
   it("fails inspection with the reductions leading the summary", async () => {
-    await mkdir(join(dir, ".opencode", "opencode-dev-framework"), { recursive: true });
+    await mkdir(dirname(join(dir, REVIEW_ARTIFACT_REL)), { recursive: true });
     await writeFile(join(dir, REVIEW_ARTIFACT_REL), REVIEW_BODY);
     const { deps } = makeEval(green, {
       profile: "standard",
@@ -226,7 +226,7 @@ describe("weakening at the gate", () => {
   });
 
   it("blocks in standard with reason weakened even when the live gate is green", async () => {
-    await mkdir(join(dir, ".opencode", "opencode-dev-framework"), { recursive: true });
+    await mkdir(dirname(join(dir, REVIEW_ARTIFACT_REL)), { recursive: true });
     await writeFile(join(dir, REVIEW_ARTIFACT_REL), REVIEW_BODY);
     const { deps } = makeEval(green, {
       profile: "standard",
@@ -242,7 +242,7 @@ describe("weakening at the gate", () => {
   });
 
   it("warns and passes in advisory without blocking", async () => {
-    await mkdir(join(dir, ".opencode", "opencode-dev-framework"), { recursive: true });
+    await mkdir(dirname(join(dir, REVIEW_ARTIFACT_REL)), { recursive: true });
     await writeFile(join(dir, REVIEW_ARTIFACT_REL), REVIEW_BODY);
     // Baseline is standard (green); live is advisory — the profile
     // downgrade collapses to a single line.
@@ -260,7 +260,7 @@ describe("weakening at the gate", () => {
   });
 
   it("passes without a baseline (manual verify evaluates the live contract as-is)", async () => {
-    await mkdir(join(dir, ".opencode", "opencode-dev-framework"), { recursive: true });
+    await mkdir(dirname(join(dir, REVIEW_ARTIFACT_REL)), { recursive: true });
     await writeFile(join(dir, REVIEW_ARTIFACT_REL), REVIEW_BODY);
     const { deps } = makeEval(
       green,

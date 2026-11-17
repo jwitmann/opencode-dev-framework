@@ -15,9 +15,10 @@ import {
   statusTemplates,
   trialRunDetectedCommands,
   writeDetectedConfig,
-} from "../dist/installer.js";
-import { detectProject } from "../dist/detect.js";
-import { runCommand } from "../dist/host.js";
+} from "../dist/core/installer.js";
+import { detectProject } from "../dist/core/detect.js";
+import { existingConfigPath } from "../dist/core/config.js";
+import { runCommand } from "../dist/core/host.js";
 
 async function getVersion() {
   const packagePath = join(dirname(fileURLToPath(import.meta.url)), "..", "package.json");
@@ -80,7 +81,10 @@ async function main() {
       process.exitCode = 1;
       return;
     }
-    const configPath = join(profileDir, ".opencode-dev-framework.yml");
+    // New file only when no config exists under any supported name; an
+    // established deployment is edited in place, never shadowed.
+    const fresh = join(profileDir, ".dev-framework.yml");
+    const configPath = existingConfigPath(profileDir) ?? fresh;
     await setProfileInFile(configPath, profile);
     console.log(`Profile set to "${profile}" in ${configPath}`);
     return;

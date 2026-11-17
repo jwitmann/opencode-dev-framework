@@ -1,7 +1,7 @@
 import type { ChangedFileTracker } from "./gate.js";
 import type { RunCommand } from "./host.js";
 import type { LogFn } from "./logger.js";
-import type { ResolvedConfig } from "./types.js";
+import type { HostSeams, ResolvedConfig } from "./types.js";
 
 /**
  * OpenCode's native `permission` config is a per-agent, tool-to-mode object
@@ -40,6 +40,14 @@ export interface HookState {
    * idle re-prompt net has. Absent until either fires. Memory-only: a
    * reload re-derives it on the next idle boundary. */
   continuationLevel?: "idle" | "fallback";
+  /**
+   * Host seam availability (see `HostSeams`), probed once at mount with
+   * guarded reads. Rendered by status so a degraded mount reads as
+   * degraded, never as silently whole. Unset on hosts whose seams are
+   * core-guaranteed (OpenCode leaves this unset; the DSH adapter probes
+   * it at mount).
+   */
+  seams?: HostSeams;
 }
 
 /**

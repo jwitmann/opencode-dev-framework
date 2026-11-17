@@ -2,7 +2,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { CommandResult, RunCommand, RunCommandOptions } from "../src/host";
+import type { CommandResult, RunCommand, RunCommandOptions } from "../src/core/host";
 import {
   buildWizardBrief,
   formatTrialRun,
@@ -10,10 +10,11 @@ import {
   installTemplates,
   listMakefileTargets,
   listTemplateFiles,
+  mirrorSkillsToDsh,
   statusTemplates,
   trialRunDetectedCommands,
   writeDetectedConfig,
-} from "../src/installer";
+} from "../src/core/installer";
 
 let dir: string;
 
@@ -91,7 +92,7 @@ describe("writeDetectedConfig", () => {
     const result = await writeDetectedConfig(dir, { skipExisting: true });
     expect(result.action).toBe("created");
     const { readFile } = await import("node:fs/promises");
-    const content = await readFile(join(dir, ".opencode-dev-framework.yml"), "utf8");
+    const content = await readFile(join(dir, ".dev-framework.yml"), "utf8");
     expect(content).toContain("profile: standard");
     expect(content).toContain("protect:");
   });
@@ -102,7 +103,7 @@ describe("writeDetectedConfig", () => {
     const result = await writeDetectedConfig(dir, { skipExisting: true });
     expect(result.action).toBe("created");
     const { readFile } = await import("node:fs/promises");
-    const content = await readFile(join(dir, ".opencode-dev-framework.yml"), "utf8");
+    const content = await readFile(join(dir, ".dev-framework.yml"), "utf8");
     expect(content).toContain("test: go test ./...");
     expect(content).toContain("typecheck: go build ./...");
     expect(content).toContain("lint: golangci-lint run {dir}");
@@ -113,6 +114,8 @@ describe("writeDetectedConfig", () => {
     await writeFile(join(dir, ".opencode-dev-framework.yml"), "profile: strict\n", "utf8");
     const result = await writeDetectedConfig(dir, { skipExisting: true });
     expect(result.action).toBe("skipped");
+    const { existsSync } = await import("node:fs");
+    expect(existsSync(join(dir, ".dev-framework.yml"))).toBe(false);
   });
 
   it("overwrites an existing config when overwriteExisting is true", async () => {
@@ -122,6 +125,49 @@ describe("writeDetectedConfig", () => {
     expect(result.action).toBe("overwritten");
     const content = await readFile(join(dir, ".opencode-dev-framework.yml"), "utf8");
     expect(content).toContain("profile: standard");
+  });
+});
+
+describe("mirrorSkillsToDsh", () => {
+  it("mirrors every bundled skill into the host-scanned root", async () => {
+    const result = await mirrorSkillsToDsh(dir, ".dsh/skills", { skipExisting: true });
+    for (const name of [
+      "code-review",
+      "ground-in-tests",
+      "match-patterns",
+      "peer-review",
+      "project-config",
+    ]) {
+      expect(result.created).toContain(`.dsh/skills/${name}/SKILL.md`);
+    }
+    expect(result.created).toHaveLength(5);
+    expect(result.skipped).toEqual([]);
+    expect(result.overwritten).toEqual([]);
+  });
+
+  it("skips identical mirrors on re-run", async () => {
+    await mirrorSkillsToDsh(dir, ".dsh/skills", { skipExisting: true });
+    const result = await mirrorSkillsToDsh(dir, ".dsh/skills", { skipExisting: true });
+    expect(result.created).toEqual([]);
+    expect(result.skipped.length).toBeGreaterThan(0);
+    expect(result.overwritten).toEqual([]);
+  });
+
+  it("preserves user-edited mirrors unless overwriteExisting", async () => {
+    await mirrorSkillsToDsh(dir, ".dsh/skills", { skipExisting: true });
+    const { writeFile } = await import("node:fs/promises");
+    await writeFile(join(dir, ".dsh/skills/peer-review/SKILL.md"), "custom", "utf8");
+    const skipped = await mirrorSkillsToDsh(dir, ".dsh/skills", { skipExisting: true });
+    expect(skipped.overwritten).toEqual([]);
+    expect(skipped.skipped).toContain(".dsh/skills/peer-review/SKILL.md");
+    const overwritten = await mirrorSkillsToDsh(dir, ".dsh/skills", { overwriteExisting: true });
+    expect(overwritten.overwritten).toContain(".dsh/skills/peer-review/SKILL.md");
+  });
+
+  it("leaves the template drift check untouched (mirrors are not templates)", async () => {
+    await mirrorSkillsToDsh(dir, ".dsh/skills", { skipExisting: true });
+    const status = await statusTemplates(dir);
+    expect(status.missing.length).toBeGreaterThan(0);
   });
 });
 
@@ -244,7 +290,7 @@ describe("project-config skill pin (Phase 15)", () => {
   it("covers build truth, wrappers, acceptance, hardening draft, self-check, and review-only handoff", async () => {
     const { readFile } = await import("node:fs/promises");
     const { join } = await import("node:path");
-    const { TEMPLATES_DIR } = await import("../src/installer");
+    const { TEMPLATES_DIR } = await import("../src/core/installer");
     const content = await readFile(
       join(TEMPLATES_DIR, ".opencode/skills/project-config/SKILL.md"),
       "utf8",

@@ -11,6 +11,22 @@ export type ProtectMode = "warn" | "deny";
 export type GateScope = "all" | "changed";
 
 /**
+ * Host seam availability, probed once at mount with guarded reads and
+ * rendered by status so a degraded mount reads as degraded. Shared named
+ * type so the forked `HookState` definitions (`registry.ts`,
+ * `run-hooks.ts`) cannot skew: one shape, two references.
+ */
+export interface HostSeams {
+  tools: boolean;
+  goals: boolean;
+  approval: boolean;
+  /** DSH-only: the host subagent service (specialist dispatch). */
+  subagents: boolean;
+  /** DSH-only: the agent-preset registry (read-only reviewer preset). */
+  agentPresets: boolean;
+}
+
+/**
  * A command specification: either a single default command string, or a map
  * of per-extension overrides keyed by extension (e.g. `.go`).
  */

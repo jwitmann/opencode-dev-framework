@@ -108,7 +108,7 @@ OpenCode loads the plugin via Bun at runtime, but all development and CI on this
 - Keep `README.md` accurate with install/config instructions.
 - Keep `AGENTS.md` and the plan docs in `docs/plans/` accurate as the project
   evolves.
-- Prefer real YAML/JSON for `.opencode-dev-framework.yml`; support `.dev-framework.yml` only as a fallback.
+- Prefer real YAML/JSON for `.dev-framework.yml`; the legacy `.opencode-dev-framework.yml` name is still read as a fallback.
 
 ### Don't
 
@@ -130,23 +130,25 @@ OpenCode loads the plugin via Bun at runtime, but all development and CI on this
 ```text
 opencode-dev-framework/
 ├── src/                    # Plugin source code
-│   ├── index.ts            # Plugin entry point
-│   ├── command-utils.ts    # Shared command parsing helpers
-│   ├── config.ts           # Config loader
-│   ├── detect.ts           # Project language/tooling auto-detection
-│   ├── protect.ts          # Guardrail logic
-│   ├── lint.ts             # Per-edit lint runner
-│   ├── gate.ts             # Completion gate
-│   ├── harness.ts          # Pre/post-flight harness (artifacts, git changed-files, verdict runner)
-│   ├── rules.ts            # Constitution injection
-│   ├── registry.ts         # Per-project hook state registry
-│   ├── tools.ts            # Custom tools (dev_framework_init / set_profile / status)
-│   ├── commands.ts         # Shared slash-command logic (changeProfile / verifyGate)
-│   ├── format-status.ts    # Shared status renderer for tool + slash command TUI
-│   ├── installer.ts        # Template copy + config generation for the df CLI
-│   ├── host.ts             # Host abstraction
-│   ├── logger.ts           # Structured logging
-│   └── types.ts            # Shared types
+│   ├── core/               # Harness-agnostic shared core (no host imports)
+│   │   ├── block-store.ts  # Persistent gate block counts (StorageLike inlined)
+│   │   ├── command-utils.ts# Shared command parsing helpers
+│   │   ├── config.ts       # Config loader
+│   │   ├── detect.ts       # Project language/tooling auto-detection
+│   │   ├── format-status.ts# Shared status renderer
+│   │   ├── gate.ts         # Completion gate
+│   │   ├── harness.ts      # Pre/post-flight harness (verdict runner)
+│   │   ├── host.ts         # RunCommand abstraction
+│   │   ├── lint.ts         # Per-edit lint + format runners
+│   │   ├── protect.ts      # Guardrail logic (+ `decideFileGuard`/`decideShellGuard` seam)
+│   │   ├── run-hooks.ts    # Shared HookState + per-edit/gate flows
+│   │   └── …               # commands, rules, registry, logger, types, …
+│   ├── adapters/
+│   │   ├── opencode/       # OpenCode registration (Plugin.define, thin)
+│   │   │   └── index.ts    # Plugin entry point (package main)
+│   │   └── dsh/            # DSH Cordis wiring over core (plan 25)
+│   │       ├── index.ts    # apply(ctx): pre/post-execute, turn-stopping
+│   │       └── extract.ts  # DSH envelope → core guard inputs (pure)
 ├── tui.tsx                 # TUI plugin (Plugin.define via @opencode/plugin/tui, slot+keymap.layer)
 ├── bin/
 │   └── df                  # df init / profile / status / version CLI

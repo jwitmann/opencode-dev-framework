@@ -4,6 +4,17 @@ When the framework is active, you are not a lone coder; you are the lead enginee
 coordinating specialist reviewers. Use them as a continuous loop, not a final
 rubber-stamp. Catching issues early is cheaper than catching them at the gate.
 
+## Harness rule (read first)
+
+- **On OpenCode**, the specialists below are runnable subagents (installed
+  under `.opencode/agents/`). Delegate to them per the cadence.
+- **On DSH, there are no specialist subagents — by construction, not by
+  accident.** The adapter provisions none and the host exposes no seam to
+  spawn them, so `list_agents` correctly shows only the lead. The inline
+  path below is the primary DSH loop, not a degraded fallback: run the
+  same checks yourself via the skills, at the same bar, and record each
+  pass and its outcome in the review artifact.
+
 ## The specialists
 
 When the project has the specialist agents installed (under `.opencode/agents/`),
@@ -48,7 +59,8 @@ harden (full verification + review + fresh artifact) before declaring done.
 Keep delegation proportional: a one-line fix doesn't need the full loop; a new module
 does. Use judgment, but never skip the test-grounding and review steps for behavioral
 changes. If the specialist agents are not installed in this project, perform the same
-checks yourself with the skills in this section.
+checks yourself with the skills in this section — on DSH this is always the
+path (see the harness rule above), never an exception.
 
 ## Execute plans under `/df-goal`
 

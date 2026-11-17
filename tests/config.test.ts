@@ -12,7 +12,7 @@ import {
   mapFlatConfig,
   resolveConfig,
   splitGlobs,
-} from "../src/config";
+} from "../src/core/config";
 
 let dir: string;
 
@@ -34,8 +34,14 @@ describe("findConfigFile", () => {
     expect(findConfigFile(dir)).toBeUndefined();
   });
 
-  it("prefers .opencode-dev-framework.yml over the fallback", () => {
+  it("prefers .dev-framework.yml over the legacy name", () => {
     write(".dev-framework.yml", "profile: strict\n");
+    write(".opencode-dev-framework.yml", "profile: advisory\n");
+    expect(findConfigFile(dir)).toBe(join(dir, ".dev-framework.yml"));
+    expect(loadConfig(dir).profile).toBe("strict");
+  });
+
+  it("still loads the legacy name when it is the only file", () => {
     write(".opencode-dev-framework.yml", "profile: advisory\n");
     expect(findConfigFile(dir)).toBe(join(dir, ".opencode-dev-framework.yml"));
     expect(loadConfig(dir).profile).toBe("advisory");
@@ -122,6 +128,60 @@ describe("loadConfig (.dev-framework.yml fallback)", () => {
     ]);
     expect(config.protect).toEqual([".env*", "go.sum"]);
     expect(config.protect_mode).toBe("warn");
+  });
+
+  it("loads native shape under the new name", () => {
+    write(
+      ".dev-framework.yml",
+      ["profile: strict", "commands:", "  test: go test ./...", ""].join("\n"),
+    );
+    const config = loadConfig(dir);
+    expect(config.configPath).toBe(join(dir, ".dev-framework.yml"));
+    expect(config.profile).toBe("strict");
+    expect(config.commands.test).toBe("go test ./...");
+  });
+
+  it("maps flat keys under the legacy name", () => {
+    write(".opencode-dev-framework.yml", ["profile: strict", "test: go test ./...", ""].join("\n"));
+    const config = loadConfig(dir);
+    expect(config.profile).toBe("strict");
+    expect(config.commands.test).toBe("go test ./...");
+  });
+
+  it("still rejects invalid values under the legacy name", () => {
+    write(".opencode-dev-framework.yml", "profile: banana\n");
+    expect(() => loadConfig(dir)).toThrowError(/Invalid configuration in .*profile/s);
+  });
+
+  it("rejects bad nested values instead of masking them as defaults", () => {
+    write(".dev-framework.yml", ["profile: strict", "gate:", "  scope: sideways", ""].join("\n"));
+    expect(() => loadConfig(dir)).toThrowError(/Invalid configuration/s);
+  });
+
+  it("rejects mixed native and flat keys naming the dropped flat keys", () => {
+    write(
+      ".dev-framework.yml",
+      ["profile: strict", "commands:", "  test: go test ./...", "test: go test ./...", ""].join(
+        "\n",
+      ),
+    );
+    expect(() => loadConfig(dir)).toThrowError(/mixes native and flat keys.*test/s);
+  });
+
+  it("treats null-valued native keys as absent (commented-out debris)", () => {
+    write(
+      ".dev-framework.yml",
+      ["profile: strict", "commands:", "test: go test ./...", ""].join("\n"),
+    );
+    const config = loadConfig(dir);
+    expect(config.commands.test).toBe("go test ./...");
+  });
+
+  it("ignores null-valued flat keys instead of coercing them live", () => {
+    write(".dev-framework.yml", ["profile: strict", "test:", "protect:", ""].join("\n"));
+    const config = loadConfig(dir);
+    expect(config.commands.test).toBeUndefined();
+    expect(config.protect).toEqual(DEFAULT_PROTECT);
   });
 });
 

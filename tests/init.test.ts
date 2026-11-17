@@ -1,15 +1,15 @@
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { CommandResult, RunCommand } from "../src/host";
+import type { CommandResult, RunCommand } from "../src/core/host";
 import {
   composeInitPrompt,
   initNeedsHandoff,
   runInitCommand,
   runInitScaffold,
   scaffoldReportLines,
-} from "../src/init";
+} from "../src/core/init";
 
 let dir: string;
 
@@ -93,6 +93,7 @@ describe("scaffoldReportLines", () => {
     expect(lines[0]).toContain(dir);
     expect(lines.join("\n")).toContain("Config: created");
     expect(lines.join("\n")).toContain("Created files:");
+    expect(lines.join("\n")).toContain("dev_framework_update");
   });
 
   it("explains itself on a no-op re-run", async () => {
@@ -109,7 +110,7 @@ describe("composeInitPrompt", () => {
     expect(text).toContain("Wizard brief");
     expect(text).toContain("at most 3 genuinely");
     expect(text).toContain("user-only questions");
-    expect(text).toContain(".opencode-dev-framework.yml + hardening.md for review");
+    expect(text).toContain(".dev-framework.yml + .dev-framework/hardening.md for review");
     expect(text).toContain("Do not commit unreviewed");
   });
 
@@ -138,6 +139,41 @@ describe("composeInitPrompt", () => {
     const scaffold = await runInitScaffold(dir, stubRun(), { wizard: true });
     const text = composeInitPrompt(scaffold, dir, ["the new config could not be reloaded (boom)"]);
     expect(text).toContain("Warning: the new config could not be reloaded (boom)");
+  });
+
+  it("words the DSH brief for host-native tools (skill + ask_user_question)", async () => {
+    const scaffold = await runInitScaffold(dir, stubRun(), { wizard: true });
+    const text = composeInitPrompt(scaffold, dir, [], "tool");
+    expect(text).toContain("Load the project-config skill with the `skill` tool");
+    expect(text).toContain("`ask_user_question`");
+    expect(text).toContain("at most 3 genuinely");
+    expect(text).toContain(".dev-framework.yml + .dev-framework/hardening.md for review");
+    expect(text).toContain("Do not commit unreviewed");
+  });
+
+  it("keeps the OpenCode brief free of host-native tooling", async () => {
+    const scaffold = await runInitScaffold(dir, stubRun(), { wizard: true });
+    const text = composeInitPrompt(scaffold, dir);
+    expect(text).not.toContain("`skill` tool");
+    expect(text).not.toContain("ask_user_question");
+  });
+
+  it("mirrors skills for DSH only when asked, folding them into fresh", async () => {
+    const plain = await runInitScaffold(dir, stubRun(), { wizard: true });
+    expect(plain.created).not.toContain(".dsh/skills/peer-review/SKILL.md");
+    await rm(dir, { recursive: true, force: true });
+    await mkdir(dir, { recursive: true });
+    const dsh = await runInitScaffold(dir, stubRun(), {
+      wizard: true,
+      skillMirrorRoot: ".dsh/skills",
+    });
+    expect(dsh.created).toContain(".dsh/skills/peer-review/SKILL.md");
+    expect(dsh.fresh).toBe(true);
+    const again = await runInitScaffold(dir, stubRun(), {
+      wizard: true,
+      skillMirrorRoot: ".dsh/skills",
+    });
+    expect(again.fresh).toBe(false);
   });
 });
 

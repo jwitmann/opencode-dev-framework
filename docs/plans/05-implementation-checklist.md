@@ -700,7 +700,7 @@ Dogfood the fork's V2 pre-terminal hook (upstream PR
   `tests/review.test.ts`); peer-review pass before done; commit locally,
   never push.
 
-## Phase 32 — Agent-led init wizard (plan 16, IN PROGRESS)
+## Phase 32 — Agent-led init wizard (plan 16, DONE 2026-11-02)
 
 - [x] 32.1 `buildWizardBrief` / `formatWizardBrief` / `listMakefileTargets`
   in `src/installer.ts` (detection + trial + target names + shared
@@ -765,6 +765,176 @@ Dogfood the fork's V2 pre-terminal hook (upstream PR
   `event.subscribe` loop to an Effect fiber, compare vs
   `teardown.test.ts`) + peer-review skill gate. No full rewrite without
   spike + review.
+
+## Phase 42 — DSH adapter, slices 1–4 (plan 25, DONE 2026-11-16)
+
+- [x] 42.1 Slice 1: `HookState` + safeLog + config reload + verdict
+  messaging + `runPerEditLint` + `runCompletion` + idle dedup helpers moved
+  from `src/index.ts` to `src/core/run-hooks.ts` (pure move, in-place).
+  `src/adapters/opencode/index.ts` keeps registration thin.
+- [x] 42.2 Slice 2: shared `formatFile` runner in `src/core/lint.ts` mirroring
+  `lintFile` (same substitution, ghost-skip, TOCTOU re-probe, skip-vs-fail,
+  `summarizeFormat`) + `tests/format.test.ts`. Opencode adapter never calls
+  it (core formats natively) — the DSH adapter exercises it.
+- [x] 42.3 Slice 3: dogfood on a scratch adapter outside the repo
+  (`/tmp/opencode/odf-dogfood/`, core imported from `dist/`, stock
+  `headless` + `--patch`): pre-execute deny on both tiers, post-execute
+  format-then-lint via `additionalContexts`, turn-stopping counter, real
+  `loadConfig`. Exit met; gaps named as promotion requirements, not
+  failures. Port log: `~/dsh-migration/odf-dogfood-log.md`.
+- [x] 42.4 Slice 4: packaging (option B, in-place). `src/core/*` (24
+  modules, harness-agnostic; `@opencode/plugin` import removed from core —
+  `StorageLike` inlined in `block-store.ts`; `TEMPLATES_DIR` /
+  `BUNDLED_CONSTITUTION_DIR` re-rooted `../..`), `src/adapters/opencode/`
+  (thin registration, `../../core/` imports), `src/adapters/dsh/` (Cordis
+  wiring over core: `decideFileGuard`/`decideShellGuard` verdicts + core
+  reason text, format-then-lint post-execute with re-entrancy guard,
+  `runCompletion`/`actOnVerdict` turn-stopping with steer/followup, core
+  block-store budget, `renderStatus` slash command, `off`/`protect_off`
+  kill switches, memory-only stores). `package.json` main/exports point at
+  `dist/adapters/opencode/index.js`; `tui.tsx` + `bin/df` follow
+  `dist/core/*`. Full suite green (521).
+- [x] 42.5 Peer-review skill gate before commit; commit locally, never push.
+- [x] 42.6 Contract-correction round (same session): code-reviewer +
+  style findings fixed — track-before-error on `isError` post-execute
+  (partial writes enter the gate), skip-noise kept out of
+  `additionalContexts`, shared limiter/pre-commit/timeout on the DSH lint
+  path, caller tool nouns in reasons; warn tier corrected to
+  allow-with-log (`ask` denies without an approval service);
+  guard errors profile-dependent (advisory/off allow, standard/strict
+  deny); pre-flight enforced on DSH pre-execute (incl.
+  `apply_patch`→`patch` mapping, resolved-path artifact exemption,
+  `protect_off` still gated — parity with opencode); `apply()` load
+  failure error-logs + no-ops (no mount throw); dead seam surface
+  removed (`cancel`, `workingDirectory`). Kill-switch scope aligned:
+  only profile-off skips lint/gate; `protect_off` stands down
+  guardrails alone. 24 adapter tests green; full suite 533.
+- [x] 42.7 Superiority round (same session): DSH takes the contracts the
+  host supports beyond parity — post-execute `block` turns lint findings
+  into a model-facing tool error in the same turn (opencode can only
+  log a landed edit; timeouts/127/silent exits stay accept + error-log
+  with the file tracked — a broken linter must not wedge edits with
+  unfixable "your edit" feedback), pre-terminal `turn-stopping` +
+  `steer` continues the same turn (no re-prompt round-trip; steer
+  dropped when the turn already aborted, single in-try check),
+  structured `info` on every denial, redirect-target guard coverage.
+  Parity ceilings verified against host sources (warn→allow is the
+  ceiling on headless: no `approval` provider, `ask` denies).
+  29 adapter tests green (fail-before proven by stash).
+- [x] 42.8 DSH shippables (same session): `./dsh` export added
+  (types + import, mirrors the main entry); `docs/user/dsh.md` written
+  (mount, contract table, troubleshooting — status banner honest:
+  live-fire pending); README + `docs/README` map point at it.
+  Live-fire staged and executed: real-artifact patch
+  (`/tmp/opencode/odf-livefire.patch.yml` → `dist/adapters/dsh/`),
+  model overlay, scratch project (`odf-live/`). Session one proved
+  guard-deny (`.env`, `code: guard-deny`, file absent) and post-execute
+  `block` (marker edit → `code: lint-block`, agent retried clean same
+  turn). Session two (read-only) proved the negative: no spurious
+  steer, clean turn end. Session three proved the headline: one-edit
+  task said "Done", gate blocked on the missing review, turn 1
+  continued 13 more steps — agent ran the review loop named by the
+  steer message, wrote the artifact, turn ended. Same turn throughout,
+  no re-prompt. Docs updated with the evidence (`dsh.md` rows +
+  banner). The live runs needed explicit model approval — standing
+  rule, not waived.
+- [x] 43.1 Instruction pillar (same session): pre-step
+  once-per-session constitution + roster + drift-mention prepend
+  (config-identity reset on reload); weakening confirmed inherited
+  via `runCompletion` baseline (audit corrected, no work). 4 new
+  tests green, fail-before proven by stash.
+- [x] 43.3 Commands (same session): `df-goal` (availability probe +
+  pure verified-objective build + `ctx.goals.create` delegation),
+  `df-verify` (`verifyGate` + tracker snapshot, text result),
+  `df-profile` (`changeProfile` + validation), `df-init`/`df-update`
+  (core run*Command with `followup` handoff — operator-memory
+  init pattern). 7 new tests green, fail-before proven by stash.
+  40 adapter tests total; full suite 549.
+- [x] 43.4 Child-session guard: the host session header carries
+  parentage (`origin === "subagent"` + `parentSession` — host's own
+  classification), so the port is a synchronous header read, not a
+  lookup clone: turn-stopping skips children, pre-execute denies
+  child artifact writes (`child-artifact-deny`; advisory warns,
+  parent writes pass). 4 new tests green, fail-before proven by
+  stash (without `src`, the child gets steered — the plan-23 replay).
+
+## Phase 44 — Harness-neutral framework home (DONE 2026-11-17)
+
+- [x] 44.1 Framework-private files move `.opencode/opencode-dev-framework/`
+  → `.dev-framework/` (review, preflight, runtime snapshot, local
+  rules); config `.opencode-dev-framework.yml` → `.dev-framework.yml`
+  (new name preferred, legacy still read). Harness-discovered dirs
+  (`.opencode/agents`, `.opencode/skills`, `.dsh/skills` mirror) untouched.
+- [x] 44.2 Single-owner `src/core/paths.ts` (new + legacy rels); readers
+  try new first and fall back (review/preflight/rules/snapshot/config
+  with native-shape sniffing + flat-key fallback); all writers use the
+  new home only, so deployments converge without a migration script.
+  Existing deployments never break: old config still loads, old
+  artifacts still gate, old rules still inject; no shadowing duplicates
+  (`df init`/`df-profile`/tools honor the established name).
+- [x] 44.3 Dual-path tests per reader (new-only/legacy-only/both/neither),
+  flipped-name config precedence, cross-shape config, no-shadow pins;
+  templates, examples, and living docs migrated to the neutral home.
+- [x] 44.4 Peer-review skill gate before commit; commit locally, never push.
+
+## DSH message event ids — resume-shaping fix (DONE 2026-11-17)
+
+- [x] Live TUI session would not resume: 14 ODF-injected user messages
+  lacked host session-event ids (`DshUserMessage` had no `id`), and the
+  host validator requires non-empty `data.id` on every message event —
+  each injected message poisoned the log for the next resume.
+- [x] Fix in `src/adapters/dsh/index.ts`: `id?: string` on the type
+  (optional so host-owned incoming history stays id-tolerant) +
+  `randomUUID()` stamp in the single `dshUserMessage()` factory, which
+  covers every outbound path. Regression tests assert non-empty unique
+  ids; fail-before proven by stash for both assertions. Full suite
+  600/600, check/lint/typecheck/build green. Committed locally, never
+  pushed.
+- [x] Companion repair of the already-corrupted log (not repo work):
+  the first repair attempt recompressed all events as one zstd frame,
+  which the loader rejects (it requires the first frame to be exactly
+  the header line). Rebuilt frame-aware: 309 original frames kept
+  byte-identical, 13 touched frames recompressed from verified content
+  (322 frames, first frame identical, zero id-less events). Lesson
+  recorded in `08-notes.md`.
+
+## Phase 26 — DSH specialist subagents (SCOPED 2026-11-17, not started)
+
+- [ ] 26.0 Plan written (`docs/plans/26-dsh-specialists.md`): seam
+  verified against installed host `0.2.2-rc.3` (`ctx.subagents`
+  `startActivation`, async delivery-to-parent, `spawn`/`fork`
+  providers present on headless). Interim docs fix shipped
+  (`40-delegation.md` harness rule: DSH inline is primary).
+- [x] 26.1 Probe `subagents` inject + `startActivation` from adapter
+  ctx (throwaway patch, echo child). DONE 2026-11-17: full loop green
+  (tool result `spawned child: odf-probe-echo`, notice + `PROBE-OK`
+  verbatim in plan doc). Evidence: `/tmp/odf-probe26/` (never
+  committed) + headless session `session-eaa96a9b` (run 1) and the
+  `odf_probe_spawn` session (run 2).
+- [x] 26.2 Spawn path at gate block (pattern-guardian first),
+  findings folded into steer; degrade to inline when seam absent.
+  DONE 2026-11-17 — see plan doc slice notes for the full evidence
+  (6 behavior tests, stash-proven fail-before, 606/606 suite,
+  no new lint diagnostics).
+- [x] 26.3 Multi-kind dispatch + reason-gating + plugin-registered
+  preset. DONE 2026-11-17 — 10 behavior tests, stash-proven
+  fail-before, 610/610 suite; live-proven headless (session
+  `session-de1269e0`, fixture `/tmp/odf-spec264`): review-block
+  dispatched all three kinds, notices folded, real CJS-in-ESM finding
+  fixed, gate PASS. Preset-selected spawn is unit-proven only; its
+  live proof needs the registry (TUI, user-run — see 26.4).
+- [x] 26.4 Docs half DONE 2026-11-17: `dsh.md` (specialist row,
+  inject rule, seam list, agent-file role) + README matrix
+  (reviewer-agents row). Test + headless-live half already covered
+  by 26.1–26.3 evidence.
+- [x] 26.4 TUI preset live proof DONE 2026-11-17 (user-run,
+  parent session `78def5ff` = `$DSH_TUI_RESUME_SESSION`): steer named
+  all three children, all three notices arrived and folded, child
+  session logged `agent-preset/selected: odf-reviewer` and called
+  only read/grep/glob/read_image/working_directory — no
+  write/edit/bash/subagent. (`dev_framework_*` tools remain visible
+  in the child roster via the shared context but were never called;
+  hardening to preset-excluded is open, not blocking.)
 
 ## Peer-review gate (mandatory after EVERY phase 21–27)
 

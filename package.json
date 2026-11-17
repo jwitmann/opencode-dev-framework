@@ -4,12 +4,16 @@
   "description": "OpenCode plugin that enforces project-specific quality gates during AI coding sessions",
   "license": "MIT",
   "type": "module",
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
+  "main": "dist/adapters/opencode/index.js",
+  "types": "dist/adapters/opencode/index.d.ts",
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js"
+      "types": "./dist/adapters/opencode/index.d.ts",
+      "import": "./dist/adapters/opencode/index.js"
+    },
+    "./dsh": {
+      "types": "./dist/adapters/dsh/index.d.ts",
+      "import": "./dist/adapters/dsh/index.js"
     },
     "./tui": {
       "types": "./dist/tui.d.ts",

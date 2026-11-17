@@ -7,7 +7,8 @@ Three doors, pick yours:
   then [`user/configuration.md`](user/configuration.md),
   [`user/commands.md`](user/commands.md),
   [`user/enforcement.md`](user/enforcement.md), and
-  [`user/troubleshooting.md`](user/troubleshooting.md) as needed.
+  [`user/troubleshooting.md`](user/troubleshooting.md) as needed. DSH
+  users start with [`user/dsh.md`](user/dsh.md) instead.
 - **Hack on the plugin** — build it, understand the architecture, run the
   suite, cut a release. Start with
   [`dev/contributing.md`](dev/contributing.md), then

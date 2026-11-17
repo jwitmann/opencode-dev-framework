@@ -2,17 +2,17 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { resolveConfig } from "../src/config";
+import { resolveConfig } from "../src/core/config";
 import {
   createChangedFileTracker,
   DEFAULT_GATE_TIMEOUT_SECONDS,
   runGate,
   substituteFiles,
   summarizeGate,
-} from "../src/gate";
-import type { CommandResult, RunCommand, RunCommandOptions } from "../src/host";
-import { createLintLimiter } from "../src/lint";
-import type { Config } from "../src/types";
+} from "../src/core/gate";
+import type { CommandResult, RunCommand, RunCommandOptions } from "../src/core/host";
+import { createLintLimiter } from "../src/core/lint";
+import type { Config } from "../src/core/types";
 
 function resolve(raw: Config) {
   return resolveConfig(raw, "/project/.opencode-dev-framework.yml");
@@ -70,6 +70,25 @@ describe("changed-file tracker", () => {
     const tracker = createChangedFileTracker();
     tracker.add("/project/src/a.ts", "/project");
     expect(tracker.getChangedFiles()).toEqual(["src/a.ts"]);
+  });
+
+  it("refuses absolute paths outside the directory (sibling repos, .git metadata)", () => {
+    const tracker = createChangedFileTracker();
+    expect(
+      tracker.add("/home/jerome/operator-memory/.git/HEAD", "/home/jerome/opencode-dev-framework"),
+    ).toBe(false);
+    expect(
+      tracker.add(
+        "/home/jerome/opencode-dev-framework/src/a.ts",
+        "/home/jerome/opencode-dev-framework",
+      ),
+    ).toBe(true);
+    // Relative paths (the common caller shape) are unaffected.
+    expect(tracker.add("src/b.ts", "/home/jerome/opencode-dev-framework")).toBe(true);
+    expect(tracker.has("../operator-memory/.git/HEAD", "/home/jerome/opencode-dev-framework")).toBe(
+      false,
+    );
+    expect(tracker.getChangedFiles()).toEqual(["src/a.ts", "src/b.ts"]);
   });
 });
 

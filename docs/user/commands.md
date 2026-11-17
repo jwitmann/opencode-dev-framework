@@ -45,8 +45,8 @@ template set, so it cannot be touched. On a tree with nothing installed it
 says to run `/df-init` instead. Stays silent (log line only, no agent turn)
 when everything already matches — the server command API has no
 result channel, so a "nothing to do" turn would be pure waste. At session
-startup the plugin mentions drift (if any) with a one-line `/df-update`
-pointer — current and empty trees stay silent.
+startup the plugin mentions drift (if any) with a one-line
+`dev_framework_update` pointer — current and empty trees stay silent.
 
 `/df-goal <objective>` is a **server-side command** instead (registered by the
 server plugin, not the TUI): it starts a **verified** native goal. The plugin

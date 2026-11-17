@@ -25,6 +25,14 @@ import type { RunCommand } from "./host.js";
 import type { LintLimiter } from "./lint.js";
 import type { LogFn } from "./logger.js";
 import {
+  LEGACY_PREFLIGHT_ARTIFACT_REL,
+  LEGACY_REVIEW_ARTIFACT_REL,
+  PREFLIGHT_ARTIFACT_REL,
+  REVIEW_ARTIFACT_REL,
+  REVIEW_RELS,
+  RUNTIME_STATUS_RELS,
+} from "./paths.js";
+import {
   assessReviewContent,
   findUncoveredFiles,
   normalizeReviewPath,
@@ -33,12 +41,18 @@ import {
   templateReviewMessage,
   thinReviewMessage,
 } from "./review.js";
-import { RUNTIME_STATUS_DIR, RUNTIME_STATUS_FILE } from "./runtime-status.js";
+
+// Re-exported so existing import sites keep working: the paths module is
+// the single owner, this module the historical home.
+export {
+  LEGACY_PREFLIGHT_ARTIFACT_REL,
+  LEGACY_REVIEW_ARTIFACT_REL,
+  PREFLIGHT_ARTIFACT_REL,
+  REVIEW_ARTIFACT_REL,
+};
+
 import type { ResolvedConfig } from "./types.js";
 import { diffWeakening, type EnforceableSnapshot } from "./weakening.js";
-
-/** Project-relative path of the peer-review artifact the agent must produce. */
-export const REVIEW_ARTIFACT_REL = ".opencode/opencode-dev-framework/review.md";
 
 /**
  * True when a tool-call target is the review artifact. Normalizes like the
@@ -53,7 +67,10 @@ export function isReviewArtifact(filePath: string, directory?: string): boolean 
   if (directory !== undefined && isAbsolute(filePath)) {
     candidate = relative(directory, filePath);
   }
-  return normalize(candidate) === normalize(REVIEW_ARTIFACT_REL);
+  return (
+    normalize(candidate) === normalize(REVIEW_ARTIFACT_REL) ||
+    normalize(candidate) === normalize(LEGACY_REVIEW_ARTIFACT_REL)
+  );
 }
 
 /**
@@ -69,9 +86,6 @@ export function childArtifactDenial(): string {
   );
 }
 
-/** Project-relative path of the pre-flight artifact the agent must produce. */
-export const PREFLIGHT_ARTIFACT_REL = ".opencode/opencode-dev-framework/preflight.md";
-
 /**
  * Consecutive no-progress repeats before early stand-down (docs/plans/14-stuck-detection.md): the
  * third identical blocked evaluation (two repeats) stands down. One
@@ -82,6 +96,25 @@ export const PREFLIGHT_ARTIFACT_REL = ".opencode/opencode-dev-framework/prefligh
 export const NO_PROGRESS_REPEATS = 2;
 
 export type ArtifactState = "missing" | "empty" | "present";
+
+/**
+ * Inspect artifact files, new location first: present (non-trivial
+ * content), empty, or missing. The first non-missing candidate wins, so
+ * an agent mid-migration (both files present) answers from the new one.
+ * Never throws — unreadable files count as missing.
+ */
+export async function artifactStateFirst(
+  directory: string,
+  rels: readonly string[],
+): Promise<ArtifactState> {
+  for (const rel of rels) {
+    const state = await artifactState(directory, rel);
+    if (state !== "missing") {
+      return state;
+    }
+  }
+  return "missing";
+}
 
 /**
  * Inspect an artifact file: present (non-trivial content), empty, or missing.
@@ -97,6 +130,22 @@ export async function artifactState(directory: string, relPath: string): Promise
 }
 
 /**
+ * Read the review artifact, new location first. Undefined when neither
+ * location is readable — callers report that path as `missing`, never
+ * `stale`. Writers always use the new location.
+ */
+async function readReviewContent(directory: string): Promise<string | undefined> {
+  for (const rel of REVIEW_RELS) {
+    try {
+      return await readFile(join(directory, rel), "utf8");
+    } catch {
+      // try the next (legacy) location
+    }
+  }
+  return undefined;
+}
+
+/**
  * Grade the peer-review artifact including substance (plan 17 §3) and
  * freshness (plan 18): a substantive review of the wrong task reports
  * `stale` unless it names every file this session changed. Never throws
@@ -107,10 +156,8 @@ export async function readReviewState(
   directory: string,
   changedFiles: string[] = [],
 ): Promise<ReviewState> {
-  let content: string;
-  try {
-    content = await readFile(join(directory, REVIEW_ARTIFACT_REL), "utf8");
-  } catch {
+  const content = await readReviewContent(directory);
+  if (content === undefined) {
     return "missing";
   }
   const substance = assessReviewContent(content);
@@ -128,7 +175,11 @@ export async function readReviewState(
  * continuation; surfaces via git where `.opencode/` is not ignored).
  */
 export function coverableChangedFiles(directory: string, changedFiles: string[]): string[] {
-  const owned = new Set([REVIEW_ARTIFACT_REL, `${RUNTIME_STATUS_DIR}/${RUNTIME_STATUS_FILE}`]);
+  const owned = new Set([
+    REVIEW_ARTIFACT_REL,
+    LEGACY_REVIEW_ARTIFACT_REL,
+    ...RUNTIME_STATUS_RELS.map((rel) => rel),
+  ]);
   return changedFiles.map((f) => normalizeReviewPath(f, directory)).filter((f) => !owned.has(f));
 }
 
@@ -140,10 +191,8 @@ export async function uncoveredReviewFiles(
   directory: string,
   changedFiles: string[],
 ): Promise<string[]> {
-  let content: string;
-  try {
-    content = await readFile(join(directory, REVIEW_ARTIFACT_REL), "utf8");
-  } catch {
+  const content = await readReviewContent(directory);
+  if (content === undefined) {
     return [];
   }
   return findUncoveredFiles(content, coverableChangedFiles(directory, changedFiles));
@@ -206,14 +255,29 @@ export function preflightBlockReason(
   toolName: string,
   targetFile: string | undefined,
   artifact: ArtifactState,
+  directory?: string,
 ): string | null {
   if (config.preflight.length === 0) return null;
   if (config.profile === "off") return null;
   if (artifact === "present") return null;
   const FILE_TOOLS = new Set(["edit", "write", "patch"]);
   if (!FILE_TOOLS.has(toolName)) return null;
-  if (targetFile !== undefined && targetFile.replace(/^\.\//, "") === PREFLIGHT_ARTIFACT_REL) {
-    return null;
+  // The artifact is always writable so the agent can comply — by
+  // project-relative or absolute spelling (mirrors `isReviewArtifact`:
+  // compare where the path resolves, not how it is spelled).
+  if (targetFile !== undefined) {
+    let candidate = targetFile;
+    if (directory !== undefined && isAbsolute(targetFile)) {
+      candidate = relative(directory, targetFile);
+    }
+    // Either home keeps the artifact writable (old deployments comply
+    // through the legacy path until they converge on the new one).
+    if (
+      normalize(candidate) === normalize(PREFLIGHT_ARTIFACT_REL) ||
+      normalize(candidate) === normalize(LEGACY_PREFLIGHT_ARTIFACT_REL)
+    ) {
+      return null;
+    }
   }
   const tasks = config.preflight.map((t, i) => `${i + 1}. ${t}`).join("\n");
   return (
@@ -374,10 +438,20 @@ async function passCacheKey(
   }
   let review = "not-required";
   if (reviewRequired) {
-    try {
-      const s = await stat(join(directory, REVIEW_ARTIFACT_REL));
-      review = `${s.mtimeMs}:${s.size}`;
-    } catch {
+    // Fingerprint the artifact wherever it lives (new first): a legacy
+    // review still satisfies until the agent rewrites it new-path.
+    let fingerprinted = false;
+    for (const rel of REVIEW_RELS) {
+      try {
+        const s = await stat(join(directory, rel));
+        review = `${s.mtimeMs}:${s.size}`;
+        fingerprinted = true;
+        break;
+      } catch {
+        // try the next (legacy) location
+      }
+    }
+    if (!fingerprinted) {
       // Review was required at pass time but is now unreadable: the
       // requirement may have become unmet, so force a re-run.
       return null;

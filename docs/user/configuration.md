@@ -1,6 +1,6 @@
 # Configuration
 
-Create `.opencode-dev-framework.yml` in your project root. Two paths:
+Create `.dev-framework.yml` in your project root. Two paths:
 
 - **Conversational (default):** run `/df-init` in the project. It scaffolds
   the templates, writes a detected config, trial-runs it, and hands the
@@ -43,7 +43,7 @@ gate:
   run_tests: true
   block_on_failure: true
   # standard/strict default: sessions that changed files must produce a
-  # peer-review artifact (.opencode/opencode-dev-framework/review.md)
+  # peer-review artifact (.dev-framework/review.md)
   # before the completion gate passes. Substance is enforced, not just
   # existence: at least 200 chars / 30 words, no template markers or
   # unfilled checklists — a "looks good" checkbox fails the gate.
@@ -63,7 +63,7 @@ gate:
 
 # Optional: pre-flight task list. When set, edit tools are denied
 # (standard/strict) until the agent writes its findings to
-# .opencode/opencode-dev-framework/preflight.md.
+# .dev-framework/preflight.md.
 # preflight:
 #   - "Summarize the current strategy configuration and its intent"
 #   - "Load the most recent backtest results and record headline metrics"
@@ -81,7 +81,7 @@ on_edit:
 # rules:
 #   mode: append
 #   files:
-#     - .opencode/opencode-dev-framework/hardening.md
+#     - .dev-framework/hardening.md
 
 # Optional: project style guide appended to the constitution.
 # Auto-discovers STYLE.md / CONTRIBUTING.md / docs/STYLE.md when not set.
@@ -95,10 +95,16 @@ on_edit:
   only blocks when `block_on_failure` is true (`standard`/`strict`
   default). See [`enforcement.md`](enforcement.md).
 - **Constitution.** The bundled rules ship with the plugin. Override them by
-  dropping Markdown files into `.opencode/opencode-dev-framework/rules/`,
+  dropping Markdown files into `.dev-framework/rules/`,
   by setting explicit `rules`, or by letting the plugin auto-discover your
   `STYLE.md` / `CONTRIBUTING.md`.
-- **Legacy fallback.** The flat-key `.dev-framework.yml` format is read for
-  compatibility, but the native format above is preferred.
+- **Legacy compatibility.** The previous config name
+  (`.opencode-dev-framework.yml`) is still read when no `.dev-framework.yml`
+  exists, and flat-key documents keep working under either name — but the
+  neutral name with the native format above is preferred for new projects.
+  Likewise the framework's private files used to live under
+  `.opencode/opencode-dev-framework/` (review, preflight, runtime snapshot,
+  local rules); that home is still read as a fallback, and all new files go
+  to `.dev-framework/`.
 - **Worked example.** [`../../examples/go-service/`](../../examples/go-service/)
   shows a complete Go-service config.

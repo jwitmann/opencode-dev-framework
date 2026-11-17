@@ -1,3 +1,4 @@
+import { PREFLIGHT_ARTIFACT_REL } from "./paths.js";
 import type { HookState } from "./registry.js";
 import type { RuntimeStatus, TemplateState } from "./runtime-status.js";
 import type { ResolvedConfig } from "./types.js";
@@ -61,8 +62,19 @@ function formatRules(rules: ResolvedConfig["rules"] | undefined): string {
  *
  * This is shared between the server-side `/df-status` tool and the TUI plugin,
  * which does not have access to live hook state.
+ *
+ * `formatOwner` names who runs the configured formatter, because it differs
+ * by host: OpenCode core formats (the plugin only lints), while the DSH
+ * adapter formats in post-execute. Closed vocabulary (mirroring the
+ * `skillAccess` capability flag in `init.ts`): core owns both wordings, so
+ * no caller can inject display prose into shared output. The default
+ * preserves the OpenCode text so existing callers read unchanged.
  */
-export function renderConfigStatus(config: ResolvedConfig): string {
+export function renderConfigStatus(
+  config: ResolvedConfig,
+  options?: { formatOwner?: "core" | "adapter" },
+): string {
+  const adapterFormats = options?.formatOwner === "adapter";
   const lines: string[] = [];
   lines.push(`opencode-dev-framework status`);
   lines.push("");
@@ -82,7 +94,9 @@ export function renderConfigStatus(config: ResolvedConfig): string {
   }
   lines.push("");
   lines.push("On edit:");
-  lines.push(`  format: ${config.on_edit.format} (ignored — formatting is OpenCode core's job)`);
+  lines.push(
+    `  format: ${config.on_edit.format} (${adapterFormats ? "run by this adapter — format-then-lint in post-execute" : "ignored — formatting is OpenCode core's job"})`,
+  );
   lines.push(`  lint: ${config.on_edit.lint}`);
   lines.push(`  precommit: ${config.precommit}`);
   lines.push("");
@@ -101,7 +115,7 @@ export function renderConfigStatus(config: ResolvedConfig): string {
   if (config.preflight.length === 0) {
     lines.push("  (disabled — no preflight tasks configured)");
   } else {
-    lines.push(`  artifact: .opencode/opencode-dev-framework/preflight.md`);
+    lines.push(`  artifact: ${PREFLIGHT_ARTIFACT_REL}`);
     lines.push("  tasks:");
     for (const task of config.preflight) {
       lines.push(`    - ${task}`);
@@ -119,7 +133,11 @@ export function renderConfigStatus(config: ResolvedConfig): string {
   );
   lines.push("  lint:");
   lines.push(formatCommandMap(config.commands.lint, "    "));
-  lines.push("  format: (ignored — formatting is OpenCode core's job)");
+  lines.push(
+    adapterFormats
+      ? "  format: (run by this adapter — format-then-lint in post-execute)"
+      : "  format: (ignored — formatting is OpenCode core's job)",
+  );
   lines.push(formatCommandMap(config.commands.format, "    "));
   lines.push("");
   lines.push("Constitution rules:");
@@ -157,8 +175,12 @@ export function renderHelp(): string {
  * Used by the `dev_framework_status` custom tool and by the server-side
  * slash-command handler.
  */
-export function renderStatus(config: ResolvedConfig, state?: HookState | null): string {
-  const lines: string[] = [renderConfigStatus(config)];
+export function renderStatus(
+  config: ResolvedConfig,
+  state?: HookState | null,
+  options?: { formatOwner?: "core" | "adapter" },
+): string {
+  const lines: string[] = [renderConfigStatus(config, options)];
 
   if (state) {
     // Enforcement level: the `experimental.idle` hook (same-execution
@@ -195,6 +217,26 @@ export function renderStatus(config: ResolvedConfig, state?: HookState | null): 
         lines.push(`  ${sessionID}: ${count}/${config.gate.max_blocks}`);
       }
     }
+
+    if (state.seams !== undefined) {
+      lines.push("");
+      lines.push("Host seams:");
+      lines.push(
+        `  tools: ${state.seams.tools ? "available (agent tools live)" : "unavailable (commands only)"}`,
+      );
+      lines.push(
+        `  goals: ${state.seams.goals ? "available" : "unavailable (df-goal degrades to error text)"}`,
+      );
+      lines.push(
+        `  approval: ${state.seams.approval ? "available (warns ask the human)" : "unavailable (warns allow + log)"}`,
+      );
+      lines.push(
+        `  subagents: ${state.seams.subagents ? "available (specialists dispatch as children)" : "unavailable (review runs inline)"}`,
+      );
+      lines.push(
+        `  presets: ${state.seams.agentPresets ? "available (reviewers run read-only)" : "unavailable (prompt-level restriction + guards)"}`,
+      );
+    }
   }
 
   return lines.join("\n");
@@ -219,7 +261,9 @@ export function renderRuntimeStatus(snapshot: RuntimeStatus | null): string {
   lines.push(
     snapshot.idleHookVia === "none"
       ? "Idle hook: not registered — event-subscribe fallback only"
-      : `Idle hook: registered via ${snapshot.idleHookVia}`,
+      : snapshot.idleHookVia === "turn-stopping"
+        ? "Turn-stopping hook: pre-terminal — gate failures steer the same turn, no idle boundary"
+        : `Idle hook: registered via ${snapshot.idleHookVia}`,
   );
   if (snapshot.continuation === "idle") {
     lines.push("Continuation: active — gate failures continue the same execution");

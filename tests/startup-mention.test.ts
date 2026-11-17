@@ -2,10 +2,10 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { clearConfigCache } from "../src/config";
-import plugin from "../src/index";
-import { installTemplates } from "../src/installer";
-import { resetRegistry } from "../src/registry";
+import plugin from "../src/adapters/opencode/index";
+import { clearConfigCache } from "../src/core/config";
+import { installTemplates } from "../src/core/installer";
+import { resetRegistry } from "../src/core/registry";
 
 describe("startup template-drift mention (plan 20)", () => {
   let directory: string;
@@ -74,13 +74,13 @@ describe("startup template-drift mention (plan 20)", () => {
   }
 
   function mentionParts(system: { type: string; text: string }[]): string[] {
-    return system.filter((p) => p.text.includes("/df-update")).map((p) => p.text);
+    return system.filter((p) => p.text.includes("dev_framework_update")).map((p) => p.text);
   }
 
   it("mentions once on first sighting of a drifted tree", async () => {
     await installTemplates(directory, { skipExisting: true });
     // Drift it: remove all but one shipped file, so the rest read as add.
-    const { listTemplateFiles } = await import("../src/installer");
+    const { listTemplateFiles } = await import("../src/core/installer");
     const all = await listTemplateFiles();
     const { rm } = await import("node:fs/promises");
     for (const name of all.slice(1)) {
@@ -100,7 +100,7 @@ describe("startup template-drift mention (plan 20)", () => {
 
   it("mentions again for a new session", async () => {
     await installTemplates(directory, { skipExisting: true });
-    const { listTemplateFiles } = await import("../src/installer");
+    const { listTemplateFiles } = await import("../src/core/installer");
     const all = await listTemplateFiles();
     const { rm } = await import("node:fs/promises");
     for (const name of all.slice(1)) {
