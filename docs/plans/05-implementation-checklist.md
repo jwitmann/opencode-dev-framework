@@ -700,7 +700,7 @@ Dogfood the fork's V2 pre-terminal hook (upstream PR
   `tests/review.test.ts`); peer-review pass before done; commit locally,
   never push.
 
-## Phase 32 — Agent-led init wizard (plan 16, IN PROGRESS)
+## Phase 32 — Agent-led init wizard (plan 16, DONE 2026-11-02)
 
 - [x] 32.1 `buildWizardBrief` / `formatWizardBrief` / `listMakefileTargets`
   in `src/installer.ts` (detection + trial + target names + shared
