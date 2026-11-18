@@ -6,7 +6,8 @@ a completion gate that runs your real checks, and verified goals that require
 a tool-result PASS on the final tree. Exit codes don't negotiate.
 
 One shared enforcement core powers native adapters for
-[OpenCode](https://opencode.ai) and DSH (DeepSeek Harness, via Cordis), with
+[OpenCode](https://opencode.ai) and [DSH](https://www.deepseek.com/en/harness/)
+(DeepSeek Harness, via Cordis), with
 the same config, profiles, rules, and gates on both.
 
 Inspired by
