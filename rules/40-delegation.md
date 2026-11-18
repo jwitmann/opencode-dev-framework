@@ -8,12 +8,12 @@ rubber-stamp. Catching issues early is cheaper than catching them at the gate.
 
 - **On OpenCode**, the specialists below are runnable subagents (installed
   under `.opencode/agents/`). Delegate to them per the cadence.
-- **On DSH, there are no specialist subagents — by construction, not by
-  accident.** The adapter provisions none and the host exposes no seam to
-  spawn them, so `list_agents` correctly shows only the lead. The inline
-  path below is the primary DSH loop, not a degraded fallback: run the
-  same checks yourself via the skills, at the same bar, and record each
-  pass and its outcome in the review artifact.
+- **On DSH**, the adapter dispatches `pattern-guardian`, `style-enforcer`,
+  and `code-reviewer` as read-only child sessions at review-blocks when the
+  host subagent seam is available, then folds their findings into the
+  blocking feedback. `test-grounder` remains an inline lead duty. When the
+  dispatch seam is absent, run the same checks inline via the skills, at the
+  same bar, and record each pass and its outcome in the review artifact.
 
 ## The specialists
 
@@ -58,9 +58,8 @@ change you plan first, implement from the plan without expanding scope, then
 harden (full verification + review + fresh artifact) before declaring done.
 Keep delegation proportional: a one-line fix doesn't need the full loop; a new module
 does. Use judgment, but never skip the test-grounding and review steps for behavioral
-changes. If the specialist agents are not installed in this project, perform the same
-checks yourself with the skills in this section — on DSH this is always the
-path (see the harness rule above), never an exception.
+changes. If specialist agents or DSH dispatch are unavailable, perform the same
+checks yourself with the skills in this section (see the harness rule above).
 
 ## Execute plans under `/df-goal`
 

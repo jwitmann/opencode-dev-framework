@@ -90,7 +90,7 @@ differ. Neither harness is the "real" one; each is stronger somewhere:
 
 | Area | OpenCode | DSH |
 | ---- | -------- | --- |
-| Gate continuation | Synthetic message at the idle boundary (re-prompt round-trip) | **Pre-terminal steer, same turn, no round-trip** |
+| Completion gate | Synthetic continuation at the idle boundary (re-prompt round-trip) | **Blocks termination pre-terminal; failure work continues in the same turn** |
 | Per-edit lint | Logged against the landed edit | **Fails the tool call (`block`) — agent retries same turn** |
 | Guard `warn` | Logged (advisory never blocks) | Logged, or **prompts the human as `ask`** when the `approval` seam is injected |
 | Redirect targets (`a > file`) | Not guard-checked | **Guard-checked** (wider than OpenCode) |
@@ -163,8 +163,8 @@ Every session runs the same loop — constitution, guardrails, lint, gate —
 whether or not it starts under `/df-goal`. A goal just wraps that loop in
 native verification. The diagram below shows the OpenCode wiring (idle
 synthetic continuation); on DSH the same verdict bites earlier — the
-pre-terminal steer, same-turn lint `block`s, and dispatched reviewers
-above all run inside the turn instead of round-tripping through it:
+pre-terminal completion block, same-turn lint `block`s, and dispatched
+reviewers above all run inside the turn instead of round-tripping through it:
 
 ```text
                         user prompt
@@ -243,11 +243,11 @@ of modals. Full reference:
 
 ### Both harnesses
 
-- The completion gate **steers; it is not an unbreakable veto**. Failure
-  continuation is bounded by `gate.max_blocks` (fewer when the failure
-  repeats with no new edits), and you can always close the session.
-- **Pre-flight and guardrail denials are genuine pre-edit hard blocks**;
-  that is stronger than the completion gate's bounded continuation.
+- Completion enforcement is bounded by `gate.max_blocks` (and stands down
+  earlier after repeated failures with no new edits). Stand-down is loud,
+  and you can always close the session; this is not an unlimited trap.
+- **Pre-flight and guardrail denials are pre-edit hard blocks**, distinct
+  from the bounded completion mechanisms below.
 - Formatting and linting stay with your project tooling — the framework
   does not reimplement them.
 
@@ -262,8 +262,8 @@ of modals. Full reference:
 
 ### DSH
 
-- A failed completion gate steers pre-terminal in the same turn — no
-  re-prompt round-trip — but it remains bounded steering, not a veto.
+- In `standard`/`strict`, a failed completion gate blocks termination
+  pre-terminal and enqueues required same-turn work until pass or stand-down.
 - Human approval prompts, reviewer dispatch, and the read-only reviewer
   preset depend on services provided by the DSH profile. Missing optional
   services disable only their enhancement; `df-status` reports the seams.

@@ -962,6 +962,18 @@ Dogfood the fork's V2 pre-terminal hook (upstream PR
   force-installed for the boot half of the proof (would taint it);
   boot half already covered by the matching-version live runs.
 
+## DSH completion-block contract clarification (2026-11-18)
+
+- [x] Pin the existing host mechanism as the intended behavioral block:
+  standard/strict red verdicts enqueue next-step work, so DSH cannot end the
+  turn before pass or stand-down. No second gate or new runtime algorithm.
+- [x] Qualify `df-runtime`, README, DSH reference, and plan 25 wording by
+  profile and stand-down; retain stock OpenCode's idle-continuation wording.
+  The status assertion was red before and green after the wording fix.
+- [x] Correct the DSH constitution's stale delegation rule: the adapter
+  dispatches pattern/style/correctness reviewers where the seam exists;
+  test-grounding remains an inline lead duty, with inline review as fallback.
+
 ## Peer-review gate (mandatory after EVERY phase 21–27)
 
 Run the **`peer-review` skill** (`templates/.opencode/skills/peer-review/SKILL.md`),

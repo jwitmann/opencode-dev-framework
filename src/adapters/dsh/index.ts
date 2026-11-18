@@ -1388,9 +1388,9 @@ export function apply(ctx: DshContext): void {
       const sessionID = sessionOf(agent, turn);
       const verdict = await runCompletion(state, sessionID);
       const message = await actOnVerdict(state, verdict);
-      // Refresh the `df-runtime` snapshot: a block steers the same turn
-      // ("idle" = gate failures continue the same execution); pass and
-      // standdown leave the gate armed for the next turn.
+      // Refresh the `df-runtime` snapshot: a block prevents termination and
+      // continues the same turn ("idle" = gate failures continue the same
+      // execution); pass and standdown leave the gate armed for the next turn.
       stampRuntimeStatus(
         state.directory,
         "turn-stopping",
@@ -1450,14 +1450,13 @@ export function apply(ctx: DshContext): void {
             "alongside this summary before writing the review artifact.";
         }
       }
-      // Blocked: steer the turn back with the gate summary. This is the
-      // superiority over the OpenCode idle gate: `turn-stopping` fires
-      // pre-terminal (the host awaits listeners, then re-reads its inbox —
-      // fresh steering runs another step of the SAME turn), so the turn
-      // never closes and no re-prompt round-trip is needed. `followup`
-      // queues a turn only when steering is unavailable. Budget exhaustion
-      // is already a core `standdown` verdict (no steer) — the adapter
-      // never counts blocks itself.
+      // Blocked: prevent termination by steering the gate summary into the
+      // same turn. This is DSH's behavioral equivalent of the original
+      // framework's stop-hook `decision: block`: the host awaits listeners,
+      // then re-reads its inbox, and non-empty next-step work means the turn
+      // cannot close. `followup` is only a degraded fallback when steering
+      // is unavailable. Budget exhaustion is already a core `standdown`
+      // verdict (no steer) — the adapter never counts blocks itself.
       const followup = dshUserMessage(steerText + specialistLine);
       try {
         // Single abort check immediately before steering: an abort landing

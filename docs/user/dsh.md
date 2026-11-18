@@ -2,7 +2,7 @@
 
 > Status: implemented (73 adapter tests, full suite green);
 > enforcement live-proven on stock `headless` (guard-deny, lint
-> `block`, pre-terminal gate) and on `dsh-tui` (warn→ask, human
+> `block`, pre-terminal completion block) and on `dsh-tui` (warn→ask, human
 > `/df-goal`, review-block dispatch). Instruction pillar
 > (`agent/pre-step` constitution prepend), all eight `df-*`
 > commands (host-native, text-returning), and all six
@@ -101,15 +101,15 @@ nothing; it never throws at mount.
 | Protected paths + dangerous commands | `tools/pre-execute` deny (+ structured `info`) | **Hard block** before the tool runs. Shell redirect targets are guard-checked too. Live: `.env` write → `write on protected path ".env" is blocked (matched ".env*")` + `{"name":"opencode-dev-framework","code":"guard-deny"}`; file absent afterwards. |
 | Pre-flight gate | `tools/pre-execute` deny, before guardrails | **Hard block**; advisory warns and continues; the artifact path stays writable (relative or absolute spelling). |
 | Per-edit lint + format | `tools/post-execute` | Findings **fail the tool call** (`block` with the linter output as model-facing feedback) so the agent fixes its edit in the same turn instead of only learning about a landed edit later. Live: marker edit → `[odf post-execute] your edit introduced lint findings; fix them and retry` + `lint failed for greet.js (exit 1)` + `{"code":"lint-block"}`; the agent retried clean in the same turn. Timeouts, exit-127, and silent nonzero exits stay accept + error-log with the file tracked (infra the model cannot fix). Feedback is capped (4000 chars/body, 5 files + named tail). |
-| Completion gate | `agent/turn-stopping` + `steer` | **Pre-terminal**: the host awaits listeners, then continues the SAME turn on steer — no re-prompt round-trip. Live: after a one-edit task said "Done", the gate blocked on the missing review and steered turn 1 onward — the agent ran a style/test/correctness review loop, wrote the review artifact, and only then did the turn end (15 steps, one turn, no new turn). Steer is dropped when the turn already aborted. Budget exhaustion stands down silently. |
+| Completion gate | `agent/turn-stopping` + `steer` | **Blocking, pre-terminal**: in standard/strict, a red verdict enqueues the failure as next-step work. The host awaits listeners and cannot end the turn while that queue is non-empty, so this is the behavioral equivalent of a stop-hook `decision: block`, not optional advice. Pass allows stopping; advisory reports without blocking. Live: after a one-edit task said "Done", the missing review blocked completion and turn 1 continued — the agent ran a style/test/correctness review loop, wrote the review artifact, and only then did the turn end (15 steps, one turn, no new turn). The blocking message is dropped when the turn already aborted. Budget exhaustion stands down loudly. |
 | Warn tier | allow + warn log on every hook | **Ceiling, verified**: nothing provides the `approval` service on headless, so `ask` would unconditionally deny — advisory never blocks by construction. **TUI half live-proven 2026-11-17** (`dsh-tui`, model `muse-spark-1.3-contributor`, `proj-ask` with `protect_mode: warn`): `.env` edit surfaced a human approval prompt, approved once, edit landed. |
 | Kill switch | profile `off` skips everything; `protect_off` stands down guardrails only | Pre-flight, lint, and the gate still fire under `protect_off`. |
 | Specialist dispatch | `subagents.startActivation` at review-blocks + completion-notice fold | On review-blocks (green tree, review missing/stale) the adapter spawns one child per reviewer kind (`odf-pattern-guardian-N`, `odf-style-enforcer-N`, `odf-code-reviewer-N`) via the `spawn` provider with delivery-to-parent; their closing messages fold into the next steer exactly once. Gate-blocks (red tree) dispatch nothing — reviewing broken code wastes runs. No seam, advisory/off, or child session → inline steer, unchanged. Live 2026-11-17 (headless): all three dispatched, notices folded, a real CommonJS-in-ESM finding fixed, gate PASS. |
 
 ## Differences from the OpenCode adapter
 
-Stronger where the host allows more: pre-terminal same-turn gate
-steering, model-facing post-execute `block`, structured denial
+Stronger where the host allows more: pre-terminal completion blocking
+with same-turn recovery, model-facing post-execute `block`, structured denial
 identity, abort-aware steering, redirect-target guard coverage,
 adapter-dispatched reviewer children on review-blocks.
 Identical where the hosts agree: pre-execute deny hardness,
@@ -130,7 +130,7 @@ budgeting, `protect_off` scope.
   the work, wrote a fresh review, `dev_framework_verify` returned
   `DEV_FRAMEWORK_VERDICT: PASS`, and only then completed the goal.
 - **`df-verify`**: runs the full completion gate on demand and
-  reports PASS/FAIL (side-effect-free: never retries, never steers).
+  reports PASS/FAIL (side-effect-free: never retries or blocks stopping).
 - **`df-profile <off|advisory|standard|strict>`**: switches profile;
   invalid names are rejected.
 - **`df-init` / `df-update`**: deterministic scaffold/drift-check in
@@ -173,6 +173,7 @@ budgeting, `protect_off` scope.
   broken (missing binary, bad config) — but a healthy linter prints
   findings and exits nonzero, while infra stays accept. Check the
   `[odf post-execute]` error log, not the model feedback.
-- Turn ends despite a failing gate: `profile: off` skips the gate, and
-  budget exhaustion (`gate.max_blocks`) stands down — both by design;
-  the `df-status` command shows the live state.
+- Turn ends despite a failing gate: `profile: off` skips the gate,
+  `advisory` reports without blocking, and budget exhaustion
+  (`gate.max_blocks`) stands down loudly — all by design. The `df-status`
+  command shows the live state.

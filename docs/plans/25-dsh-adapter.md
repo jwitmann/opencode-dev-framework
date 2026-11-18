@@ -95,8 +95,9 @@ Nothing below is new machinery. The codebase already isolates host contact:
    behavior). `protect_off` scope mirrors opencode exactly: guardrails
    stand down, pre-flight + lint + gate still fire. Where the host allows
    MORE than parity, the adapter takes it (not parity-cloned):
-   pre-terminal `turn-stopping` + `steer` continues the SAME turn
-   (host awaits listeners, then re-reads its inbox — no re-prompt
+   pre-terminal `turn-stopping` + `steer` blocks termination and continues
+   the SAME turn (host awaits listeners, then re-reads its inbox — the
+   non-empty next-step queue prevents the stop, with no re-prompt
    round-trip, unlike the opencode idle continuation), post-execute
    `block` turns lint findings into a model-facing tool error in the
    same turn (opencode `execute.after` can only log a landed edit),
@@ -130,8 +131,8 @@ N/A (by design), CEILING (parity is the max).
 pre-execute deny, pre-flight (incl. `apply_patch` mapping, artifact
 exemption, `protect_off` scope), post-execute accept/`block` with the
 fault/infra line (127/empty/timeout stay accept), turn-stopping
-same-turn steer (incl. abort drop), kill-switch scope, deny `info`
-identity, redirect-target coverage. No further work.
+completion block via same-turn steer (incl. abort drop), kill-switch
+scope, deny `info` identity, redirect-target coverage. No further work.
 
 ### Instruction — GAP (the big one)
 
