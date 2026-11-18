@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -60,10 +60,29 @@ describe("assessReviewContent", () => {
     expect(assessReviewContent(REVIEW_BODY)).toBe("present");
   });
 
-  it("reports template for placeholder markers even in long content", () => {
+  it("reports template for unfinished markers even in long content", () => {
     expect(assessReviewContent(`${REVIEW_BODY} TODO: double-check the edge case`)).toBe("template");
     expect(assessReviewContent(`${REVIEW_BODY} TBD on the second finding`)).toBe("template");
     expect(assessReviewContent(`${REVIEW_BODY} FIXME later`)).toBe("template");
+    expect(assessReviewContent(`${REVIEW_BODY}\nFindings: placeholder`)).toBe("template");
+    expect(assessReviewContent(`${REVIEW_BODY}\nNotes: placeholder`)).toBe("template");
+    expect(assessReviewContent(`${REVIEW_BODY}\nPlaceholder: summarize findings`)).toBe("template");
+    expect(assessReviewContent(`${REVIEW_BODY}\n<placeholder>`)).toBe("template");
+  });
+
+  it("allows placeholder as ordinary meta-vocabulary in a substantive review", () => {
+    expect(
+      assessReviewContent(
+        `${REVIEW_BODY} The .dev-framework/rules/.gitkeep file is an empty placeholder ` +
+          "that keeps the directory present; it is not unfinished review content.",
+      ),
+    ).toBe("present");
+    expect(
+      assessReviewContent(
+        `${REVIEW_BODY} Removed the old "Placeholder:" marker from the template as part of ` +
+          "the cleanup; no unfinished scaffolding remains.",
+      ),
+    ).toBe("present");
   });
 
   it("reports template for an unfilled checklist", () => {
@@ -96,6 +115,10 @@ describe("assessReviewContent", () => {
     // superseded constitution may not contain.
     expect(thinReviewMessage(["src/a.ts"])).not.toContain("40-delegation");
     expect(templateReviewMessage(["src/a.ts"])).not.toContain("40-delegation");
+    const temporal = staleReviewMessage(["src/a.ts"], []);
+    expect(temporal).toContain("not written after");
+    expect(temporal).not.toContain("Not mentioned:");
+    expect(temporal).not.toContain("does not cover");
   });
 });
 
@@ -262,6 +285,56 @@ describe("review substance at the gate", () => {
     );
     const { deps } = makeDeps(GREEN);
     deps.tracker.add("src/b.ts");
+    expect((await evaluateCompletion(deps)).decision).toBe("pass");
+  });
+
+  it("blocks when a same-file review predates the latest edit", async () => {
+    await mkdir(join(dir, "src"), { recursive: true });
+    const source = join(dir, "src/a.ts");
+    const review = join(dir, REVIEW_ARTIFACT_REL);
+    await writeFile(source, "export const after = true;\n");
+    await writeReview(REVIEW_BODY);
+    const old = new Date("2026-01-01T00:00:00Z");
+    const recent = new Date("2026-01-02T00:00:00Z");
+    await utimes(review, old, old);
+    await utimes(source, recent, recent);
+
+    const { deps } = makeDeps(GREEN);
+    const verdict = await evaluateCompletion(deps);
+    expect(verdict.decision).toBe("blocked");
+    if (verdict.decision === "blocked") {
+      expect(verdict.reason).toBe("review");
+      expect(verdict.summary).toContain("stale");
+      expect(verdict.summary).toContain("not written after");
+    }
+  });
+
+  it("passes when the review is newer than every existing covered edit", async () => {
+    await mkdir(join(dir, "src"), { recursive: true });
+    const source = join(dir, "src/a.ts");
+    const review = join(dir, REVIEW_ARTIFACT_REL);
+    await writeFile(source, "export const before = true;\n");
+    await writeReview(REVIEW_BODY);
+    const old = new Date("2026-01-01T00:00:00Z");
+    const recent = new Date("2026-01-02T00:00:00Z");
+    await utimes(source, old, old);
+    await utimes(review, recent, recent);
+
+    const { deps } = makeDeps(GREEN);
+    expect((await evaluateCompletion(deps)).decision).toBe("pass");
+  });
+
+  it("accepts equal review and edit timestamps on coarse filesystems", async () => {
+    await mkdir(join(dir, "src"), { recursive: true });
+    const source = join(dir, "src/a.ts");
+    const review = join(dir, REVIEW_ARTIFACT_REL);
+    await writeFile(source, "export const sameTick = true;\n");
+    await writeReview(REVIEW_BODY);
+    const same = new Date("2026-01-01T00:00:00Z");
+    await utimes(source, same, same);
+    await utimes(review, same, same);
+
+    const { deps } = makeDeps(GREEN);
     expect((await evaluateCompletion(deps)).decision).toBe("pass");
   });
 

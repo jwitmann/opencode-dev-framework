@@ -79,3 +79,19 @@ bookkeeping**, which the agent did not author and should not have to eulogize:
 
 `format:check`, `lint`, `lint:md`, `typecheck`, `test`, `build` per AGENTS.md;
 peer-review pass before done; commit locally, never push.
+
+## 2026-11-18 refinement — temporal freshness
+
+Filename coverage alone allowed a substantive but old review to pass after
+another edit to the same file. The gate now also requires the selected review
+artifact (new location first, legacy second) to have an mtime no older than
+any existing covered changed file. Equal timestamps pass for coarse
+filesystems. Deleted files retain filename coverage because they have no
+current mtime; unknown stat results fail stale instead of claiming fresh.
+This is an honest-staleness check, not a cryptographic review/hash contract.
+
+The pass cache fingerprints both review locations, including absence, so a
+change in first-readable selection or fallback content cannot replay a stale
+PASS. The placeholder substance check now recognizes scaffold-shaped lines
+rather than rejecting ordinary meta-use of the word. Shared core behavior:
+DSH inherits it through the same completion verdict with no adapter seam.

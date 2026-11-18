@@ -1927,6 +1927,10 @@ refinement candidate: narrow the pattern (scaffolding-shaped contexts
 only) rather than a bare substring. Left as-is for now — the check errs
 toward catching checkbox reviews, which is the failure mode that matters.
 
+Resolved 2026-11-18: placeholder detection now requires scaffold-shaped
+lines (field values, leading labels, bracketed marker lines), so ordinary
+meta-use passes while unfinished templates still fail.
+
 ## Harness-neutral framework home (2026-11-17)
 
 Framework-private files move `.opencode/opencode-dev-framework/` →
@@ -1976,15 +1980,17 @@ Two deployment-truth lessons from proving the loop on stock headless:
   profile's `--dump-config`; everything else stays a guarded runtime
   read. Headless therefore spawns preset-less (prompt + guards);
   the read-only preset path is TUI-only until proven otherwise.
-- **Review freshness is file-name coverage, not diff coverage.** A
-  stale review that names the changed file still grades `present` —
-  re-editing `greet.js` under a `greet.js` review passes. Forcing a
-  review-block needs a change in a file the review does not name
-  (new `util.js` did it). Test fixtures and live self-tests should
-  use fresh files, not re-edits, when the block itself is the
-  objective. (Bonus dogfood: the constitution made the model refuse
-  a direct "skip the review" order twice and route around a
-  read-only review.md — the gates hold against the operator too.)
+- **Review freshness was file-name coverage, not diff coverage.** A
+  stale review that named the changed file graded `present` —
+  re-editing `greet.js` under a `greet.js` review passed. Resolved
+  2026-11-18: existing covered files now also require review/edit mtime
+  ordering, closing the honest same-file stale-review case. Deleted files
+  retain filename coverage (no current mtime); unknown stats fail stale.
+  This remains duty-keeping, not cryptographic proof. Test fixtures and
+  live self-tests for other block reasons should still use fresh files.
+  (Bonus dogfood: the constitution made the model refuse a direct
+  "skip the review" order twice and route around a read-only review.md —
+  the gates hold against the operator too.)
 
 ## References
 

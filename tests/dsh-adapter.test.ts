@@ -1,6 +1,6 @@
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { extractDshCommand, extractDshPaths } from "../src/adapters/dsh/extract";
 import {
@@ -816,6 +816,51 @@ describe("DSH adapter (plan 25 slice 4)", () => {
       (decision as { additionalContexts?: Array<{ content: Array<{ text: string }> }> })
         .additionalContexts?.[0].content[0].text,
     ).toContain("lint failed for tool.ts");
+  });
+
+  it("turn-stopping inherits same-file review freshness", async () => {
+    writeConfig(directory, "profile: standard\n");
+    writeFileSync(join(directory, "work.ts"), "export const edited = true;\n");
+    const { ctx, captured } = stubContext();
+    apply(ctx);
+    await captured.post?.(
+      { name: "write", arguments: { filePath: join(directory, "work.ts") } },
+      { isError: false },
+      async () => ({ kind: "accept" }),
+    );
+
+    const artifact = join(directory, ".dev-framework", "review.md");
+    mkdirSync(dirname(artifact), { recursive: true });
+    const reviewBody =
+      "Scope: work.ts was edited for the DSH review-freshness regression test. " +
+      "Findings: pattern-guardian found no duplicated abstractions, style-enforcer found no " +
+      "style violations, code-reviewer found no correctness defects, and the lead checked " +
+      "the relevant evidence. Resolutions: no blocking findings remained after the review. " +
+      "Verification: the focused test and shared completion suite were examined together.";
+    writeFileSync(artifact, reviewBody);
+    const old = new Date("2026-01-01T00:00:00Z");
+    const recent = new Date("2026-01-02T00:00:00Z");
+    utimesSync(artifact, old, old);
+    utimesSync(join(directory, "work.ts"), recent, recent);
+
+    const nextStep: unknown[] = [];
+    const blocked = {
+      steer: vi.fn((message: unknown) => nextStep.push(message)),
+      followup: vi.fn(),
+    };
+    await captured.stopping?.({ agent: blocked, turn: 1 });
+    expect(nextStep).toHaveLength(1);
+    const blockedText = (nextStep[0] as { content: Array<{ text: string }> }).content
+      .map((part) => part.text)
+      .join("\n");
+    expect(blockedText).toContain("stale");
+    expect(blockedText).toContain("not written after");
+
+    writeFileSync(artifact, `${reviewBody}\nFresh review written after the final edit.\n`);
+    const fresh = { steer: vi.fn(), followup: vi.fn() };
+    await captured.stopping?.({ agent: fresh, turn: 1 });
+    expect(fresh.steer).not.toHaveBeenCalled();
+    expect(fresh.followup).not.toHaveBeenCalled();
   });
 
   it("turn-stopping drops the steer when the turn already aborted", async () => {

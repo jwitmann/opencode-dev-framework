@@ -44,7 +44,12 @@ const TEMPLATE_PATTERNS = [
   /\bfixme\b/i,
   /\bxxx\b/i,
   /lorem ipsum/i,
-  /placeholder/i,
+  // Scaffolding-shaped uses only: ordinary meta-vocabulary such as
+  // "an empty placeholder file" is a finding, not an unfinished template.
+  /^[ \t]*(?:[-*+]\s+)?[A-Za-z][\w -]*:[ \t]*(?:placeholder\b|<\s*placeholder\s*>)[ \t]*$/im,
+  /^[ \t]*(?:[-*+]\s+)?placeholder\s*:/im,
+  /^[ \t]*(?:[-*+]\s+)?<\s*placeholder\s*>[ \t]*$/im,
+  /^[ \t]*(?:[-*+]\s+)?placeholder\s+(?:text|content|scope|findings?|resolutions?|summary)\b/im,
   /\[insert/i,
   /to be (filled|completed|determined)/i,
   /\bfill in\b/i,
@@ -151,9 +156,13 @@ export function findUncoveredFiles(content: string, files: string[]): string[] {
 export function staleReviewMessage(changedFiles: string[], uncovered: string[]): string {
   const files = changedFiles.map((f) => `  - ${f}`).join("\n");
   const missing = uncovered.map((f) => `  - ${f}`).join("\n");
+  const reason =
+    uncovered.length > 0
+      ? `it does not cover this session's changes. Not mentioned:\n${missing}\n\n`
+      : "it was not written after the latest session changes, or its freshness could not be established.\n\n";
   return (
     `opencode-dev-framework completion gate — the peer-review artifact is substantive ` +
-    `but stale: it does not cover this session's changes. Not mentioned:\n${missing}\n\n` +
+    `but stale: ${reason}` +
     `This session changed files:\n${files}\n\n` +
     `Rewrite ${REVIEW_REL} fresh for THIS session's changes — scope, findings, ` +
     `and resolutions, naming every file above.\n\n` +

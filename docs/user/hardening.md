@@ -40,9 +40,9 @@ Cover these five sections, in your project's terms:
    (linters, race detector, vulnerability scan, docs lint), and what counts
    as sufficient for docs-only vs code changes. A PASS before the last edit
    is stale — re-run on the final tree.
-3. **Fresh review every task.** Rewrite `review.md` per task (a file left
-   from a previous task never counts — the gate fails a substantive review
-   that doesn't name every file this session changed as stale); evidence
+3. **Fresh review every task.** Rewrite `review.md` per task after the final
+   edit (a file left from a previous task never counts — the gate checks both
+   changed-file coverage and review/edit ordering); evidence
    standard (a test failing without the change, passing with it); which
    reviewer agents to use at which depth; blocking findings resolved or
    explicitly waived. It must also clear the gate's substance floors

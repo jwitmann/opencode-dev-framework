@@ -129,20 +129,61 @@ export async function artifactState(directory: string, relPath: string): Promise
   }
 }
 
+/** Selected review artifact content plus the location that supplied it. */
+interface ReviewSnapshot {
+  content: string;
+  rel: string;
+}
+
 /**
  * Read the review artifact, new location first. Undefined when neither
  * location is readable — callers report that path as `missing`, never
  * `stale`. Writers always use the new location.
  */
-async function readReviewContent(directory: string): Promise<string | undefined> {
+async function readReviewSnapshot(directory: string): Promise<ReviewSnapshot | undefined> {
   for (const rel of REVIEW_RELS) {
     try {
-      return await readFile(join(directory, rel), "utf8");
+      return { content: await readFile(join(directory, rel), "utf8"), rel };
     } catch {
       // try the next (legacy) location
     }
   }
   return undefined;
+}
+
+async function readReviewContent(directory: string): Promise<string | undefined> {
+  return (await readReviewSnapshot(directory))?.content;
+}
+
+/**
+ * A review must be written after the latest existing covered edit. Deleted
+ * files have no current mtime, so they retain the filename-coverage check.
+ * Unknown stat results fail stale rather than representing unproven ordering
+ * as fresh. Equal timestamps pass for coarse-resolution filesystems.
+ */
+async function reviewPredatesChanges(
+  directory: string,
+  reviewRel: string,
+  changedFiles: string[],
+): Promise<boolean> {
+  let reviewMtimeMs: number;
+  try {
+    reviewMtimeMs = (await stat(join(directory, reviewRel))).mtimeMs;
+  } catch {
+    return true;
+  }
+
+  let latestChangeMs: number | undefined;
+  for (const file of changedFiles) {
+    try {
+      const changedMtimeMs = (await stat(join(directory, file))).mtimeMs;
+      latestChangeMs = Math.max(latestChangeMs ?? changedMtimeMs, changedMtimeMs);
+    } catch (error) {
+      if ((error as { code?: unknown })?.code === "ENOENT") continue;
+      return true;
+    }
+  }
+  return latestChangeMs !== undefined && reviewMtimeMs < latestChangeMs;
 }
 
 /**
@@ -156,15 +197,16 @@ export async function readReviewState(
   directory: string,
   changedFiles: string[] = [],
 ): Promise<ReviewState> {
-  const content = await readReviewContent(directory);
-  if (content === undefined) {
+  const review = await readReviewSnapshot(directory);
+  if (review === undefined) {
     return "missing";
   }
-  const substance = assessReviewContent(content);
+  const substance = assessReviewContent(review.content);
   if (substance !== "present") return substance;
-  return findUncoveredFiles(content, coverableChangedFiles(directory, changedFiles)).length > 0
-    ? "stale"
-    : "present";
+  const covered = coverableChangedFiles(directory, changedFiles);
+  if (findUncoveredFiles(review.content, covered).length > 0) return "stale";
+  if (covered.length === 0) return "present";
+  return (await reviewPredatesChanges(directory, review.rel, covered)) ? "stale" : "present";
 }
 
 /**
@@ -438,24 +480,26 @@ async function passCacheKey(
   }
   let review = "not-required";
   if (reviewRequired) {
-    // Fingerprint the artifact wherever it lives (new first): a legacy
-    // review still satisfies until the agent rewrites it new-path.
-    let fingerprinted = false;
+    // Fingerprint BOTH candidate locations, including absence. Content
+    // selection is first-readable; tracking only the first stat-able path
+    // could fingerprint a directory while a legacy review supplied content,
+    // and tracking only the selected path would miss creation of a new-path
+    // artifact that takes precedence on the next evaluation.
+    const candidates: string[] = [];
     for (const rel of REVIEW_RELS) {
       try {
         const s = await stat(join(directory, rel));
-        review = `${s.mtimeMs}:${s.size}`;
-        fingerprinted = true;
-        break;
-      } catch {
-        // try the next (legacy) location
+        candidates.push(`${rel}:${s.mtimeMs}:${s.size}`);
+      } catch (error) {
+        if ((error as { code?: unknown })?.code === "ENOENT") {
+          candidates.push(`${rel}:missing`);
+          continue;
+        }
+        // An unknown artifact state cannot support a cached proof.
+        return null;
       }
     }
-    if (!fingerprinted) {
-      // Review was required at pass time but is now unreadable: the
-      // requirement may have become unmet, so force a re-run.
-      return null;
-    }
+    review = candidates.join("\n");
   }
   return `${gateConfig}\n${parts.join("\n")}\nreview:${review}`;
 }

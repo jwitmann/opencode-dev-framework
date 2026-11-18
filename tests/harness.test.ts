@@ -139,6 +139,26 @@ describe("dual-home artifacts (neutral home with legacy fallback)", () => {
     expect(await readReviewState(dir, [])).toBe("thin");
   });
 
+  it("uses the selected new-path review's mtime in both directions", async () => {
+    await mkdir(join(dir, "src"), { recursive: true });
+    const source = join(dir, "src/a.ts");
+    await writeFile(source, "export const changed = true;\n");
+    await writeLegacyReview(`${REVIEW_BODY}\n`);
+    await writeNewReview(`${REVIEW_BODY}\n`);
+    const old = new Date("2026-01-01T00:00:00Z");
+    const middle = new Date("2026-01-02T00:00:00Z");
+    const recent = new Date("2026-01-03T00:00:00Z");
+    await utimes(source, middle, middle);
+
+    await utimes(join(dir, REVIEW_ARTIFACT_REL), old, old);
+    await utimes(join(dir, LEGACY_REVIEW_ARTIFACT_REL), recent, recent);
+    expect(await readReviewState(dir, ["src/a.ts"])).toBe("stale");
+
+    await utimes(join(dir, REVIEW_ARTIFACT_REL), recent, recent);
+    await utimes(join(dir, LEGACY_REVIEW_ARTIFACT_REL), old, old);
+    expect(await readReviewState(dir, ["src/a.ts"])).toBe("present");
+  });
+
   it("artifactStateFirst finds the legacy pre-flight artifact", async () => {
     await mkdir(dirname(join(dir, LEGACY_PREFLIGHT_ARTIFACT_REL)), { recursive: true });
     await writeFile(join(dir, LEGACY_PREFLIGHT_ARTIFACT_REL), "# Preflight\n\n- [x] done\n");
@@ -900,6 +920,31 @@ describe("passCache", () => {
     const afterDelete = await inspectCompletion(deps);
     expect(afterDelete.ok).toBe(false);
     expect(afterDelete.reviewMissing).toBe(true);
+    expect(nonGitCalls(calls)).toHaveLength(2);
+  });
+
+  it("re-runs when the readable legacy review changes behind an unreadable new path", async () => {
+    const config = resolve({
+      profile: "standard",
+      commands: { test: "npm test" },
+      gate: { run_typecheck: false, require_review: true },
+    });
+    const { calls, run } = stubRun((cmd) => (cmd[0] === "git" ? NO_GIT() : {}));
+    const passCache = createPassCache();
+    const deps = { run, config, directory: dir, trackerFiles: ["a.ts"], passCache };
+
+    // readFile falls through to legacy, while stat can still see the new
+    // path as a directory. The cache must fingerprint the review actually
+    // eligible to satisfy the gate, not just that unrelated directory.
+    await mkdir(join(dir, REVIEW_ARTIFACT_REL), { recursive: true });
+    await mkdir(dirname(join(dir, LEGACY_REVIEW_ARTIFACT_REL)), { recursive: true });
+    const legacy = join(dir, LEGACY_REVIEW_ARTIFACT_REL);
+    await writeFile(legacy, `${REVIEW_BODY}\n`);
+    expect((await inspectCompletion(deps)).ok).toBe(true);
+    expect(nonGitCalls(calls)).toHaveLength(1);
+
+    await writeFile(legacy, `${REVIEW_BODY}\nAdditional fresh review evidence.\n`);
+    expect((await inspectCompletion(deps)).ok).toBe(true);
     expect(nonGitCalls(calls)).toHaveLength(2);
   });
 });

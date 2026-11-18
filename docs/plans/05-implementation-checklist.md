@@ -974,6 +974,19 @@ Dogfood the fork's V2 pre-terminal hook (upstream PR
   dispatches pattern/style/correctness reviewers where the seam exists;
   test-grounding remains an inline lead duty, with inline review as fallback.
 
+## Review freshness and substance refinements (2026-11-18)
+
+- [x] Add temporal freshness for existing covered files: a review older than
+  the latest session edit is stale even when it names the same file. Equal
+  timestamps pass; deleted files retain filename coverage; unknown stats
+  fail stale. Add core and DSH fail-before/recovery coverage.
+- [x] Narrow placeholder detection to scaffold-shaped lines, allowing
+  ordinary meta-use while still rejecting field/label/bracketed templates.
+- [x] Fingerprint both review artifact locations (including absence) so
+  first-readable selection or legacy fallback changes invalidate pass cache.
+- [x] Update configuration, hardening, plan 18, and observed-notes contracts;
+  shared core delivers the behavior to DSH with no new host seam.
+
 ## Peer-review gate (mandatory after EVERY phase 21–27)
 
 Run the **`peer-review` skill** (`templates/.opencode/skills/peer-review/SKILL.md`),
