@@ -2,6 +2,44 @@
 
 > On DSH: the `odf-gates` entry must only inject services the profile provides — injecting a missing service pends the entire plugin at boot (one stderr line, then silence). `df install-dsh` handles this per profile. Details: [`dsh.md`](dsh.md).
 
+## DSH: `odf-gates` pending (`waiting for service`) after a host upgrade
+
+The CLI and the TUI bundle ship separately and the TUI lags by one
+rc: on `dsh 0.2.2-rc.4`, bundle `dsh-tui@0.20.1` declares
+requirements only up to rc.3, so the host skips it as incompatible.
+Every service that bundle provided (`agentPresets` among them)
+vanishes — and since `df install-dsh` wrote `agentPresets` into your
+profile's inject block back when the registry existed, the missing
+service now pends the whole entry (`1 entry did not activate`).
+Gates are down, not degraded: a pended entry never runs `apply()`.
+
+Pick one:
+
+1. Full fidelity (recommended while the lag lasts): downgrade the
+   CLI to the rc the TUI bundle supports:
+
+   ```bash
+   npm i -g @deepseek-ai/dsh@0.2.2-rc.3
+   ```
+
+2. Degraded on the new CLI: rerun the installer so it re-detects
+   seams and drops the missing one:
+
+   ```bash
+   df install-dsh --profile <name>
+   ```
+
+   Gates load without the read-only reviewer preset
+   (prompt-restricted reviewers instead) until the TUI bundle
+   catches up; rerun again after it does.
+
+Do not take the `allow-version` exemption the error suggests —
+upstream warns it may crash or lose data, and a degraded-but-honest
+gate beats a forced composition. Expect this every rc bump until
+the TUI bundle's requirements include your CLI: the symptom is
+always the same line (`pending (waiting for service: …)`), and the
+fix is always downgrade-or-redetect.
+
 ## Plugin fails to load: `Duplicate plugin ID`
 
 Each project must register the plugin **exactly once**. Plugin arrays
