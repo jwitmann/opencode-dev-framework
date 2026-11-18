@@ -34,11 +34,6 @@ dsh plugin --profile <name> add opencode-dev-framework
 df install-dsh --profile <name>  # preset seam + verification
 ```
 
-> Until the first npm publish, install from source instead —
-> [local development](#local-development). The registry entry does
-> not exist yet; the source build keeps working afterwards for
-> contributors.
-
 Full DSH reference: [`docs/user/dsh.md`](docs/user/dsh.md).
 
 ### 2. Init your project (same on both harnesses)
@@ -78,8 +73,7 @@ typecheck/tests. `/df-status` shows the live state at any time. Start with
 
 ## Local development
 
-From a checkout — required until the first npm publish, and the
-contributor loop afterwards. Build once, then wire the profile
+From a checkout — the contributor loop. Build once, then wire the profile
 directly at the built file (no registry needed):
 
 ```bash

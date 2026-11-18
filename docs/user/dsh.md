@@ -33,14 +33,14 @@ Project config is the same `.dev-framework.yml` (legacy
 ## Mount
 
 `apply(ctx)` is the plugin entry (`opencode-dev-framework/dsh`).
-After release, one command wires the base install — the package
+One command wires the base install — the package
 declares a `dsh.bundle` layer, so no hand-written patch is needed:
 
 ```bash
 dsh plugin --profile <name> add opencode-dev-framework
 ```
 
-For the preset seam (or pre-release local builds), layer the
+For the preset seam, layer the
 installer on top:
 
 ```bash
@@ -50,8 +50,7 @@ df install-dsh --profile <name>   # auto-detects the preset registry
 The installer writes a managed `odf-gates` block into the profile's
 `cordis.patch.yml`, auto-detects the agent-preset registry, and leaves
 everything outside its markers untouched (rerun any time; `--force`
-replaces a hand-maintained entry). From source (local development,
-required until the first npm publish):
+replaces a hand-maintained entry). From source (local development):
 `df install-dsh --profile <name> --dist
 /path/to/opencode-dev-framework/dist/adapters/dsh/index.js`.
 Or mount by hand with a `--patch` overlay naming the built file:
