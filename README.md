@@ -7,13 +7,16 @@ that deny instead of advise, a completion gate that re-runs your checks
 at the idle boundary, and verified goals whose contract requires a
 tool-result PASS on the final tree. Exit codes don't negotiate.
 
-An [OpenCode](https://opencode.ai) plugin that enforces project-specific
-quality gates during AI coding sessions — and verifies whole tasks, not just
-edits, through `/df-goal`. Inspired by
+An enforcement plugin for AI coding sessions that replaces assertion
+with evidence: guardrails that deny instead of advise, a completion
+gate that re-runs your checks, and verified goals whose contract
+requires a tool-result PASS on the final tree. It ships two native
+harness adapters over one shared core — [OpenCode](https://opencode.ai)
+(the original home) and DSH (DeepSeek Harness, Cordis wiring) — with
+the same config, profiles, and gates. Inspired by
 [anticomputer/dev-framework](https://github.com/anticomputer/dev-framework),
 reimplemented for OpenCode (the original supports Copilot, Claude, and Codex).
-The same core also ships a DSH adapter (Cordis wiring, same gates, host-native
-execution) — see [`docs/user/dsh.md`](docs/user/dsh.md).
+The DSH adapter lives at [`docs/user/dsh.md`](docs/user/dsh.md).
 
 ## Quickstart
 
@@ -82,18 +85,27 @@ typecheck/tests. `/df-status` shows the live state at any time. Start with
 ## Harness differences
 
 Same core, same config, same profiles — different wiring where the hosts
-differ:
+differ. Neither harness is the "real" one; each is stronger somewhere:
 
 | Area | OpenCode | DSH |
 | ---- | -------- | --- |
-| Gate continuation | Synthetic message at the idle boundary (re-prompt round-trip) | Pre-terminal steer, same turn, no round-trip |
-| Per-edit lint | Logged against the landed edit | Fails the tool call (`block`) — agent retries same turn |
-| Guard `warn` | Logged (advisory never blocks) | Logged, or prompts the human as `ask` when the `approval` seam is injected |
-| Redirect targets (`a > file`) | Not guard-checked | Guard-checked (wider than OpenCode) |
+| Gate continuation | Synthetic message at the idle boundary (re-prompt round-trip) | **Pre-terminal steer, same turn, no round-trip** |
+| Per-edit lint | Logged against the landed edit | **Fails the tool call (`block`) — agent retries same turn** |
+| Guard `warn` | Logged (advisory never blocks) | Logged, or **prompts the human as `ask`** when the `approval` seam is injected |
+| Redirect targets (`a > file`) | Not guard-checked | **Guard-checked** (wider than OpenCode) |
 | denial identity | Reason text | Reason text + structured `{name, code}` |
 | Skills | `.opencode/skills` (native) | `.dsh/skills` mirror (host never scans `.opencode/skills`) |
-| Reviewer agents | `.opencode/agents` specialists run as subagents | Adapter-dispatched DSH children on review-blocks (one per kind; findings fold into the steer); inline steer when the seam is absent |
+| Reviewer agents | `.opencode/agents` specialists run as subagents | **Adapter-dispatched DSH children on review-blocks** (one per kind; read-only preset where the registry exists; findings fold into the steer); inline steer when the seam is absent |
 | Goals | `/df-goal` wraps native `/goal` | `df-goal` creates the host goal with the same verification contract |
+| Install | One command (`opencode plugin add`) | `dsh plugin add` + `df install-dsh` (bundle auto-wires post-release) |
+| Review UI | Instant TUI modals, never feed the LLM | Host commands returning text |
+
+Bold marks where DSH currently enforces harder — the host exposes
+pre-terminal hooks, tool-call blocking, and human approval, so the
+same verdict bites earlier and louder there. OpenCode keeps the edge
+in install simplicity and instant review UI; both run the identical
+gate contract (typecheck, tests, acceptance, review artifact,
+`max_blocks` budgeting).
 
 Identical on both: pre-execute deny hardness, pre-flight ordering and
 semantics, block budgeting, `protect_off` scope, and all eight
@@ -149,8 +161,9 @@ starters: [`examples/go-service/`](examples/go-service/).
 Every session runs the same loop — constitution, guardrails, lint, gate —
 whether or not it starts under `/df-goal`. A goal just wraps that loop in
 native verification. The diagram below shows the OpenCode wiring (idle
-synthetic continuation); DSH differs only at the gate step (pre-terminal
-steer, same turn — see the differences table above):
+synthetic continuation); on DSH the same verdict bites earlier — the
+pre-terminal steer, same-turn lint `block`s, and dispatched reviewers
+above all run inside the turn instead of round-tripping through it:
 
 ```text
                         user prompt
