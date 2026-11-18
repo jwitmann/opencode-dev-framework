@@ -1808,7 +1808,14 @@ format/lint/md/typecheck/build clean.
   ([#61884](https://github.com/anomalyco/opencode/issues/61884), mv2sa,
   opened today) — durable execution lineage for plugins (stable
   execution ID, `continuous | broken | unknown`); would replace the
-  in-memory `lastIdleHandled` dedup. Bot cross-links #60461.
+  in-memory `lastIdleHandled` dedup. OpenCode-only: the DSH host
+  already persists session logs and appends `turn/end {interrupted}`
+  closers on resume, so DSH needs no core change — the adapter-side
+  answer is plan 27 (probe the log via `sessionQuery`, report
+  continuity in `df-status`). Until then the DSH restart rule is:
+  prior gate state is unknown after a restart, the gate re-verifies,
+  and a cached pass never survives the process. Bot cross-links
+  #60461.
 - Background-declare
   ([#60860](https://github.com/anomalyco/opencode/issues/60860),
   ivopogace, 2026-10-31, from opencode-courier) — plugin entries in

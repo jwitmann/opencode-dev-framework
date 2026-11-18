@@ -987,6 +987,16 @@ Dogfood the fork's V2 pre-terminal hook (upstream PR
 - [x] Update configuration, hardening, plan 18, and observed-notes contracts;
   shared core delivers the behavior to DSH with no new host seam.
 
+## Plan 27 — DSH continuity probe (SPEC ONLY, 2026-11-18)
+
+- [x] Spec written (`docs/plans/27-dsh-continuity.md`): explicit
+  unknown-state after restart via `sessionQuery` interrupted-tail read,
+  `df-status` reporting, no verdict change, no new dep/config.
+- [x] Watchlist scoped: #61884 marked OpenCode-only; DSH restart rule
+  recorded (unknown ⇒ re-verify, passes never survive the process).
+- [ ] Implementation (probe, tests, docs) — scheduled only when it
+  earns a slot; spec §8 is the acceptance gate.
+
 ## Peer-review gate (mandatory after EVERY phase 21–27)
 
 Run the **`peer-review` skill** (`templates/.opencode/skills/peer-review/SKILL.md`),
