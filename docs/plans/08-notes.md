@@ -2,6 +2,28 @@
 
 Use this file to capture anything that comes up during implementation that future sessions need to know.
 
+## Deferred: restore OpenCode `experimental.stopping` (2026-11-18)
+
+**Priority: DSH first. Do not start this OpenCode task unless the user
+schedules it.** The product benchmark is the blocking-completion intent of
+`anticomputer/dev-framework`, not the compatibility compromise required on
+stock OpenCode.
+
+The fork already supplies `experimental.stopping`, and this plugin previously
+consumed it: Phase 29 was implemented in `4de1639`, hardened in `e4ea324`,
+merged in `4277134`, and live-validated on the fork. Commit `ee47e3a` later
+removed the consumer, status tracking, and `experimental-stopping.test.ts`
+during the idle-first cutover. Current `main` registers only
+`experimental.idle` and `idle` in `src/adapters/opencode/index.ts`.
+
+When scheduled, restore the defensive stopping consumer from that history and
+adapt it to the current adapter layout: prefer pre-terminal
+`experimental.stopping` where dispatched, retain idle and event continuation
+for stock cores, and dedup boundaries so stopping and idle cannot run the gate
+or admit continuation twice. Restore capability reporting and tests, run the
+full verification matrix, and validate on the fork under the then-current
+live-run policy. Do not claim stock OpenCode dispatches the stopping hook.
+
 ## Pre/post-flight enforcement harness (v0.2.3)
 
 **Teardown disposal + fail-open guard (issue #1, fixed in working tree):**
