@@ -123,7 +123,7 @@ semantics, block budgeting, `protect_off` scope, and all eight
 - **Completion gate.** At the would-go-idle boundary, runs typecheck, tests,
   acceptance checks, and (optionally) lint on changed files — plus a required
   substantive peer-review artifact in `standard`/`strict` (length floors, no
-  template checkboxes). On OpenCode, failures steer the session back via a
+  template checkboxes, written after the latest session edit). On OpenCode, failures steer the session back via a
   synthetic continuation, bounded by `gate.max_blocks` (fewer when
   the failure repeats with no new edits — the gate stands down early on
   zero progress). On DSH the same verdict runs pre-terminal in the same
@@ -245,15 +245,18 @@ of modals. Full reference:
   and you can always close the session; this is not an unlimited trap.
 - **Pre-flight and guardrail denials are pre-edit hard blocks**, distinct
   from the bounded completion mechanisms below.
+- A cached pass never survives a restart — after a restart the gate
+  always re-verifies the final tree from scratch.
 - Formatting and linting stay with your project tooling — the framework
   does not reimplement them.
 
 ### OpenCode
 
 - A failed completion gate admits a synthetic continuation at the idle
-  boundary. A genuine pre-stop veto is proposed upstream
+  boundary. A genuine pre-stop veto was proposed upstream
   ([`anomalyco/opencode#54487`](https://github.com/anomalyco/opencode/pull/54487),
-  open) — if it lands, the gate can veto there instead of continuing.
+  closed unmerged) — restoration is tracked in `docs/plans/08-notes.md`
+  if the hook ever lands.
 - Guardrails add to OpenCode permissions; they never replace them.
   Formatting is OpenCode core's job, not the plugin's.
 
@@ -261,6 +264,10 @@ of modals. Full reference:
 
 - In `standard`/`strict`, a failed completion gate blocks termination
   pre-terminal and enqueues required same-turn work until pass or stand-down.
+- After a restart, all prior gate state is unknown (block budget
+  included) — the gate re-verifies from scratch. `df-status` reports
+  continuity per session (`clean`, `resumed after interruption`, or
+  `unknown`).
 - Human approval prompts, reviewer dispatch, and the read-only reviewer
   preset depend on services provided by the DSH profile. Missing optional
   services disable only their enhancement; `df-status` reports the seams.

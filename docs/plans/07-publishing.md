@@ -195,8 +195,9 @@ Release steps:
 - [ ] `package.json` version is updated.
 - [ ] `package.json` `repository.url` exactly matches the GitHub repo.
 - [ ] `files` array includes `dist`, `bin`, `rules`, `templates`.
-- [ ] `main` points to `dist/index.js`.
-- [ ] `types` points to `dist/index.d.ts`.
+- [ ] `main` points to `dist/adapters/opencode/index.js` (dual-harness
+  layout; `./dsh` export serves `dist/adapters/dsh/index.js`).
+- [ ] `types` points to `dist/adapters/opencode/index.d.ts`.
 - [ ] `LICENSE` exists.
 - [ ] `README.md` exists.
 - [ ] npm trusted publisher is configured for `jwitmann/opencode-dev-framework` with workflow `ci.yml`.
