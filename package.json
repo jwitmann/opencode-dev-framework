@@ -59,8 +59,13 @@
     "opencode",
     "plugin",
     "ai",
+    "agents",
     "quality-gates",
-    "guardrails"
+    "guardrails",
+    "code-review",
+    "dsh-plugin",
+    "dsh",
+    "deepseek-harness"
   ],
   "dependencies": {
     "@opencode/plugin": "^2.0.26",
