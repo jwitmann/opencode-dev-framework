@@ -188,6 +188,9 @@ describe("install-dsh", () => {
     });
     expect(result.packageSupportsDsh).toBe(false);
     expect(result.warnings.join("\n")).toMatch(/predates DSH support/);
+    expect(result.warnings.join("\n")).toContain(
+      "run `dsh plugin --profile probe add opencode-dev-framework@latest`, or reinstall with --dist.",
+    );
   });
 
   it("block builders round-trip", () => {

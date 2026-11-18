@@ -300,7 +300,7 @@ export async function installDshProfile(options: InstallDshOptions): Promise<Ins
     entryName === packageSpec ? await checkPackageSupportsDsh(profileDir) : undefined;
   if (packageSupportsDsh === false) {
     warnings.push(
-      `installed opencode-dev-framework predates DSH support (no ./dsh export): run \`dsh plugin --profile ${profile} add opencode-dev-framework@latest\` after release, or reinstall with --dist.`,
+      `installed opencode-dev-framework predates DSH support (no ./dsh export): run \`dsh plugin --profile ${profile} add opencode-dev-framework@latest\`, or reinstall with --dist.`,
     );
   } else if (packageSupportsDsh === undefined && entryName === packageSpec) {
     warnings.push(
