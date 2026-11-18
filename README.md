@@ -23,9 +23,6 @@ Five minutes from zero to your first gated session.
 
 **On OpenCode:**
 
-Native plugin — server entry plus TUI companion load from the one
-package. Requires OpenCode `v2.x` (tested on `v2.0.26`).
-
 ```bash
 opencode plugin add opencode-dev-framework
 ```
