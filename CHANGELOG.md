@@ -6,6 +6,17 @@ Generated from conventional commits (`scripts/changelog.sh`).
 Single source: CI publishes each version's section as the GitHub
 release notes, so this file and the release page never diverge.
 
+## [v1.10.1] - 2026-11-18
+
+### Documentation
+
+- post-release install wording ([`aad6e24`](https://github.com/jwitmann/opencode-dev-framework/commit/aad6e2458ba8c5a4c864d8aebaa19d25f341a4d9))
+
+### Other
+
+- add dsh-plugin discovery keywords ([`549f097`](https://github.com/jwitmann/opencode-dev-framework/commit/549f0977fc63870524565aa6ed48c3267e016bc2))
+- dual-harness package description ([`2c5dca1`](https://github.com/jwitmann/opencode-dev-framework/commit/2c5dca100a338a295c1f3852db39cbe7900c1682))
+
 ## [v1.10.0] - 2026-11-18
 
 ### Features
