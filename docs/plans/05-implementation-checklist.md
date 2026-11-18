@@ -994,8 +994,13 @@ Dogfood the fork's V2 pre-terminal hook (upstream PR
   `df-status` reporting, no verdict change, no new dep/config.
 - [x] Watchlist scoped: #61884 marked OpenCode-only; DSH restart rule
   recorded (unknown ⇒ re-verify, passes never survive the process).
-- [ ] Implementation (probe, tests, docs) — scheduled only when it
-  earns a slot; spec §8 is the acceptance gate.
+- [x] Implementation DONE 2026-11-18: per-session memoized probe in the
+  DSH adapter (interrupted-tail scan via `sessionQuery.readSession`,
+  `clean | resumed-interrupted | unknown`, debug-logged once), `df-status`
+  continuity line, `sessionQuery` mount-seam snapshot + status row. No
+  verdict change, no new dep/config, no bundle inject change (`get`
+  lookup + guarded property fallback). 6 behavior tests, red-before/
+  green-after; full suite green.
 
 ## Peer-review gate (mandatory after EVERY phase 21–27)
 

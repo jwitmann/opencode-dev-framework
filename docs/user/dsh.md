@@ -141,9 +141,14 @@ budgeting, `protect_off` scope.
   questions (at most 3) with `ask_user_question`. Safe to re-run;
   mirrors never clobber user edits unasked and never read as drift.
 - **`df-status`**: live gate status (profile, config, level) plus host
-  seam availability (tools/goals/approval/subagents/presets) and who
-  runs the formatter — a degraded mount reads as degraded, never as
-  silently whole.
+  seam availability (tools/goals/approval/subagents/presets/sessionQuery)
+  and who runs the formatter — a degraded mount reads as degraded,
+  never as silently whole. It also reports continuity for the invoking
+  session: `clean`, `resumed after interruption`, or `unknown` (see
+  `docs/plans/27-dsh-continuity.md`). After a restart, prior gate
+  state is unknown by rule — the gate
+  re-verifies from scratch and a cached pass never survives the
+  process.
 - **Warn asks the human (TUI)**: a guard `warn` arrives as an `ask`
   decision when the approval seam is injected, so it prompts instead
   of scrolling by in the log. Child sessions never ask (they report

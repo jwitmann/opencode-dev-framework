@@ -317,6 +317,19 @@ export interface DshContext {
    * degrades to allow+log. Declared structurally (no host import).
    */
   readonly approval?: unknown;
+  /**
+   * Session-history query service for the continuity probe (plan 27).
+   * Optional like the other services; resolved via `get` where present
+   * so no bundle inject change is needed, with guarded property read
+   * as the fallback. Absence degrades to unknown continuity.
+   */
+  readonly sessionQuery?: unknown;
+  /**
+   * Optional service lookup on the sandbox facade: never throws for
+   * absent services (unlike undeclared property reads), so probing an
+   * unmounted service degrades silently instead of reporting failure.
+   */
+  readonly get?: (name: string) => unknown;
   on(
     event: "tools/pre-execute",
     listener: (exec: DshExec, next: () => Promise<DshPreDecision>) => Promise<DshPreDecision>,
@@ -643,6 +656,121 @@ function warnApplyPatchSkip(
   }
 }
 
+/**
+ * Continuity of the current process against the session's durable log
+ * (plan 27): whether the host's resume path marked an interrupted tail.
+ * `unknown` is the honest default — absence of evidence, never evidence
+ * of cleanliness. The probe never changes a gate verdict; it only names
+ * the state `df-status` reports.
+ */
+type ContinuityState = "clean" | "resumed-interrupted" | "unknown";
+
+/** Closed-vocabulary `df-status` rendering for a continuity state. */
+function renderContinuity(state: ContinuityState): string {
+  if (state === "clean") {
+    return "Continuity (this session): clean — session log shows no interrupted turn";
+  }
+  if (state === "resumed-interrupted") {
+    return (
+      "Continuity (this session): resumed after interruption — prior gate state " +
+      "is unknown; the gate re-verifies from scratch"
+    );
+  }
+  return (
+    "Continuity (this session): unknown — continuity could not be established; " +
+    "the gate re-verifies from scratch"
+  );
+}
+
+/**
+ * Resolve the session-history query service without a bundle inject
+ * change: the sandbox facade's optional `get` never throws for absent
+ * services, and the guarded property read covers hosts that inject it
+ * directly. Returns null when the seam is unavailable — never throws.
+ */
+function readSessionQuery(ctx: DshContext): { readSession?: unknown } | null {
+  try {
+    if (typeof ctx.get === "function") {
+      const viaGet = ctx.get("sessionQuery") as Record<string, unknown> | null | undefined;
+      if (viaGet !== null && viaGet !== undefined) {
+        return viaGet as { readSession?: unknown };
+      }
+    }
+  } catch {
+    // Fall through to the property read below.
+  }
+  try {
+    const direct = ctx.sessionQuery as Record<string, unknown> | null | undefined;
+    if (direct !== null && direct !== undefined) {
+      return direct as { readSession?: unknown };
+    }
+  } catch {
+    // Absent seam: the caller reports unknown.
+  }
+  return null;
+}
+
+/** True when a raw session-log event closes a turn as interrupted. */
+function isInterruptedTurnEnd(event: unknown): boolean {
+  if (event === null || typeof event !== "object") return false;
+  const record = event as { type?: unknown; data?: unknown };
+  if (record.type !== "turn/end") return false;
+  const data = record.data as { reason?: unknown } | null | undefined;
+  const reason = data?.reason as { kind?: unknown } | null | undefined;
+  return reason?.kind === "interrupted";
+}
+
+/**
+ * Probe continuity once per session per process (plan 27). Fallback
+ * turn-number identities carry no session to query, so they report
+ * unknown without touching the seam. Every failure — absent seam,
+ * throwing query, uninterpretable log — reports unknown and logs at
+ * debug. Never throws; never changes a gate verdict.
+ */
+async function probeContinuity(
+  ctx: DshContext,
+  state: HookState,
+  sessionID: string,
+): Promise<ContinuityState> {
+  if (sessionID.startsWith("turn-")) {
+    return "unknown";
+  }
+  const query = readSessionQuery(ctx);
+  if (query === null || typeof query.readSession !== "function") {
+    await safeLog(state, "debug", "continuity probe skipped: no sessionQuery seam", {
+      sessionID,
+    });
+    return "unknown";
+  }
+  try {
+    const snapshot = (await (
+      query.readSession as (sessionID: string) => Promise<{ events?: unknown }>
+    )(sessionID)) as { events?: unknown } | null | undefined;
+    if (!Array.isArray(snapshot?.events)) {
+      // A malformed payload is neither an empty log nor evidence: the
+      // spec's uninterpretable-log rule reports unknown.
+      await safeLog(state, "debug", "continuity probe uninterpretable (unknown)", {
+        sessionID,
+      });
+      return "unknown";
+    }
+    const interrupted = snapshot.events.some(isInterruptedTurnEnd);
+    const result: ContinuityState = interrupted ? "resumed-interrupted" : "clean";
+    await safeLog(state, "debug", `continuity probe: ${result}`, { sessionID });
+    return result;
+  } catch (error) {
+    await safeLog(
+      state,
+      "debug",
+      `continuity probe failed (unknown): ${(error as Error)?.message ?? error}`,
+      {
+        sessionID,
+      },
+    );
+    return "unknown";
+  }
+}
+
 /** Best-effort session identity for gate block accounting. */
 function sessionOf(agent: DshAgent, turn: unknown): string {
   const headerId = agent.session?.header?.id;
@@ -841,6 +969,7 @@ export function apply(ctx: DshContext): void {
       approval: canAskUser(ctx),
       subagents: hasServiceMethod(() => ctx.subagents, "startActivation"),
       agentPresets: hasServiceMethod(() => ctx.agentPresets, "register"),
+      sessionQuery: hasServiceMethod(() => readSessionQuery(ctx), "readSession"),
     },
   };
   setActiveState(state);
@@ -861,6 +990,34 @@ export function apply(ctx: DshContext): void {
   // `sessionOf`: stable host ids in production, turn-number fallback in
   // id-less contexts (test stubs).
   const injectedSessions = new Map<string, number | undefined>();
+
+  // Continuity probe results (plan 27): one entry per session per
+  // process, holding the in-flight promise so concurrent callers share
+  // it. A fresh process re-verifies from scratch, so the map only ever
+  // names what this process observed — never a durable receipt.
+  const continuityBySession = new Map<string, Promise<ContinuityState>>();
+
+  /**
+   * Lazily assess continuity for a session, memoizing per session id.
+   * The memoized unit is the in-flight promise, so concurrent callers
+   * (a stopping evaluation racing a status check) share one query.
+   * Total: even a throwing logger degrades to unknown instead of
+   * rejecting into the stopping path or the status handler.
+   */
+  async function ensureContinuity(sessionID: string): Promise<ContinuityState> {
+    // Fallback identities name no session: report without memoizing, so
+    // id-less call sites neither accumulate entries nor share results.
+    if (sessionID.startsWith("turn-")) {
+      return "unknown";
+    }
+    const known = continuityBySession.get(sessionID);
+    if (known !== undefined) {
+      return known;
+    }
+    const pending = probeContinuity(ctx, state, sessionID).catch((): ContinuityState => "unknown");
+    continuityBySession.set(sessionID, pending);
+    return pending;
+  }
 
   // Specialist dispatch (plan 26): children the adapter spawned per
   // session and kind (at most one pending per kind — a new block while
@@ -1379,13 +1536,18 @@ export function apply(ctx: DshContext): void {
         return;
       }
       await reloadConfigIfChanged(state);
+      const sessionID = sessionOf(agent, turn);
+      // Continuity probe (plan 27): assessed once per session, before any
+      // gate work, in every profile including off — it reports, never
+      // gates. Awaited here (not fire-and-forget) so the first `df-status`
+      // after a turn boundary already names the state.
+      await ensureContinuity(sessionID);
       // Only a fully-off profile skips the gate: `protect_off` stands
       // down guardrails, not the completion contract — mirroring the
       // OpenCode idle gate, which never consults `protect_off`.
       if (isProfileOff(state)) {
         return;
       }
-      const sessionID = sessionOf(agent, turn);
       const verdict = await runCompletion(state, sessionID);
       const message = await actOnVerdict(state, verdict);
       // Refresh the `df-runtime` snapshot: a block prevents termination and
@@ -1498,13 +1660,21 @@ export function apply(ctx: DshContext): void {
 
   ctx.commands.register({
     name: "df-status",
-    description: "Show opencode-dev-framework gate status (profile, config, enforcement level).",
-    handler: () => ({
-      kind: "success",
-      text: renderStatus(state.config, state, {
-        formatOwner: DSH_FORMAT_OWNER,
-      }),
-    }),
+    description:
+      "Show opencode-dev-framework gate status (profile, config, enforcement level) plus session continuity.",
+    handler: async (invocation) => {
+      // Continuity is session-scoped and the invoking agent names the
+      // session; without an invocation there is nothing to assess.
+      const agent = invocation?.agent as DshAgent | undefined;
+      const continuity: ContinuityState =
+        agent === undefined ? "unknown" : await ensureContinuity(sessionOf(agent, undefined));
+      return {
+        kind: "success",
+        text: `${renderStatus(state.config, state, {
+          formatOwner: DSH_FORMAT_OWNER,
+        })}\n\n${renderContinuity(continuity)}`,
+      };
+    },
   });
 
   // Runtime snapshot: hook registration, gate continuation posture, and

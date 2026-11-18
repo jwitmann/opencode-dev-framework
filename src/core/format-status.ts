@@ -236,6 +236,9 @@ export function renderStatus(
       lines.push(
         `  presets: ${state.seams.agentPresets ? "available (reviewers run read-only)" : "unavailable (prompt-level restriction + guards)"}`,
       );
+      lines.push(
+        `  sessionQuery: ${state.seams.sessionQuery ? "available (continuity probe reads the session log)" : "unavailable (continuity unknown)"}`,
+      );
     }
   }
 

@@ -24,6 +24,8 @@ export interface HostSeams {
   subagents: boolean;
   /** DSH-only: the agent-preset registry (read-only reviewer preset). */
   agentPresets: boolean;
+  /** DSH-only: the session-history query service (continuity probe). */
+  sessionQuery: boolean;
 }
 
 /**

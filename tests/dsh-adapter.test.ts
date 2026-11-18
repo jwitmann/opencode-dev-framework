@@ -863,6 +863,186 @@ describe("DSH adapter (plan 25 slice 4)", () => {
     expect(fresh.followup).not.toHaveBeenCalled();
   });
 
+  describe("continuity probe (plan 27)", () => {
+    const continuityAgent = () => ({
+      steer: vi.fn(),
+      followup: vi.fn(),
+      session: { header: { id: "ses-continuity-1" } },
+    });
+
+    const turnEvent = (seq: number, kind: string) => ({
+      type: "turn/end",
+      seq,
+      time: 1700000000000 + seq,
+      data: { turn: 1, reason: { kind } },
+    });
+
+    function withSessionQuery(
+      ctx: DshContext,
+      events: Array<Record<string, unknown>> | Error,
+      onCall?: () => void,
+    ): DshContext {
+      const query = {
+        readSession:
+          events instanceof Error
+            ? async () => {
+                throw events;
+              }
+            : async () => {
+                onCall?.();
+                return { events: events.map((event) => ({ ...event })) };
+              },
+      };
+      return {
+        ...ctx,
+        get: (name: string) => (name === "sessionQuery" ? query : undefined),
+      } as unknown as DshContext;
+    }
+
+    async function statusText(captured: Captured, agent: unknown): Promise<string> {
+      const status = captured.registered.find((r) => r.name === "df-status");
+      const out = (await status?.handler({ agent, rawInput: "" })) as {
+        kind: string;
+        text: string;
+      };
+      return out.text;
+    }
+
+    it("reports resumed-interrupted for a log with an interrupted tail", async () => {
+      writeConfig(directory, "profile: standard\n");
+      const { ctx, captured } = stubContext();
+      apply(
+        withSessionQuery(ctx, [
+          { type: "turn/start", seq: 1, time: 1700000000000, data: { turn: 1 } },
+          turnEvent(2, "interrupted"),
+        ]),
+      );
+      const agent = continuityAgent();
+      await captured.stopping?.({ agent, turn: 1 });
+      // No verdict delta: clean tree still passes with no steer.
+      expect(agent.steer).not.toHaveBeenCalled();
+      expect(await statusText(captured, agent)).toContain(
+        "Continuity (this session): resumed after interruption",
+      );
+    });
+
+    it("reports clean for a balanced log", async () => {
+      writeConfig(directory, "profile: standard\n");
+      const { ctx, captured } = stubContext();
+      apply(
+        withSessionQuery(ctx, [
+          { type: "turn/start", seq: 1, time: 1700000000000, data: { turn: 1 } },
+          turnEvent(2, "completed"),
+        ]),
+      );
+      const agent = continuityAgent();
+      await captured.stopping?.({ agent, turn: 1 });
+      expect(await statusText(captured, agent)).toContain("Continuity (this session): clean");
+    });
+
+    it("reports unknown without querying for fallback turn identities", async () => {
+      writeConfig(directory, "profile: standard\n");
+      const { ctx, captured } = stubContext();
+      const onCall = vi.fn();
+      apply(withSessionQuery(ctx, [turnEvent(1, "interrupted")], onCall));
+      const agent = { steer: vi.fn(), followup: vi.fn() };
+      await captured.stopping?.({ agent, turn: 1 });
+      expect(onCall).not.toHaveBeenCalled();
+      expect(await statusText(captured, agent)).toContain("Continuity (this session): unknown");
+    });
+
+    it("reports unknown when the seam is absent and marks it unavailable", async () => {
+      writeConfig(directory, "profile: standard\n");
+      const { ctx, captured } = stubContext();
+      apply(ctx);
+      const agent = continuityAgent();
+      await captured.stopping?.({ agent, turn: 1 });
+      const text = await statusText(captured, agent);
+      expect(text).toContain("Continuity (this session): unknown");
+      expect(text).toContain("sessionQuery: unavailable");
+    });
+
+    it("reports unknown when the query throws and the gate still passes", async () => {
+      writeConfig(directory, "profile: standard\n");
+      const { ctx, captured } = stubContext();
+      apply(withSessionQuery(ctx, new Error("corpus boom")));
+      const agent = continuityAgent();
+      await captured.stopping?.({ agent, turn: 1 });
+      expect(agent.steer).not.toHaveBeenCalled();
+      expect(await statusText(captured, agent)).toContain("Continuity (this session): unknown");
+    });
+
+    it("shares one query across concurrent stopping and status callers", async () => {
+      writeConfig(directory, "profile: standard\n");
+      const { ctx, captured } = stubContext();
+      const onCall = vi.fn();
+      let release!: () => void;
+      const gate = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const query = {
+        readSession: async () => {
+          onCall();
+          await gate;
+          return { events: [] };
+        },
+      };
+      apply({
+        ...ctx,
+        get: (name: string) => (name === "sessionQuery" ? query : undefined),
+      } as unknown as DshContext);
+      const agent = continuityAgent();
+      const status = captured.registered.find((r) => r.name === "df-status");
+      const racing = Promise.all([
+        captured.stopping?.({ agent, turn: 1 }),
+        status?.handler({ agent, rawInput: "" }),
+      ]);
+      await Promise.resolve();
+      release();
+      await racing;
+      expect(onCall).toHaveBeenCalledTimes(1);
+    });
+
+    it("reports clean for an empty log and resolves via the direct property", async () => {
+      writeConfig(directory, "profile: standard\n");
+      const { ctx, captured } = stubContext();
+      const query = { readSession: async () => ({ events: [] }) };
+      apply({ ...ctx, sessionQuery: query } as unknown as DshContext);
+      const agent = continuityAgent();
+      await captured.stopping?.({ agent, turn: 1 });
+      expect(agent.steer).not.toHaveBeenCalled();
+      expect(await statusText(captured, agent)).toContain("Continuity (this session): clean");
+    });
+
+    it("reports unknown for an unreadable log shape and for a missing invocation", async () => {
+      writeConfig(directory, "profile: standard\n");
+      const { ctx, captured } = stubContext();
+      const query = { readSession: async () => ({ events: "torn" }) };
+      apply({
+        ...ctx,
+        get: () => {
+          throw new Error("no facade get");
+        },
+        sessionQuery: query,
+      } as unknown as DshContext);
+      const agent = continuityAgent();
+      await captured.stopping?.({ agent, turn: 1 });
+      expect(await statusText(captured, agent)).toContain("Continuity (this session): unknown");
+      const status = captured.registered.find((r) => r.name === "df-status");
+      const out = (await status?.handler()) as { kind: string; text: string };
+      expect(out.text).toContain("Continuity (this session): unknown");
+    });
+
+    it("marks sessionQuery available in the seams snapshot when mounted", async () => {
+      writeConfig(directory, "profile: standard\n");
+      const { ctx, captured } = stubContext();
+      apply(withSessionQuery(ctx, []));
+      const status = captured.registered.find((r) => r.name === "df-status");
+      const out = (await status?.handler()) as { kind: string; text: string };
+      expect(out.text).toContain("sessionQuery: available");
+    });
+  });
+
   it("turn-stopping drops the steer when the turn already aborted", async () => {
     writeConfig(directory, "profile: standard\n");
     writeFileSync(join(directory, "work.ts"), "export const y = 2;\n");
