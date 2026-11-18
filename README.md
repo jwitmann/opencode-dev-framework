@@ -27,6 +27,15 @@ Five minutes from zero to your first gated session.
 opencode plugin add opencode-dev-framework
 ```
 
+Or declare it in `opencode.json`:
+
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "plugin": ["opencode-dev-framework"]
+}
+```
+
 **On DSH:**
 
 ```bash
