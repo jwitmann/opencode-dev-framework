@@ -1,7 +1,7 @@
 {
   "name": "opencode-dev-framework",
   "version": "1.10.0",
-  "description": "OpenCode plugin that enforces project-specific quality gates during AI coding sessions",
+  "description": "Enforcement gates for AI coding agents on OpenCode and DeepSeek Harness",
   "license": "MIT",
   "type": "module",
   "main": "dist/adapters/opencode/index.js",
