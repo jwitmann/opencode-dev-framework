@@ -6,6 +6,94 @@ Generated from conventional commits (`scripts/changelog.sh`).
 Single source: CI publishes each version's section as the GitHub
 release notes, so this file and the release page never diverge.
 
+## [v1.10.0] - 2026-11-18
+
+### Features
+
+- add shared formatFile runner + tests (plan 25 slice 2) ([`d368329`](https://github.com/jwitmann/opencode-dev-framework/commit/d36832923fe20b5c368b4bae62fed219c1ff7c97))
+- package DSH adapter in-place (plan 25 slice 4) ([`b9d335e`](https://github.com/jwitmann/opencode-dev-framework/commit/b9d335e18b3ccc0f0be8dc5888e05af05eace21f))
+- correct DSH guard contracts (warn, guard-error, pre-flight, load) ([`d9ff568`](https://github.com/jwitmann/opencode-dev-framework/commit/d9ff568effb86ecaa83ca2f41e9f3107c52c7572))
+- close DSH contract gaps (apply_patch pre-flight, kill-switch parity, artifact path) ([`4fa1266`](https://github.com/jwitmann/opencode-dev-framework/commit/4fa1266c0f6348e40040619c9585fd32858091aa))
+- DSH superiority round (post-execute block, abort-aware steer, deny identity) ([`51d9adf`](https://github.com/jwitmann/opencode-dev-framework/commit/51d9adf1a32f4fde5ddd7663cc3ee28e44c8d09a))
+- DSH shippables (export entry, user docs, staged live-fire) ([`0902491`](https://github.com/jwitmann/opencode-dev-framework/commit/090249181725325a9c2a84f472997370c0f0f623))
+- DSH parity completion (constitution injection, df-goal/verify/profile/init/update) ([`52a5689`](https://github.com/jwitmann/opencode-dev-framework/commit/52a56893fbb61d185eb18baa3637f68b91f090b2))
+- DSH df-runtime, stamp honesty, four agent tools ([`d51fb9a`](https://github.com/jwitmann/opencode-dev-framework/commit/d51fb9aaf11495760542a690898f534855715b55))
+- DSH child-session guard (header read, gate skip, artifact deny) ([`d3df391`](https://github.com/jwitmann/opencode-dev-framework/commit/d3df391dad0e6dd82284ee5402b6deeda1d8c13f))
+- DSH-native df-init (skill mirror, tool brief) + warn asks human ([`9ec3307`](https://github.com/jwitmann/opencode-dev-framework/commit/9ec3307bf08cb9201af6ed7b647a8719a9963b1f))
+- honest df-status on DSH (formatter attribution, seam visibility) ([`661d093`](https://github.com/jwitmann/opencode-dev-framework/commit/661d093218756adbf7fa08e0eaf97d34d22e0dcd))
+- maintain the DSH skill mirror (update drift, init tool, df-help) ([`ef33a8f`](https://github.com/jwitmann/opencode-dev-framework/commit/ef33a8f0d4b9b5334d08a5ce96f1bcf6bce353c3))
+- model-invokable update + runtime tools on both harnesses ([`3031aa5`](https://github.com/jwitmann/opencode-dev-framework/commit/3031aa570806771418bb544df53965c30b1820ed))
+- wire tool triggers into gate steer and init brief ([`e040193`](https://github.com/jwitmann/opencode-dev-framework/commit/e040193852d1e1457d2a2f4c613b7842bc2aefec))
+- drift mention names dev_framework_update, model calls it unprompted (live-proven) ([`04819e6`](https://github.com/jwitmann/opencode-dev-framework/commit/04819e638ac1bc1a07a18b201d9435a6aea3ca7e))
+- harness-neutral framework home (.dev-framework/) with legacy fallback (Phase 44) ([`e0c8ec8`](https://github.com/jwitmann/opencode-dev-framework/commit/e0c8ec8626db59a823d83e9c66ecf3ad50c967f6))
+- dispatch pattern-guardian child on DSH gate block (plan 26.2) ([`2139e72`](https://github.com/jwitmann/opencode-dev-framework/commit/2139e725619cb9f5175c474466d137fba82ed299))
+- multi-kind specialist dispatch on review-blocks + read-only reviewer preset (plan 26.3) ([`e5d3ff8`](https://github.com/jwitmann/opencode-dev-framework/commit/e5d3ff8e63edfb627f78f14d9f73c551f330708e))
+- neutral-first specialist brief chain (no OpenCode home required on DSH) ([`ae11ca6`](https://github.com/jwitmann/opencode-dev-framework/commit/ae11ca6d5ba0a8662b7f49e6541b47c2f47e54d2))
+- child-deny on gate tools + df init --dsh skill mirror (hardening) ([`8711a46`](https://github.com/jwitmann/opencode-dev-framework/commit/8711a469fbb0bacbd5630495dfc5e59e74383857))
+- df install-dsh one-command DSH profile wiring (npm-first, preset auto-detect) ([`d8060a7`](https://github.com/jwitmann/opencode-dev-framework/commit/d8060a74f704e1f0f4fa4bd5163a08216535861d))
+- dsh.bundle auto-layer + install-dsh bundle-aware preset upgrade ([`7fb765b`](https://github.com/jwitmann/opencode-dev-framework/commit/7fb765ba4b66b545ee50c8388c172084592917fe))
+
+### Fixes
+
+- tracker refuses out-of-tree absolute paths ([`ea35ae0`](https://github.com/jwitmann/opencode-dev-framework/commit/ea35ae022ba678b728e752d4ce29a8eea77dc474))
+- name omitted files in lint block tail (no false gate-coverage claim) ([`30196d3`](https://github.com/jwitmann/opencode-dev-framework/commit/30196d36866701c59674bb45a836ce1606fbd87c))
+- battery findings (nullable status holder, deterministic runtime test) ([`ccae207`](https://github.com/jwitmann/opencode-dev-framework/commit/ccae207f210e956ba8b3b011a381bd49e47f9c2d))
+- redirect phantoms (heredoc/quoted/2>&1) + inject-guard hardening ([`d74ec5a`](https://github.com/jwitmann/opencode-dev-framework/commit/d74ec5abda8d3e81979457657e4fbc0e61d56418))
+- preserve service receiver on tool registration + review ([`5828ca3`](https://github.com/jwitmann/opencode-dev-framework/commit/5828ca343f196817d1543a0820ff1cf5a079bdb4))
+- preserve agent receiver on followup handoff + review ([`ea3cf59`](https://github.com/jwitmann/opencode-dev-framework/commit/ea3cf5951b891ac24202510fb0ab8eb91c11967f))
+- stamp host session-event ids on DSH messages (resume-shaping) ([`4728bdd`](https://github.com/jwitmann/opencode-dev-framework/commit/4728bdda3dee471ede7e3e56f369325124f7af37))
+
+### Documentation
+
+- record live-fire proof (deny, block, same-turn steer all observed) ([`d0f8e3d`](https://github.com/jwitmann/opencode-dev-framework/commit/d0f8e3d585423bf2be8832d8034a09f2663f3d6b))
+- DSH parity audit (full OpenCode surface mapped) + Phase 43 plan ([`02a6e7c`](https://github.com/jwitmann/opencode-dev-framework/commit/02a6e7c60efc43fd47acbb5456e003aecf96d836))
+- pin child-guard mechanism to host pipeline source ([`a2e055e`](https://github.com/jwitmann/opencode-dev-framework/commit/a2e055e5927b10e2245c87152493be716aee2a7a))
+- record live proof for status tool + child artifact deny ([`419aa27`](https://github.com/jwitmann/opencode-dev-framework/commit/419aa27ee17727717412a365c2e0a4378def697a))
+- mark Phase 32 DONE (items complete since f735166) ([`a7a3390`](https://github.com/jwitmann/opencode-dev-framework/commit/a7a339075c6cf16571ac0fa3e57bfa20960e59d4))
+- record TUI warn->ask live proof (proof 1 closed) ([`6999297`](https://github.com/jwitmann/opencode-dev-framework/commit/699929749d2c0b12552b934a66128c0ad914f178))
+- record human-typed df-goal live proof (proof 3 closed) ([`ef91f8f`](https://github.com/jwitmann/opencode-dev-framework/commit/ef91f8f715ad20cfd2b22d2d9ebe53520273633a))
+- note placeholder keyword trips review template check (tvmRSS observation) ([`30db588`](https://github.com/jwitmann/opencode-dev-framework/commit/30db58851d2965b0c00858105cd677cdb1debb6e))
+- track message-id resume fix in checklist ([`6ed83f1`](https://github.com/jwitmann/opencode-dev-framework/commit/6ed83f1a5b342d1ecf968d961e6c213b7ccbee70))
+- README reflects dual-harness reality (config name, DSH live proofs) ([`78ab8de`](https://github.com/jwitmann/opencode-dev-framework/commit/78ab8debe0212f128da0fe442958832b91afd186))
+- restructure README for dual-harness (split quickstart, differences matrix) ([`ab99fb2`](https://github.com/jwitmann/opencode-dev-framework/commit/ab99fb2b148829e92047d26f53d843513fb63d36))
+- scope delegation rule per harness (DSH inline is primary, not fallback) ([`2d98ac9`](https://github.com/jwitmann/opencode-dev-framework/commit/2d98ac9fd5ac3d1de2cd559a57245b42f88cc82d))
+- scope Phase 26 (DSH specialist subagents via ctx.subagents) ([`ccdca42`](https://github.com/jwitmann/opencode-dev-framework/commit/ccdca42884073d3b1c583880507f1e06a4f5b18c))
+- fix list style in plan 26 (MD004) ([`8061080`](https://github.com/jwitmann/opencode-dev-framework/commit/8061080cd54ae0d2732041cad03f0012e3a1ef72))
+- correct plan 26 (plugin ships reviewer preset; spawn-only) ([`53d6844`](https://github.com/jwitmann/opencode-dev-framework/commit/53d68445403ac336260de6c751d96c1f5aaca202))
+- record Phase 26 probe results (subagents loop green) ([`e9a77f2`](https://github.com/jwitmann/opencode-dev-framework/commit/e9a77f2e278c5c842fb77cabdfb7b51545009eb6))
+- record Phase 26.3 live proof (multi-kind dispatch, gate PASS) ([`6cac4e9`](https://github.com/jwitmann/opencode-dev-framework/commit/6cac4e9d7713a65f179d3cb2d204af241e46138e))
+- dsh.md + matrix reflect specialist dispatch (plan 26.4 docs half) ([`bc0d5d3`](https://github.com/jwitmann/opencode-dev-framework/commit/bc0d5d3f7c0922cbb92cf0948c0c3879b1b05709))
+- record neutral-first brief chain in plan 26 ([`d3e6ee2`](https://github.com/jwitmann/opencode-dev-framework/commit/d3e6ee22161adce8b700cccc514a8b02e5d9ca3b))
+- close Phase 26 with TUI preset live proof (session 78def5ff) ([`d3dd0a2`](https://github.com/jwitmann/opencode-dev-framework/commit/d3dd0a27a3520c448d0855fcaf41ef0eebe4f55e))
+- record post-merge hardening in checklist ([`7946f01`](https://github.com/jwitmann/opencode-dev-framework/commit/7946f015214ffc4aab7ce09df1df1eb8913255f7))
+- record df install-dsh in checklist ([`77c5540`](https://github.com/jwitmann/opencode-dev-framework/commit/77c554015be12f7be9216af384f972a2ba780641))
+- refresh user docs for dispatch, bundle install, child-deny ([`80ad57a`](https://github.com/jwitmann/opencode-dev-framework/commit/80ad57a043d306f7edd82a8ccfed1d3b178c3953))
+- rebalance README as dual-harness, mark where DSH enforces harder ([`e155ab1`](https://github.com/jwitmann/opencode-dev-framework/commit/e155ab13c05ee17a1aa9881ad295eb7a7344837f))
+- make DSH quickstart and reference first-class ([`a24ca80`](https://github.com/jwitmann/opencode-dev-framework/commit/a24ca806e381f4e53c214393e4032602ca9d3039))
+- split README limitations by harness ([`be6d71c`](https://github.com/jwitmann/opencode-dev-framework/commit/be6d71cd58c4a06ff09696a82dd866fe89e2af1f))
+- defer OpenCode stopping-hook restoration ([`341a351`](https://github.com/jwitmann/opencode-dev-framework/commit/341a351843f21e325c63063708f304ee7a60b3d3))
+- simplify README introduction ([`e223c02`](https://github.com/jwitmann/opencode-dev-framework/commit/e223c02bf5a47f232199658e83bfa867ac9dffb9))
+- link DSH alongside OpenCode ([`086847e`](https://github.com/jwitmann/opencode-dev-framework/commit/086847eeff20379703f3ccc3e4bb8f10cd68cc44))
+- spec DSH continuity probe, scope 61884 watchlist ([`876c717`](https://github.com/jwitmann/opencode-dev-framework/commit/876c7171f06f447c2d92b132cc2b39f50a92eb1f))
+- final README accuracy pass, fix publishing checklist ([`c470958`](https://github.com/jwitmann/opencode-dev-framework/commit/c4709584abbc7543592b646b1706f6f80fee5e4e))
+- move source build to local development section ([`64cb3f2`](https://github.com/jwitmann/opencode-dev-framework/commit/64cb3f263662a6ca6c1c1203ef000fe79c651af9))
+- registry-first install wording for 1.10.0 release ([`4916411`](https://github.com/jwitmann/opencode-dev-framework/commit/491641197c417592dfb34acd693446d8befe64fb))
+
+### Other
+
+- extract shared hook flows to src/run-hooks.ts (plan 25 slice 1) ([`a21270a`](https://github.com/jwitmann/opencode-dev-framework/commit/a21270a82dcd9dcf76f4cce84da46bf7983fa09c))
+- address peer-review findings on DSH slices 1-2 ([`2b553d2`](https://github.com/jwitmann/opencode-dev-framework/commit/2b553d2800043ef898df151860c4fefa335f9655))
+- cover lint feedback cap and preflight-deny identity ([`1f4b044`](https://github.com/jwitmann/opencode-dev-framework/commit/1f4b04470711bb471440e346266cb620fc676b86))
+- DSH odf-status to df-status for df-* convention ([`0f2b926`](https://github.com/jwitmann/opencode-dev-framework/commit/0f2b9262eeb2b7a2df8f7c702934b1472483579c))
+- receiver-enforcing coverage for df-update followup handoff ([`bfa6834`](https://github.com/jwitmann/opencode-dev-framework/commit/bfa6834ded0064b18e33bd18d4e52fe5bb13d2e6))
+- ignore local-only dirs (.operator, .dsh, .dev-framework) ([`816c57d`](https://github.com/jwitmann/opencode-dev-framework/commit/816c57d694d0c0258110c7c05e225ab0bd869ade))
+- framework home and config are local-only, never tracked ([`920182c`](https://github.com/jwitmann/opencode-dev-framework/commit/920182c259ba4f6dc57b343260ff8ccfc589b37e))
+- stop tracking legacy self-host config (local-only from here) ([`912f35a`](https://github.com/jwitmann/opencode-dev-framework/commit/912f35a01abcf9be132e40a07688a75c6d724999))
+- DSH adapter line — neutral home, message ids, specialist dispatch (live-proven both harnesses) ([`de5b026`](https://github.com/jwitmann/opencode-dev-framework/commit/de5b026734dbe3c656f88876e2e02c317e990a8f))
+- pin bounded pre-terminal completion blocking ([`3f9d175`](https://github.com/jwitmann/opencode-dev-framework/commit/3f9d175df518265013d4b83e36372c8c638373f7))
+- enforce temporal review freshness, narrow placeholder check ([`01600b6`](https://github.com/jwitmann/opencode-dev-framework/commit/01600b6f32b862fc44580ca03a9fbec63b1e1111))
+- add continuity probe with session log tail ([`dfe7eb7`](https://github.com/jwitmann/opencode-dev-framework/commit/dfe7eb7543416da8bcb99637494f76c446de3646))
+
 ## [v1.9.5] - 2026-11-16
 
 ### Documentation
