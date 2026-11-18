@@ -2,6 +2,34 @@
 
 Use this file to capture anything that comes up during implementation that future sessions need to know.
 
+## DSH community docs observations (2026-11-18)
+
+Source: `deepseekdocs.com` (community docs, open source) — skill system
+and subagent pages. Useful as orientation, but both lag the host:
+the subagent page is labeled v0.1.5-alpha.1 and shows
+`ctx.subagents.start(...)` where our live-verified seam on
+0.2.2-rc.3 is `startActivation`. Where page and probe differ, the
+live probe wins — never "align" adapter code to these pages.
+
+- Skill mirror validated: our five `templates/.opencode/skills/*/SKILL.md`
+  carry DSH-compliant frontmatter (`name` kebab-case + `description`,
+  no invocation flags so both default to allowed). DSH drops
+  non-compliant skills fail-closed (bad key or non-boolean silently
+  unlists), so any future skill edit must keep the frontmatter
+  valid. Mirror root `.dsh/skills` is rank 100 (top), beating
+  `.agents/skills` (200) and user roots — placement is optimal.
+- Parked (need per-provider capability checks, none urgent):
+  `toolFilter` for host-native read-only reviewer enforcement
+  (today: prompt-level restriction + per-exec guards),
+  `outputSchema` for structured reviewer findings (today: notice
+  text parsing), `agentOptions` to pin reviewer children to a
+  cheap model, `depthLimit` for an explicit no-grandchildren
+  guarantee.
+- Already honored, confirmed by the read: one-shot `spawn` (not
+  `fork` — fork would seed the child with the parent's full
+  history), `label` set per review kind, `signal` wired from
+  turn-stopping into the child call. No gap found.
+
 ## Deferred: restore OpenCode `experimental.stopping` (2026-11-18)
 
 **Priority: DSH first. Do not start this OpenCode task unless the user
