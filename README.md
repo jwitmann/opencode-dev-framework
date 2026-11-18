@@ -29,19 +29,15 @@ opencode plugin add opencode-dev-framework
 
 **On DSH:**
 
-Pre-release (works today), build once and wire the profile:
-
-```bash
-npm run build
-df install-dsh --profile <name> --dist /path/to/opencode-dev-framework/dist/adapters/dsh/index.js
-```
-
-Post-release, one command (the bundle auto-wires the base entry):
-
 ```bash
 dsh plugin --profile <name> add opencode-dev-framework
 df install-dsh --profile <name>  # preset seam + verification
 ```
+
+> Until the first npm publish, install from source instead —
+> [local development](#local-development). The registry entry does
+> not exist yet; the source build keeps working afterwards for
+> contributors.
 
 Full DSH reference: [`docs/user/dsh.md`](docs/user/dsh.md).
 
@@ -79,6 +75,22 @@ edit is checked against guardrails before it lands, your linter runs on the
 edited file, and when the session goes idle the completion gate runs your
 typecheck/tests. `/df-status` shows the live state at any time. Start with
 `profile: advisory` if you want to observe before enforcing.
+
+## Local development
+
+From a checkout — required until the first npm publish, and the
+contributor loop afterwards. Build once, then wire the profile
+directly at the built file (no registry needed):
+
+```bash
+npm run build
+df install-dsh --profile <name> --dist /path/to/opencode-dev-framework/dist/adapters/dsh/index.js
+```
+
+Rebuild after every source change; rerun `df install-dsh` any time
+(it is idempotent outside its managed block). The full contributor
+contract — validation commands, commit policy, never-push rule — is
+[`AGENTS.md`](AGENTS.md).
 
 ## Harness differences
 

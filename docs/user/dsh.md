@@ -50,7 +50,8 @@ df install-dsh --profile <name>   # auto-detects the preset registry
 The installer writes a managed `odf-gates` block into the profile's
 `cordis.patch.yml`, auto-detects the agent-preset registry, and leaves
 everything outside its markers untouched (rerun any time; `--force`
-replaces a hand-maintained entry). Pre-release local equivalent:
+replaces a hand-maintained entry). From source (local development,
+required until the first npm publish):
 `df install-dsh --profile <name> --dist
 /path/to/opencode-dev-framework/dist/adapters/dsh/index.js`.
 Or mount by hand with a `--patch` overlay naming the built file:
