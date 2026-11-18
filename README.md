@@ -22,11 +22,31 @@ The DSH adapter lives at [`docs/user/dsh.md`](docs/user/dsh.md).
 
 Five minutes from zero to your first gated session.
 
-### On OpenCode
+### 1. Install the plugin
+
+**On OpenCode:**
 
 ```bash
 opencode plugin add opencode-dev-framework
 ```
+
+**On DSH** — pre-release (works today), build once and wire the profile:
+
+```bash
+npm run build
+df install-dsh --profile <name> --dist /path/to/opencode-dev-framework/dist/adapters/dsh/index.js
+```
+
+Post-release, one command (the bundle auto-wires the base entry):
+
+```bash
+dsh plugin --profile <name> add opencode-dev-framework
+df install-dsh --profile <name>  # preset seam + verification
+```
+
+Full DSH reference: [`docs/user/dsh.md`](docs/user/dsh.md).
+
+### 2. Init your project (same on both harnesses)
 
 In any project, run:
 
@@ -42,39 +62,18 @@ a config + `hardening.md` draft for your review. Budget ~5 minutes,
 review-only at the end; imperfections assumed, manual always possible.
 
 Prefer a shell? Same thing non-interactively — for CI, dotfiles, and
-scripted runs:
+scripted runs (add `--dsh` on DSH so the host-visible skill mirror is
+scaffolded too):
 
 ```bash
-npx df init
+npx df init [--dsh]
 ```
 
 Conflicts need `--overwrite-existing` or `--skip-existing` — everything
 else is under `npx df init --help`.
 
-### On DSH
-
-Pre-release (works today) — build once, wire the profile:
-
-```bash
-npm run build
-df install-dsh --profile <name> --dist /path/to/opencode-dev-framework/dist/adapters/dsh/index.js
-```
-
-Post-release, one command (bundle auto-wires the base entry):
-
-```bash
-dsh plugin --profile <name> add opencode-dev-framework
-df install-dsh --profile <name>  # preset seam + verification
-```
-
-Full reference: [`docs/user/dsh.md`](docs/user/dsh.md).
-
-Then, per project: run `dsh` from the project root (or export
-`ODF_WORKDIR`), run `df-init` once (scaffolds templates *and* the
-`.dsh/skills` mirror the host `skill` tool scans), and accept the
-template drift via `df-update` if the session reports any. Same config
-file, same profiles, same gates. Full DSH reference:
-[`docs/user/dsh.md`](docs/user/dsh.md).
+On DSH, run `dsh` from the project root (or export `ODF_WORKDIR`), and
+accept template drift via `df-update` if the session reports any.
 
 Then ask the agent for a small edit. You will see the plugin working: the
 edit is checked against guardrails before it lands, your linter runs on the
@@ -94,8 +93,8 @@ differ. Neither harness is the "real" one; each is stronger somewhere:
 | Guard `warn` | Logged (advisory never blocks) | Logged, or **prompts the human as `ask`** when the `approval` seam is injected |
 | Redirect targets (`a > file`) | Not guard-checked | **Guard-checked** (wider than OpenCode) |
 | denial identity | Reason text | Reason text + structured `{name, code}` |
-| Skills | `.opencode/skills` (native) | `.dsh/skills` mirror (host never scans `.opencode/skills`) |
-| Reviewer agents | `.opencode/agents` specialists run as subagents | **Adapter-dispatched DSH children on review-blocks** (one per kind; read-only preset where the registry exists; findings fold into the steer); inline steer when the seam is absent |
+| Skills | `.opencode/skills` (native) | `.dsh/skills` (installed by `df-init`, kept current by `df-update`) |
+| Reviewer agents | `.opencode/agents` specialists run as subagents | **Adapter-dispatched DSH children on review-blocks** (one per kind; read-only preset where the registry exists; findings fold into the steer; customize via `.dev-framework/agents/`); inline steer when the seam is absent |
 | Goals | `/df-goal` wraps native `/goal` | `df-goal` creates the host goal with the same verification contract |
 | Install | One command (`opencode plugin add`) | `dsh plugin add` + `df install-dsh` (bundle auto-wires post-release) |
 | Review UI | Instant TUI modals, never feed the LLM | Host commands returning text |
