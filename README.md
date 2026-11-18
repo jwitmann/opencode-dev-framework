@@ -1,22 +1,18 @@
 # opencode-dev-framework
 
-AI agents finish by *saying* they're done — and prose rules ("be
-thorough", "run the tests") are interpretation surface a capable agent
-routes around. This plugin replaces assertion with evidence: guardrails
-that deny instead of advise, a completion gate that re-runs your checks
-at the idle boundary, and verified goals whose contract requires a
-tool-result PASS on the final tree. Exit codes don't negotiate.
+AI agents can say they're done without proving it. This plugin replaces
+assertion with evidence: guardrails, per-edit formatting and lint feedback,
+a completion gate that runs your real checks, and verified goals that require
+a tool-result PASS on the final tree. Exit codes don't negotiate.
 
-An enforcement plugin for AI coding sessions that replaces assertion
-with evidence: guardrails that deny instead of advise, a completion
-gate that re-runs your checks, and verified goals whose contract
-requires a tool-result PASS on the final tree. It ships two native
-harness adapters over one shared core — [OpenCode](https://opencode.ai)
-(the original home) and DSH (DeepSeek Harness, Cordis wiring) — with
-the same config, profiles, and gates. Inspired by
+One shared enforcement core powers native adapters for
+[OpenCode](https://opencode.ai) and DSH (DeepSeek Harness, via Cordis), with
+the same config, profiles, rules, and gates on both.
+
+Inspired by
 [anticomputer/dev-framework](https://github.com/anticomputer/dev-framework),
-reimplemented for OpenCode (the original supports Copilot, Claude, and Codex).
-The DSH adapter lives at [`docs/user/dsh.md`](docs/user/dsh.md).
+which supports Copilot CLI, Claude Code, and Codex CLI; this is an independent
+implementation. DSH guide: [`docs/user/dsh.md`](docs/user/dsh.md).
 
 ## Quickstart
 
