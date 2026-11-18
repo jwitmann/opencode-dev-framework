@@ -35,11 +35,18 @@ Project config is the same `.dev-framework.yml` (legacy
 ## Mount
 
 `apply(ctx)` is the plugin entry (`opencode-dev-framework/dsh`).
-Wire it with one command (npm-first; `--dist` for local builds):
+After release, one command wires the base install — the package
+declares a `dsh.bundle` layer, so no hand-written patch is needed:
 
 ```bash
-df install-dsh --profile <name>
-dsh plugin --profile <name> add opencode-dev-framework  # after release
+dsh plugin --profile <name> add opencode-dev-framework
+```
+
+For the preset seam (or pre-release local builds), layer the
+installer on top:
+
+```bash
+df install-dsh --profile <name>   # auto-detects the preset registry
 ```
 
 The installer writes a managed `odf-gates` block into the profile's

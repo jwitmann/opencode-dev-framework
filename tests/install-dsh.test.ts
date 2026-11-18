@@ -102,7 +102,33 @@ describe("install-dsh", () => {
     });
     expect(result.entryName).toBe("/opt/odf/dist/adapters/dsh/index.js");
     expect(result.seams).not.toContain("agentPresets");
-    expect(run).not.toHaveBeenCalled();
+    expect(run).toHaveBeenCalledTimes(1); // single composition probe (bundle + preset answers)
+  });
+
+  it("writes only the preset override when the bundle base already resolves", async () => {
+    const home = makeProfile(HEADER);
+    const dump =
+      "entries:\n- id: odf-gates\n  name: opencode-dev-framework/dsh\n- id: tool-fs\nagent-preset-registry active\n";
+    const run = vi.fn(async () => ({ stdout: dump, stderr: "", exitCode: 0 }));
+    const result = await installDshProfile({ profile: "probe", dshHome: home, run });
+    expect(result.changed).toBe(true);
+    expect(result.presetIncluded).toBe(true);
+    expect(result.seams).toContain("agentPresets");
+    const written = readFileSync(join(home, "profiles", "probe", "cordis.patch.yml"), "utf8");
+    expect(written).toContain(ODF_MANAGED_BEGIN);
+    expect(written).toContain("# Your patch layer for this dsh profile");
+  });
+
+  it("leaves a resolving bundle base alone when presets are unsupported", async () => {
+    const home = makeProfile(HEADER);
+    const dump = "entries:\n- id: odf-gates\n  name: opencode-dev-framework/dsh\n";
+    const run = vi.fn(async () => ({ stdout: dump, stderr: "", exitCode: 0 }));
+    const result = await installDshProfile({ profile: "probe", dshHome: home, run });
+    expect(result.changed).toBe(false);
+    expect(result.presetIncluded).toBe(false);
+    expect(result.warnings.join(" ")).toMatch(/bundle base/);
+    const written = readFileSync(join(home, "profiles", "probe", "cordis.patch.yml"), "utf8");
+    expect(written).not.toContain(ODF_MANAGED_BEGIN);
   });
 
   it("refuses a hand-maintained entry without --force, replaces with it", async () => {

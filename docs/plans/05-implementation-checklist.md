@@ -945,10 +945,22 @@ Dogfood the fork's V2 pre-terminal hook (upstream PR
   (live-verified in `/tmp/odf-dfinit`, all 5 skills).
 - [x] `df install-dsh --profile <name>`: one-command profile wiring
   (managed block, npm-first `--dist` fallback, preset auto-detect,
-  hand-entry guard, dry-run). Unit: 10 tests; live-dogfooded on
-  dsh-tui (force-migrated hand entry, dump-config verified,
-  idempotency confirmed). Backup of the prior hand edit kept at
+  hand-entry guard, dry-run). Unit: 12 tests (bundle modes included,
+  stash-proven); live-dogfooded on dsh-tui (force-migrated hand
+  entry, dump-config verified, idempotency confirmed). Backup of the
+  prior hand edit kept at
   `~/.dsh/profiles/dsh-tui/cordis.patch.yml.pre-install-dsh`.
+- [x] `dsh.bundle` auto-layer (repo-inspired): `package.json` declares
+  `dsh.bundle.patch = ./cordis.patch.yml` (4 universal seams; preset
+  seam stays installer-managed). Proven pre-release via
+  `file:` install into a throwaway profile (`/tmp/odf-dshome`):
+  `dsh plugin add` auto-registered the bundle AND the profile entry,
+  composed dump shows the entry with zero hand-written patch; user-layer
+  5-seam entry merges by same-id override (single runtime entry —
+  verified in `cordis-plugin-loader`: tree store keyed by id, later
+  layer wins). Mismatched-version headless loop deliberately NOT
+  force-installed for the boot half of the proof (would taint it);
+  boot half already covered by the matching-version live runs.
 
 ## Peer-review gate (mandatory after EVERY phase 21–27)
 

@@ -1,0 +1,17 @@
+# opencode-dev-framework — DSH bundle layer.
+# Auto-applied when the package is installed (`dsh plugin --profile
+# <name> add opencode-dev-framework`). Base seams only: every entry
+# here must resolve on EVERY profile (headless, tui, web), because a
+# missing injected service pends the whole plugin. The read-only
+# reviewer preset (`agentPresets`) is profile-dependent and therefore
+# NOT here — `df install-dsh` adds it as a user-layer override where
+# the registry exists.
+- insert:
+    - id: odf-gates
+      name: opencode-dev-framework/dsh
+- id: odf-gates
+  inject:
+    - tools
+    - goals
+    - approval
+    - subagents

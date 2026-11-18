@@ -51,8 +51,8 @@ else is under `npx df init --help`.
 ### On DSH
 
 ```bash
-df install-dsh --profile <name>
-dsh plugin --profile <name> add opencode-dev-framework  # after release
+dsh plugin --profile <name> add opencode-dev-framework  # after release (bundle auto-wires)
+df install-dsh --profile <name>  # preset seam + verification (also pre-release with --dist)
 ```
 
 One command writes a managed `odf-gates` block into the profile

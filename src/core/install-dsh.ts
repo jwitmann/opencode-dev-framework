@@ -54,19 +54,36 @@ export function resolveDshHome(explicit?: string): string {
   );
 }
 
+/** Probe one composed dump for preset-registry presence AND an
+ * already-resolving `odf-gates` entry (bundle-provided base). A single
+ * read-only subprocess call answers both; any failure degrades to
+ * "absent / unsupported". */
+export async function probeComposition(
+  run: RunCommand,
+  dshBin: string,
+  profile: string,
+): Promise<{ dump: string; presetsSupported: boolean; bundleEntry: boolean }> {
+  const empty = { dump: "", presetsSupported: false, bundleEntry: false };
+  try {
+    const probe = await run([dshBin, "--profile", profile, "--dump-config"], {});
+    const dump = `${probe.stdout}\n${probe.stderr}`;
+    return {
+      dump,
+      presetsSupported: /agent-preset-registry|agent-presets/i.test(dump),
+      bundleEntry: /(^|\n)\s*-\s*id:\s*odf-gates\b/.test(dump),
+    };
+  } catch {
+    return empty;
+  }
+}
+
 /** Probe the composed tree for the agent-preset registry. False on any failure. */
 export async function detectPresetSupport(
   run: RunCommand,
   dshBin: string,
   profile: string,
 ): Promise<boolean> {
-  try {
-    const probe = await run([dshBin, "--profile", profile, "--dump-config"], {});
-    const haystack = `${probe.stdout}\n${probe.stderr}`;
-    return /agent-preset-registry|agent-presets/i.test(haystack);
-  } catch {
-    return false;
-  }
+  return (await probeComposition(run, dshBin, profile)).presetsSupported;
 }
 
 /** Whether the profile's installed package already ships `./dsh`. Unknown on any failure. */
@@ -110,6 +127,11 @@ export function buildManagedBlock(entryName: string, seams: string[]): string {
     ODF_MANAGED_END,
   ];
   return `${lines.join("\n")}\n`;
+}
+
+/** True when the text already carries our managed block (idempotent reruns). */
+export function hasManagedBlock(patchText: string): boolean {
+  return patchText.includes(ODF_MANAGED_BEGIN);
 }
 
 /** True when an odf-gates entry exists OUTSIDE the managed block. */
@@ -201,6 +223,63 @@ export async function installDshProfile(options: InstallDshOptions): Promise<Ins
   }
   const entryName = distFile ?? packageSpec;
   const warnings: string[] = [];
+  const explicitEntry = distFile !== undefined;
+
+  const patchFile = join(profileDir, "cordis.patch.yml");
+  const existing = (await fileExists(patchFile)) ? await readFile(patchFile, "utf8") : null;
+  const handMaintained = !force && existing !== null && hasHandMaintainedEntry(existing);
+  if (handMaintained) {
+    throw new Error(
+      "df install-dsh: a hand-maintained odf-gates entry already exists in cordis.patch.yml (refusing to touch it; rerun with --force to replace it with the managed block)",
+    );
+  }
+
+  // One read-only probe answers preset support AND whether the bundle
+  // layer already provides the entry (post-release world).
+  const probe = await probeComposition(run, dshBin, profile);
+  const bundleMode =
+    !explicitEntry && existing !== null && !hasManagedBlock(existing) && probe.bundleEntry;
+
+  if (bundleMode) {
+    // The bundle base already resolves: only the profile-dependent
+    // preset seam can still need a user-layer override.
+    let presetIncluded: boolean;
+    if (withPresets === false) {
+      presetIncluded = false;
+    } else {
+      presetIncluded = probe.presetsSupported;
+    }
+    if (!presetIncluded) {
+      return {
+        profileDir,
+        patchFile,
+        createdPatchFile: false,
+        changed: false,
+        entryName,
+        seams: [...ODF_BASE_SEAMS],
+        presetIncluded,
+        packageSupportsDsh: undefined,
+        warnings: ["bundle base entry already resolves; no user-layer override needed."],
+      };
+    }
+    const seams = [...ODF_BASE_SEAMS, "agentPresets"];
+    const next = upsertManagedBlock(existing, buildManagedBlock(entryName, seams));
+    const changed = next !== existing;
+    if (!dryRun && changed) {
+      await writeFile(patchFile, next, "utf8");
+    }
+    return {
+      profileDir,
+      patchFile,
+      createdPatchFile: false,
+      changed: changed && !dryRun,
+      entryName,
+      seams,
+      presetIncluded,
+      packageSupportsDsh: undefined,
+      warnings: ["preset seam added as a user-layer override of the bundle base."],
+    };
+  }
 
   let presetIncluded: boolean;
   if (withPresets === true) {
@@ -208,7 +287,7 @@ export async function installDshProfile(options: InstallDshOptions): Promise<Ins
   } else if (withPresets === false) {
     presetIncluded = false;
   } else {
-    presetIncluded = await detectPresetSupport(run, dshBin, profile);
+    presetIncluded = probe.presetsSupported;
     if (!presetIncluded) {
       warnings.push(
         "agent-preset registry not detected in this profile: spawning without the read-only preset (prompt-level restriction + guards).",
@@ -229,14 +308,6 @@ export async function installDshProfile(options: InstallDshOptions): Promise<Ins
     );
   }
 
-  const patchFile = join(profileDir, "cordis.patch.yml");
-  const existing = (await fileExists(patchFile)) ? await readFile(patchFile, "utf8") : null;
-  const handMaintained = !force && existing !== null && hasHandMaintainedEntry(existing);
-  if (handMaintained) {
-    throw new Error(
-      "df install-dsh: a hand-maintained odf-gates entry already exists in cordis.patch.yml (refusing to touch it; rerun with --force to replace it with the managed block)",
-    );
-  }
   const base = force && existing !== null ? removeUnmarkedEntries(existing) : (existing ?? "");
   const next = upsertManagedBlock(base === "" ? null : base, buildManagedBlock(entryName, seams));
   const changed = next !== (existing ?? "");
