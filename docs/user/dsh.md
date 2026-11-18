@@ -1,19 +1,17 @@
 # DSH adapter
 
-> Status: implemented (40 adapter tests, full suite green);
-> enforcement live-proven 2026-11-16 on stock `headless`
-> (sessions `931700f5` + `9487c152`, model
-> `muse-spark-1.3-contributor`). Instruction pillar
-> (`agent/pre-step` constitution prepend), commands (`df-status`,
-> `df-goal`, `df-verify`, `df-profile`, `df-runtime`, `df-init`,
-> `df-update`),
-> and agent tools (`dev_framework_verify/set_profile/status/init/
-> update/runtime`) are wired and unit-proven; `dev_framework_status`
-> since invoked live by the model (full status text returned), and
-> the child artifact deny live-proven (subagent attempted
-> `review.md`, got the guard text, reported back as text). No goal
-> tool by design (goal creation is human-initiated on both
-> harnesses). Deliberate release still pending.
+> Status: implemented (73 adapter tests, full suite green);
+> enforcement live-proven on stock `headless` (guard-deny, lint
+> `block`, pre-terminal gate) and on `dsh-tui` (warn→ask, human
+> `/df-goal`, review-block dispatch). Instruction pillar
+> (`agent/pre-step` constitution prepend), all eight `df-*`
+> commands (host-native, text-returning), and all six
+> `dev_framework_*` agent tools are wired and live-proven; review
+> children dispatch with the read-only `odf-reviewer` preset where
+> the registry exists (TUI-proven), preset-less with prompt-level
+> restriction + guards elsewhere. Children may neither touch
+> `review.md` nor invoke gate tools (deny + redirect, both
+> unit-pinned). Deliberate release still pending.
 
 ## Agent tools
 
@@ -158,12 +156,18 @@ budgeting, `protect_off` scope.
   warn log. Live-proven 2026-11-17 (`dsh-tui`, `proj-ask`,
   `protect_mode: warn`): `.env` edit prompted, approved once, landed.
 - **Child sessions**: the turn-stopping gate skips subagents (they owe
-  no review duty — the parent answers for the shared tree), and
-  children cannot write `review.md` (`child-artifact-deny`; advisory
-  warns). Parentage is read synchronously from the host session
-  header (`origin`/`parentSession`), no lookup needed. Live: the
-  subagent attempted the review write, received the denial text,
-  and reported back while the parent wrote the artifact.
+  no review duty — the parent answers for the shared tree), children
+  cannot write `review.md` (`child-artifact-deny`; advisory warns),
+  and children cannot invoke any `dev_framework_*` tool (deny +
+  redirect; unit-pinned). Parentage is read synchronously from the
+  host session header (`origin`/`parentSession`), no lookup needed.
+  Live: the subagent attempted the review write, received the denial
+  text, and reported back while the parent wrote the artifact.
+- **Reviewer briefs**: each dispatched child is prompted with the
+  project brief first from `.dev-framework/agents/<kind>.md`, then
+  from `.opencode/agents/<kind>.md` (the single edited source shared
+  with OpenCode), then an embedded fallback — so DSH-only projects
+  never need OpenCode's home directory.
 
 ## Troubleshooting
 

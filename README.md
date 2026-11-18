@@ -50,15 +50,20 @@ else is under `npx df init --help`.
 
 ### On DSH
 
+Pre-release (works today) — build once, wire the profile:
+
 ```bash
-dsh plugin --profile <name> add opencode-dev-framework  # after release (bundle auto-wires)
-df install-dsh --profile <name>  # preset seam + verification (also pre-release with --dist)
+npm run build
+df install-dsh --profile <name> --dist /path/to/opencode-dev-framework/dist/adapters/dsh/index.js
 ```
 
-One command writes a managed `odf-gates` block into the profile
-(auto-detects the preset registry; rerun any time). Pre-release local
-build: `npm run build`, then `df install-dsh --profile <name> --dist
-/path/to/opencode-dev-framework/dist/adapters/dsh/index.js`.
+Post-release, one command (bundle auto-wires the base entry):
+
+```bash
+dsh plugin --profile <name> add opencode-dev-framework
+df install-dsh --profile <name>  # preset seam + verification
+```
+
 Full reference: [`docs/user/dsh.md`](docs/user/dsh.md).
 
 Then, per project: run `dsh` from the project root (or export
@@ -118,7 +123,8 @@ semantics, block budgeting, `protect_off` scope, and all eight
 - **Pre-flight gate (optional).** Denies edits until the agent records
   required upfront research.
 - **Custom tools + CLI.** `dev_framework_*` tools for in-agent use;
-  `df init / profile / status / version` from the shell.
+  `df init [--dsh] / profile / status / version / install-dsh --profile <name>`
+  from the shell (children may not invoke gate tools — deny + redirect).
 
 ## Minimal configuration
 
@@ -234,9 +240,11 @@ of modals. Full reference:
 - Formatters and linters are yours — the plugin runs them, it does not
   reimplement them.
 - The DSH adapter (same core, Cordis wiring: `opencode-dev-framework/dsh`)
-  goes further where its host allows — pre-terminal same-turn gate and
-  model-facing lint `block`s — and is live-proven (headless guard/lint/
-  gate sessions plus TUI warn→ask and human-typed `/df-goal` runs):
+  goes further where its host allows — pre-terminal same-turn gate,
+  model-facing lint `block`s, adapter-dispatched reviewer children
+  (read-only preset where the registry exists) — and is live-proven
+  on both harnesses (headless guard/lint/gate/dispatch, TUI warn→ask,
+  human `/df-goal`, TUI review-block dispatch with preset):
   [`docs/user/dsh.md`](docs/user/dsh.md).
 
 Full story: [`docs/user/enforcement.md`](docs/user/enforcement.md).

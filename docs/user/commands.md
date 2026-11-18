@@ -74,3 +74,11 @@ the objective the plan inline (short plans) or `Implement the plan in <path>`
 (long plans). Native completion then requires the gate's PASS on the final
 tree — a stronger enforcement than a bare turn, where only your summary stands
 between the plan and "done".
+
+## On DSH
+
+The same eight names exist as host commands returning text instead of
+modals (`df-status`, `df-runtime`, `df-help`, `df-profile`,
+`df-verify`, `df-init`, `df-update`, `df-goal`). Behavior contracts
+are identical; only the rendering differs. Details:
+[`dsh.md`](dsh.md).

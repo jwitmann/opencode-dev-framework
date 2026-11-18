@@ -1,5 +1,7 @@
 # Troubleshooting
 
+> On DSH: the `odf-gates` entry must only inject services the profile provides — injecting a missing service pends the entire plugin at boot (one stderr line, then silence). `df install-dsh` handles this per profile. Details: [`dsh.md`](dsh.md).
+
 ## Plugin fails to load: `Duplicate plugin ID`
 
 Each project must register the plugin **exactly once**. Plugin arrays
