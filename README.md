@@ -30,7 +30,9 @@ Five minutes from zero to your first gated session.
 opencode plugin add opencode-dev-framework
 ```
 
-**On DSH** — pre-release (works today), build once and wire the profile:
+**On DSH:**
+
+Pre-release (works today), build once and wire the profile:
 
 ```bash
 npm run build
@@ -239,27 +241,36 @@ of modals. Full reference:
 
 ## Limitations (short version)
 
-- The completion gate **steers, it does not veto**: it continues the turn
-  via a synthetic message at the idle boundary — bounded by
-  `gate.max_blocks` (fewer when the failure repeats with no new edits) —
-  and you can always close the session. (On DSH the same verdict runs
-  pre-terminal in the same turn instead of re-prompting.)
-- A genuine pre-stop veto is proposed upstream
-  ([`anomalyco/opencode#54487`](https://github.com/anomalyco/opencode/pull/54487),
-  open) — if it lands, the gate vetoes there instead of continuing.
-- The **pre-flight** gate is the one genuine hard block today.
-- Guardrails add to OpenCode permissions, never replace them.
-- Formatters and linters are yours — the plugin runs them, it does not
-  reimplement them.
-- The DSH adapter (same core, Cordis wiring: `opencode-dev-framework/dsh`)
-  goes further where its host allows — pre-terminal same-turn gate,
-  model-facing lint `block`s, adapter-dispatched reviewer children
-  (read-only preset where the registry exists) — and is live-proven
-  on both harnesses (headless guard/lint/gate/dispatch, TUI warn→ask,
-  human `/df-goal`, TUI review-block dispatch with preset):
-  [`docs/user/dsh.md`](docs/user/dsh.md).
+### Both harnesses
 
-Full story: [`docs/user/enforcement.md`](docs/user/enforcement.md).
+- The completion gate **steers; it is not an unbreakable veto**. Failure
+  continuation is bounded by `gate.max_blocks` (fewer when the failure
+  repeats with no new edits), and you can always close the session.
+- **Pre-flight and guardrail denials are genuine pre-edit hard blocks**;
+  that is stronger than the completion gate's bounded continuation.
+- Formatting and linting stay with your project tooling — the framework
+  does not reimplement them.
+
+### OpenCode
+
+- A failed completion gate admits a synthetic continuation at the idle
+  boundary. A genuine pre-stop veto is proposed upstream
+  ([`anomalyco/opencode#54487`](https://github.com/anomalyco/opencode/pull/54487),
+  open) — if it lands, the gate can veto there instead of continuing.
+- Guardrails add to OpenCode permissions; they never replace them.
+  Formatting is OpenCode core's job, not the plugin's.
+
+### DSH
+
+- A failed completion gate steers pre-terminal in the same turn — no
+  re-prompt round-trip — but it remains bounded steering, not a veto.
+- Human approval prompts, reviewer dispatch, and the read-only reviewer
+  preset depend on services provided by the DSH profile. Missing optional
+  services disable only their enhancement; `df-status` reports the seams.
+  `df install-dsh` handles the profile-dependent preset wiring.
+
+Full story: [`docs/user/enforcement.md`](docs/user/enforcement.md)
+(OpenCode), [`docs/user/dsh.md`](docs/user/dsh.md) (DSH).
 
 ## Troubleshooting
 
