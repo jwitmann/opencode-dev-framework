@@ -6,6 +6,20 @@ Generated from conventional commits (`scripts/changelog.sh`).
 Single source: CI publishes each version's section as the GitHub
 release notes, so this file and the release page never diverge.
 
+## [v1.10.2] - 2026-11-18
+
+### Fixes
+
+- drop stale after-release wording from legacy-upgrade warning ([`3910bde`](https://github.com/jwitmann/opencode-dev-framework/commit/3910bde3be3496bb98d1a5a49c53da61c6811ec3))
+
+### Documentation
+
+- add opencode.json plugin declaration example ([`0d45e65`](https://github.com/jwitmann/opencode-dev-framework/commit/0d45e65d60e7db460a685fa373341aad42f2c85f))
+
+### Other
+
+- add opencode-plugin discovery keyword ([`326bc62`](https://github.com/jwitmann/opencode-dev-framework/commit/326bc623f08f25e702b785c547d3591a2879b0e6))
+
 ## [v1.10.1] - 2026-11-18
 
 ### Documentation
