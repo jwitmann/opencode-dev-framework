@@ -23,6 +23,8 @@ Five minutes from zero to your first gated session.
 
 **On OpenCode:**
 
+Requires OpenCode `v2.x` (tested on `v2.0.26` and `v2.2.0`).
+
 ```bash
 opencode plugin add opencode-dev-framework
 ```
