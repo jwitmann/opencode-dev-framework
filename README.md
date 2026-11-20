@@ -1,6 +1,6 @@
 # opencode-dev-framework
 
-[![Listed on dsh-plugin.org](https://dsh-plugin.org/badges/listed.svg)](https://dsh-plugin.org/plugins/jwitmann/opencode-dev-framework)
+[![Listed on dsh-plugin.org](https://dsh-plugin.org/badges/listed.svg)](https://dsh-plugin.org/plugins/jwitmann/opencode-dev-framework) [![npm version](https://img.shields.io/npm/v/opencode-dev-framework.svg)](https://www.npmjs.com/package/opencode-dev-framework) [![CI](https://github.com/jwitmann/opencode-dev-framework/actions/workflows/ci.yml/badge.svg)](https://github.com/jwitmann/opencode-dev-framework/actions) [![License: MIT](https://img.shields.io/npm/l/opencode-dev-framework.svg)](https://github.com/jwitmann/opencode-dev-framework/blob/main/LICENSE)
 
 AI agents can say they're done without proving it. This plugin replaces
 assertion with evidence: guardrails, per-edit formatting and lint feedback,
