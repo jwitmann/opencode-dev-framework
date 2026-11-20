@@ -1,5 +1,7 @@
 # opencode-dev-framework
 
+[![Listed on dsh-plugin.org](https://dsh-plugin.org/badges/listed.svg)](https://dsh-plugin.org/plugins/jwitmann/opencode-dev-framework)
+
 AI agents can say they're done without proving it. This plugin replaces
 assertion with evidence: guardrails, per-edit formatting and lint feedback,
 a completion gate that runs your real checks, and verified goals that require
