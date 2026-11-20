@@ -2027,6 +2027,15 @@ Two deployment-truth lessons from proving the loop on stock headless:
   "skip the review" order twice and route around a read-only review.md —
   the gates hold against the operator too.)
 
+## v1.10.x release decisions
+
+- **Publish moved back to OIDC trusted publishing.** The granular-token
+  fallback (Phase 10 entry above) served while npm's trusted-publisher UI
+  was unreliable; npm has since accepted OIDC publishes for this package
+  (1.10.x went out via trusted publisher), so the `NPM_TOKEN` secret and
+  `NODE_AUTH_TOKEN` env were removed from `ci.yml`. No token to rotate;
+  the legacy secret was deleted from repo settings.
+
 ## References
 
 - OpenCode plugin docs: <https://opencode.ai/docs/plugins>
