@@ -202,8 +202,8 @@ Use this as the source of truth during implementation. Check items off as they a
     confirms the published tarball contains `dist/`, `bin/`, `rules/`,
     `templates/`, `README.md`, and `LICENSE`.
 - [x] 10.2 Add npm publish workflow secrets instructions to docs.
-  - Covered by `docs/plans/07-publishing.md` (npm token + `NPM_TOKEN`
-    GitHub secret).
+  - Covered by `docs/plans/07-publishing.md` (OIDC trusted publishing, no
+    token secret).
 - [x] 10.3 Bump version to `0.1.0`.
 - [x] 10.4 Tag releases (done by user: `v0.1.0`…`v0.1.7`).
 - [x] 10.5 Push to GitHub. (done by user)

@@ -45,7 +45,7 @@ docs alone.
 
 ## One-time npm setup
 
-Trusted publishing, granular tokens, the `ci.yml` publish job, and the
+Trusted publishing (OIDC, no token), the `ci.yml` publish job, and the
 troubleshooting for `ENEEDAUTH`/provenance live in
 [`../plans/07-publishing.md`](../plans/07-publishing.md) — consulted when
 setting up publishing, not on every release.

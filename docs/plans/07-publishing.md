@@ -1,9 +1,8 @@
 # Publishing Guide
 
-This project publishes to npm from GitHub Actions. It uses `--provenance` for
-Sigstore attestations and a **granular npm access token** stored in the
-`NPM_TOKEN` GitHub secret for authentication (npm's OIDC trusted-publishing UI
-has proven unreliable for this package).
+This project publishes to npm from GitHub Actions. It uses npm OIDC
+**trusted publishing** with `--provenance` Sigstore attestations — no
+long-lived npm token, no `NPM_TOKEN` secret.
 
 ## npm account setup
 
@@ -15,32 +14,14 @@ has proven unreliable for this package).
 
 ## First-time package creation
 
-Trusted publishing requires the package to already exist on npm. If
-`opencode-dev-framework` has never been published, create a one-time granular
-access token and publish manually:
-
-1. On npmjs.com, go to **Settings → Access Tokens → Generate New Token →
-   Granular Access Token**.
-2. Set the token permissions:
-   - **Package:** `opencode-dev-framework`
-   - **Permissions:** `Publish`
-   - **Bypass two-factor authentication:** enabled
-3. Copy the token.
-4. Back in your terminal:
-
-   ```bash
-   npm config set //registry.npmjs.org/:_authToken "$NPM_TOKEN"
-   npm publish --access public
-   npm config delete //registry.npmjs.org/:_authToken
-   ```
-
-   This writes the token to your user `~/.npmrc`, publishes, and then removes
-   it. Do **not** commit an `.npmrc` containing a token.
-
-5. Revoke the token on npmjs.com once the package exists.
-
-After the package exists, configure the GitHub Actions trusted publisher and
-use OIDC for all future publishes.
+Trusted publishing requires the package to already exist on npm, which it
+does (`opencode-dev-framework` is live since `0.1.x`). No bootstrap publish
+is needed. If you ever need to recreate the package from scratch, publish
+once manually (`npm publish --access public` from your workstation), revoke
+any one-time credential, then configure the trusted publisher below and use
+OIDC for all future publishes. The one-time manual publish uses your own
+npm login (`npm login`), not a stored token — do **not** commit an `.npmrc`
+containing a token.
 
 ## Configure trusted publishing on npmjs.com
 
@@ -90,24 +71,24 @@ publish:
 
     - uses: actions/setup-node@v5
       with:
-        node-version: 22
+        node-version: 26
         registry-url: https://registry.npmjs.org
 
     - run: npm ci
     - run: npm run build
+    # No NODE_AUTH_TOKEN — npm exchanges the GitHub OIDC token automatically.
     - run: npm publish --provenance --access public
 ```
 
 Requirements:
 
-- `permissions: id-token: write` is mandatory; without it provenance signing
-  fails.
+- `permissions: id-token: write` is mandatory; without it the OIDC exchange
+  and provenance signing fail.
 - `registry-url: https://registry.npmjs.org` tells `setup-node` to configure
   the registry for publishing.
-- `NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}` authenticates the publish.
-  Create a granular access token on npmjs.com (see below).
-- `--provenance` adds a Sigstore attestation via OIDC; it is independent of
-  the publish token.
+- `--provenance` adds a Sigstore attestation via OIDC.
+- No token secret: the publish step must **not** set `NODE_AUTH_TOKEN` —
+  its presence would override the OIDC exchange.
 
 ## Local development and testing
 
@@ -138,26 +119,13 @@ Caveats:
   rm -rf ~/.cache/opencode/packages/opencode-dev-framework*
   ```
 
-## npm access token setup
+## No token to rotate
 
-Because npm's OIDC trusted-publishing UI is unreliable, the workflow uses a
-granular access token for authentication.
-
-1. Go to **<https://www.npmjs.com/settings/jwitmann/tokens>** (Access Tokens).
-2. Create a **Granular Access Token**:
-   - **Token name:** `github-actions-opencode-dev-framework`
-   - **Packages and scopes:** choose **Only select packages and scopes**, then
-     pick `opencode-dev-framework`
-   - **Permissions:** **Read and write**
-   - **Bypass 2FA:** **Enabled** (required for automated publishing)
-   - **Expiration:** 90 days (or your preferred duration)
-3. Copy the token.
-4. In your GitHub repo, go to **Settings → Secrets and variables → Actions**.
-5. Create or update a repository secret named `NPM_TOKEN` with the copied token.
-
-Note: npm is deprecating 2FA-bypass granular access tokens for direct
-publishing around January 2027. Before then, migrate back to OIDC trusted
-publishing once npm's setup flow is stable.
+There is no `NPM_TOKEN` secret — trusted publishing mints a short-lived
+OIDC token per run. If a legacy `NPM_TOKEN` secret still exists in the repo
+settings, delete it (**Settings → Secrets and variables → Actions**); the
+publish job no longer reads it, and leaving it just widens the blast radius
+if it ever leaks.
 
 ## Versioning and release
 

@@ -49,9 +49,8 @@ jobs:
 
       - run: npm ci
       - run: npm run build
+      # Auth is OIDC trusted publishing (id-token: write above) — no token needed.
       - run: npm publish --provenance --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
   github-release:
     name: GitHub release notes

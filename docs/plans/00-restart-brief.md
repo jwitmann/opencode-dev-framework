@@ -63,7 +63,7 @@ Phase 32; `v1.5.0` on npm). There is no next unchecked item. Instead:
 - `npm run lint` passes.
 - `npm run build` produces `dist/`.
 - GitHub Actions CI passes on the PR.
-- npm token `NPM_TOKEN` is configured as a GitHub Actions secret.
+- npm OIDC trusted publishing is configured for the repo (no token secret).
 
 ## Contacts / references
 
