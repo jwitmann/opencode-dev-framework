@@ -33,6 +33,10 @@ beats theoretical purity.
    decision — call it out and justify it; never slip one in.
 5. **When in doubt, copy the neighbor.** Find the closest existing example of the thing
    you're building and follow its structure.
+6. **Check shared contracts before extending.** Before changing an existing helper
+   or shared behavior, inspect its contract and affected callers. Do not impose
+   one caller's assumptions on the others merely to enable reuse. If the existing
+   abstraction does not genuinely fit, raise the mismatch rather than forcing it.
 
 ## How to verify
 
