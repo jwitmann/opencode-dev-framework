@@ -6,6 +6,27 @@ Generated from conventional commits (`scripts/changelog.sh`).
 Single source: CI publishes each version's section as the GitHub
 release notes, so this file and the release page never diverge.
 
+## [v1.11.0] - 2026-11-23
+
+### Documentation
+
+- restore native OpenCode plugin statement with compat floor ([`daee7ca`](https://github.com/jwitmann/opencode-dev-framework/commit/daee7ca65e27e783295c7bfa663b7ff8d31ff051))
+- record DSH community-docs observations and parked subagent enhancements ([`1c0747c`](https://github.com/jwitmann/opencode-dev-framework/commit/1c0747ccff774f22d1f3ee9dae7eabfb78ee2518))
+- host-upgrade skew pends odf-gates, downgrade-or-redetect ([`067801b`](https://github.com/jwitmann/opencode-dev-framework/commit/067801b38a77a6ef3dc7a21e3c5e3623bc1ecd0b))
+- surface OpenCode v2.x compat floor in install step ([`27cc6d9`](https://github.com/jwitmann/opencode-dev-framework/commit/27cc6d96423261da6f24388bfcb463af97589abe))
+- record OIDC trusted-publishing cutover in notes log ([`811189d`](https://github.com/jwitmann/opencode-dev-framework/commit/811189d7b9f5390be6a0da60e044a264632a9e4a))
+- add dsh-plugin.org verified-listing badge to README ([`58f9eed`](https://github.com/jwitmann/opencode-dev-framework/commit/58f9eed9396d25071002feed3948cce7a0ceb526))
+- add npm version, CI, and license badges to README row ([`9983578`](https://github.com/jwitmann/opencode-dev-framework/commit/99835785cc4c2aeb883e0be16a9b002a8bf3636d))
+- use live-verified compat phrasing the opencode.im checker recognizes ([`98eada0`](https://github.com/jwitmann/opencode-dev-framework/commit/98eada06cd5dcf9194ff36142c18b1fee333b8a9))
+- add OpenCode V2 badge to README row, matching VCC README ([`f124421`](https://github.com/jwitmann/opencode-dev-framework/commit/f124421f088fc06a50b871be4bd122afa158fe20))
+- correct CLI help and release status ([`ca5fda2`](https://github.com/jwitmann/opencode-dev-framework/commit/ca5fda25ecb8094f2e86b5c7f91324d573fafd49))
+
+### Other
+
+- restore native OpenCode plugin statement with compat floor" ([`89bde5f`](https://github.com/jwitmann/opencode-dev-framework/commit/89bde5f6c2faad75aeab9fd93182dfa3d2438794))
+- publish via OIDC trusted publishing, drop NPM_TOKEN ([`6ab4290`](https://github.com/jwitmann/opencode-dev-framework/commit/6ab42902bb060c71f11045e3b7548d180596563b))
+- update reuse guidance and brain ignores ([`578c589`](https://github.com/jwitmann/opencode-dev-framework/commit/578c5892767fd2261a584facd5874efda8dc4fba))
+
 ## [v1.10.2] - 2026-11-18
 
 ### Fixes
