@@ -11,7 +11,7 @@
 > the registry exists (TUI-proven), preset-less with prompt-level
 > restriction + guards elsewhere. Children may neither touch
 > `review.md` nor invoke gate tools (deny + redirect, both
-> unit-pinned). Deliberate release still pending.
+> unit-pinned).
 
 ## Agent tools
 
