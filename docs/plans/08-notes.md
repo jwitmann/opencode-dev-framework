@@ -2036,6 +2036,20 @@ Two deployment-truth lessons from proving the loop on stock headless:
   `NODE_AUTH_TOKEN` env were removed from `ci.yml`. No token to rotate;
   the legacy secret was deleted from repo settings.
 
+## Secret-output redaction evaluated and rejected (2026-11-24)
+
+- **Not our scope: no scrubbing of tool outputs or model context, ever.**
+  Compared against `opencode-guardian`'s secret pipeline (pre/post-execution
+  redaction + context gatekeeper) during the 2026-11-24 directory review and
+  rejected on three grounds: it corrupts evidence (the agent reasons from
+  silently modified text, the exact sin the gate exists to kill); it fights
+  legitimate use (agents that genuinely need a credential route around the
+  scrubber — a bypass factory, against the 2026-11-12 no-bypass rule); and
+  it advertises a guarantee string-matching cannot keep. Privacy-guardian
+  tooling is a different toolset. Standing principle, unchanged: reveal
+  (audit) over hide (sanitize). Guarding secret *writes* (protected paths,
+  dangerous commands) stays in scope; rewriting what the model *sees* never is.
+
 ## References
 
 - OpenCode plugin docs: <https://opencode.ai/docs/plugins>
