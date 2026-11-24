@@ -96,7 +96,7 @@ Point OpenCode at the local repository root in the project's `opencode.json`:
 
 ```json
 {
-  "plugin": ["/home/jerome/opencode-dev-framework"]
+  "plugins": ["/home/jerome/opencode-dev-framework"]
 }
 ```
 
@@ -182,7 +182,7 @@ Release steps:
    ```json
    {
      "$schema": "https://opencode.ai/config.json",
-     "plugin": ["opencode-dev-framework"]
+     "plugins": ["opencode-dev-framework"]
    }
    ```
 

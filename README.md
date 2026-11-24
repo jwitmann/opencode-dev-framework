@@ -3,7 +3,7 @@
 [![Listed on dsh-plugin.org](https://dsh-plugin.org/badges/listed.svg)](https://dsh-plugin.org/plugins/jwitmann/opencode-dev-framework) [![OpenCode V2](https://img.shields.io/badge/OpenCode-V2-111827)](https://opencode.ai/docs/plugins/) [![npm version](https://img.shields.io/npm/v/opencode-dev-framework.svg)](https://www.npmjs.com/package/opencode-dev-framework) [![CI](https://github.com/jwitmann/opencode-dev-framework/actions/workflows/ci.yml/badge.svg)](https://github.com/jwitmann/opencode-dev-framework/actions) [![License: MIT](https://img.shields.io/npm/l/opencode-dev-framework.svg)](https://github.com/jwitmann/opencode-dev-framework/blob/main/LICENSE)
 
 AI agents can say they're done without proving it. This plugin replaces
-assertion with evidence: guardrails, per-edit formatting and lint feedback,
+assertion with evidence: guardrails, per-edit lint feedback,
 a completion gate that runs your real checks, and verified goals that require
 a tool-result PASS on the final tree. Exit codes don't negotiate.
 
@@ -46,7 +46,7 @@ Or declare it in `opencode.json`:
 ```json
 {
   "$schema": "https://opencode.ai/config.json",
-  "plugin": ["opencode-dev-framework"]
+  "plugins": ["opencode-dev-framework"]
 }
 ```
 
@@ -79,14 +79,14 @@ scripted runs (add `--dsh` on DSH so the host-visible skill mirror is
 scaffolded too):
 
 ```bash
-npx df init [--dsh]
+npx opencode-dev-framework init [--dsh]
 ```
 
 Conflicts need `--overwrite-existing` or `--skip-existing` — everything
-else is under `npx df --help`.
+else is under `npx opencode-dev-framework --help`.
 
 On DSH, run `dsh` from the project root (or export `ODF_WORKDIR`), and
-accept template drift via `df-update` if the session reports any.
+accept template drift via `/df-update` if the session reports any.
 
 Then ask the agent for a small edit. You will see the plugin working: the
 edit is checked against guardrails before it lands, your linter runs on the
@@ -153,7 +153,7 @@ semantics, block budgeting, `protect_off` scope, and all eight
   the result is logged against the landed edit; on DSH a finding fails
   the tool call so the agent retries clean in the same turn.
 - **Completion gate.** At the would-go-idle boundary, runs typecheck, tests,
-  acceptance checks, and (optionally) lint on changed files — plus a required
+  acceptance checks, and (in `strict`, lint on changed files) — plus a required
   substantive peer-review artifact in `standard`/`strict` (length floors, no
   template checkboxes, written after the latest session edit). On OpenCode, failures steer the session back via a
   synthetic continuation, bounded by `gate.max_blocks` (fewer when
