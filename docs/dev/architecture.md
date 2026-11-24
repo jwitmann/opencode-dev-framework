@@ -56,17 +56,18 @@ This page is an orientation map, not a spec. Authority lives in:
 - [`../plans/12-idle-hook-cutover.md`](../plans/12-idle-hook-cutover.md) —
   idle-hook cutover and the event-net fallback.
 
-## Deliberate non-goals
+## Deferred options
 
-- **No per-reviewer model pinning (`agentOptions` / `model:`).**
-  Considered and rejected. Reviewer children inherit the parent session's
-  model on both hosts (DSH `agentOptions` left unset; shipped OpenCode
-  agents carry no `model:` field). Pinning cheap models on reviewers would
-  save cents per task, but a weak reviewer fails silently — a laundered
-  PASS is indistinguishable from a real one downstream, which is the one
-  failure this plugin must never produce. And the safety case can't be
-  built at reasonable cost: scoring reviewer quality needs seeded-defect
-  cases plus human-hours for the rubric and spot-checks, and any
-  model-as-judge layer reintroduces the subjectivity the benchmark is
-  supposed to resolve. Revisit only if reviewer token spend becomes a real
-  line item *and* a trustworthy evaluation exists.
+- **Per-reviewer model pinning (`agentOptions` / `model:`).** Deferred
+  until someone asks for it — e.g. an advanced option for users who want
+  the gate to always run on model X. Until then the default stands:
+  reviewer children inherit the parent session's model on both hosts
+  (DSH `agentOptions` left unset; shipped OpenCode agents carry no
+  `model:` field). Notes for the day it's requested: pinning cheap models
+  on reviewers saves cents per task but risks silent-PASS laundering (a
+  weak PASS is indistinguishable from a real one downstream), so it must
+  ship as explicit opt-in with a loud default-inherit rule, never a quiet
+  default. And the safety case is hard to build at reasonable cost —
+  scoring reviewer quality needs seeded-defect cases plus human rubric and
+  spot-check labor, and any model-as-judge layer reintroduces the
+  subjectivity the measurement is supposed to resolve.
