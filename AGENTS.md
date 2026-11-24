@@ -71,6 +71,10 @@ Before finishing any change:
 2. Run `npm run lint:md` on any Markdown files you changed.
 3. Re-run `npm run check` and `npm run lint:md` to confirm everything is clean.
 4. Do not suppress lint warnings without a comment explaining why.
+5. Read exit codes from the command itself, never downstream of a pipe
+   (`cmd 2>&1 | tail; echo $?` measures `tail`, which is always 0 —
+   this exact mistake once reported a failing check as green).
+   Redirect to a file or use `set -o pipefail` when truncating output.
 
 If you add a new file, make sure it is covered by the `biome.json` `files.include` glob.
 
