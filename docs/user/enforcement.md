@@ -69,6 +69,22 @@ replays a cached pass. The snapshot is never re-baselined, including
 across profile switches, so a downgrade reads as the weakening it is.
 Command-text edits are deliberately excluded from the diff.
 
+## Secrets
+
+Guardrails block secret *writes* — `.env`, key files, and your own globs
+via protected paths — before the edit lands. They deliberately do not
+scrub secrets out of tool outputs or model context: that would rewrite
+the evidence the gate judges (see
+[Principles](../../README.md#principles)). Secret handling is a dedicated
+toolset, not a guardrail feature.
+
+Recommended: run [gitleaks](https://github.com/gitleaks/gitleaks) at the
+commit boundary. With the plugin's pre-commit delegation enabled
+(`precommit: auto`), the gitleaks pre-commit hook runs on changed files
+and secrets never enter the repo — while the model keeps reasoning from
+verbatim output and nothing in the loop needs a bypass. See the gitleaks
+README for the hook setup.
+
 ## Worked sessions
 
 Three real runs against disposable fixtures show the loop end to end:
