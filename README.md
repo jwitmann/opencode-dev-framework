@@ -53,6 +53,8 @@ Or declare it in `opencode.json`:
 
 **On DSH:**
 
+Requires DSH `0.2.2-rc.3` or newer (live-verified on `0.2.2-rc.5`).
+
 ```bash
 dsh plugin --profile <name> add opencode-dev-framework
 df install-dsh --profile <name>  # preset seam + verification
