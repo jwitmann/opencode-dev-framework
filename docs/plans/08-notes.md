@@ -19,16 +19,20 @@ live probe wins — never "align" adapter code to these pages.
   valid. Mirror root `.dsh/skills` is rank 100 (top), beating
   `.agents/skills` (200) and user roots — placement is optimal.
 - Parked (need per-provider capability checks, none urgent), ranked
-  2026-11-24: `toolFilter` first (host-native read-only reviewer
-  enforcement — the principle made mechanical instead of
-  prose-requested; today: prompt-level restriction + per-exec guards);
-  `outputSchema` second (structured reviewer findings instead of
-  notice-text parsing); `agentOptions` bottom and only with a loud
+  2026-11-24, corrected same day against the host source
+  (`SubagentStartRequest` has no `toolFilter` field — it lives only on
+  the persisted descriptor/resume path, so a plugin cannot pass it at
+  activation): `outputSchema` first (structured reviewer findings
+  instead of notice-text parsing; spawn provider supports it, but our
+  seam needs a capability probe plus a regex fallback);
+  `agentOptions` bottom and only with a loud
   default-inherit rule (cheap models on judgment checks launder weak
   verification as PASS — mechanical checks may pin cheap,
   correctness/security stay strong); `depthLimit` likely never — a
   plugin-level no-grandchildren rule fights the host's own delegation
-  machinery (budgets, not prohibitions).
+  machinery (budgets, not prohibitions). `toolFilter` as specified is
+  host-blocked; its intent is already covered by the read-only reviewer
+  preset (plan 26.3).
 - Already honored, confirmed by the read: one-shot `spawn` (not
   `fork` — fork would seed the child with the parent's full
   history), `label` set per review kind, `signal` wired from
