@@ -18,9 +18,7 @@ function frontmatter(body: string): string {
 }
 
 function editDeny(fm: string): boolean {
-  return (
-    fm.includes("action: edit") && fm.includes('resource: "*"') && fm.includes("effect: deny")
-  );
+  return fm.includes("action: edit") && fm.includes('resource: "*"') && fm.includes("effect: deny");
 }
 
 function shellDeny(fm: string): boolean {
