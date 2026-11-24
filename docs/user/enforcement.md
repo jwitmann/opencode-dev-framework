@@ -47,8 +47,16 @@ flowchart TD
     OK -. "in a goal: PASS reported\nas evidence into /goal" .-> N
 ```
 
-npmjs.com does not render mermaid, so the README carries this same flow
-as a plain-text diagram — update both together.
+npmjs.com does not render mermaid. The README embeds the rendered
+`docs/assets/flow.svg` (absolute raw URL, so npm shows it too) plus the same
+flow as a plain-text diagram for text-mode readers. Regenerate the SVG from
+the mermaid block above after any change:
+
+```bash
+npx @mermaid-js/mermaid-cli -i <(sed -n '/^```mermaid$/,/^```$/p' docs/user/enforcement.md | sed '1d;$d') -o docs/assets/flow.svg
+```
+
+Update mermaid, SVG, and README text together.
 
 ## Mid-session weakening
 

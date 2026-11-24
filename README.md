@@ -192,6 +192,10 @@ synthetic continuation); on DSH the same verdict bites earlier — the
 pre-terminal completion block, same-turn lint `block`s, and dispatched
 reviewers above all run inside the turn instead of round-tripping through it:
 
+![Enforcement flow: implement, guardrails, lint, gate, wrapped by verified goals](https://raw.githubusercontent.com/jwitmann/opencode-dev-framework/HEAD/docs/assets/flow.svg)
+
+Text version of the same diagram (identical content, for text-mode readers):
+
 ```text
                         user prompt
                   (plain or /df-goal plan)
@@ -230,8 +234,10 @@ wrappers (dotted lines in the diagram version):
   native /goal ── wraps the loop, drives turns ──> agent implements
 ```
 
-The diagram version of this flow (rendered on GitHub) lives in
-[`docs/user/enforcement.md`](docs/user/enforcement.md#flow) — update both
+Flow source lives in [`docs/user/enforcement.md`](docs/user/enforcement.md#flow)
+as mermaid; `docs/assets/flow.svg` is rendered from it
+(`npx @mermaid-js/mermaid-cli -i <mermaid> -o docs/assets/flow.svg`) and
+embedded above by absolute URL so it renders on npm too — update all three
 together.
 
 ## Profiles
