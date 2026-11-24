@@ -3,7 +3,8 @@
 [![Listed on dsh-plugin.org](https://dsh-plugin.org/badges/listed.svg)](https://dsh-plugin.org/plugins/jwitmann/opencode-dev-framework) [![OpenCode V2](https://img.shields.io/badge/OpenCode-V2-111827)](https://opencode.ai/docs/plugins/) [![npm version](https://img.shields.io/npm/v/opencode-dev-framework.svg)](https://www.npmjs.com/package/opencode-dev-framework) [![CI](https://github.com/jwitmann/opencode-dev-framework/actions/workflows/ci.yml/badge.svg)](https://github.com/jwitmann/opencode-dev-framework/actions) [![License: MIT](https://img.shields.io/npm/l/opencode-dev-framework.svg)](https://github.com/jwitmann/opencode-dev-framework/blob/main/LICENSE)
 
 AI agents can say they're done without proving it. This plugin replaces
-assertion with evidence: guardrails, per-edit lint feedback,
+assertion with evidence: guardrails, per-edit lint feedback (and formatting
+on DSH, where the host provides none),
 a completion gate that runs your real checks, and verified goals that require
 a tool-result PASS on the final tree. Exit codes don't negotiate.
 
@@ -285,8 +286,9 @@ of modals. Full reference:
   from the bounded completion mechanisms below.
 - A cached pass never survives a restart — after a restart the gate
   always re-verifies the final tree from scratch.
-- Formatting and linting stay with your project tooling — the framework
-  does not reimplement them.
+- Formatting and linting use your project tooling — the framework never
+  reimplements them. On OpenCode the host runs the formatter; on DSH the
+  adapter runs your configured formatter command before linting.
 
 ### OpenCode
 
