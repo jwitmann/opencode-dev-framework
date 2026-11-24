@@ -6,6 +6,20 @@ Generated from conventional commits (`scripts/changelog.sh`).
 Single source: CI publishes each version's section as the GitHub
 release notes, so this file and the release page never diverge.
 
+## [v1.11.1] - 2026-11-24
+
+### Documentation
+
+- record secret-output redaction as evaluated and rejected non-goal ([`0fb6786`](https://github.com/jwitmann/opencode-dev-framework/commit/0fb6786e1979227397c60033fa47f4fa3d0166ab))
+- highlight enforcement principles in README ([`9c0d2ce`](https://github.com/jwitmann/opencode-dev-framework/commit/9c0d2ceff073ab998a261dda14d2d2a916766884))
+- embed rendered flow SVG so npm shows the diagram ([`3dcd813`](https://github.com/jwitmann/opencode-dev-framework/commit/3dcd813cac7073e14c91d6cdc0984471182005ef))
+- add Secrets section recommending gitleaks at the commit boundary ([`ab76191`](https://github.com/jwitmann/opencode-dev-framework/commit/ab76191ef08ada542c7194502a7e36db12ad0f06))
+- name runtime-redaction plugins in Secrets section, without endorsement ([`6a32297`](https://github.com/jwitmann/opencode-dev-framework/commit/6a322973bc8967d8902fbbfcb7610b4439dff33d))
+- point README guardrails bullet at Secrets section ([`df89287`](https://github.com/jwitmann/opencode-dev-framework/commit/df8928724f268e56479815f95b3da08c3698376b))
+- fix stale plugin key, npx package name, and lint wording in install docs ([`1d98ad6`](https://github.com/jwitmann/opencode-dev-framework/commit/1d98ad6b17d7a2ec89845644f778385290789d91))
+- correct intro to host-split formatting truth, clarify who runs formatter ([`eb08b50`](https://github.com/jwitmann/opencode-dev-framework/commit/eb08b503c4831e6665f005481b5ad053a08c3291))
+- add DSH compat floor to install step ([`c3cad0f`](https://github.com/jwitmann/opencode-dev-framework/commit/c3cad0fc627062953bc25f1f4586459e86b2130b))
+
 ## [v1.11.0] - 2026-11-23
 
 ### Documentation
