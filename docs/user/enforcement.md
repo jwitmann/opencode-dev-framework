@@ -85,6 +85,11 @@ and secrets never enter the repo — while the model keeps reasoning from
 verbatim output and nothing in the loop needs a bypass. See the gitleaks
 README for the hook setup.
 
+For the model-visible layer, dedicated plugins exist under names like
+`opencode-secrets-protect`, `opencode-varlock`, and
+`opencode-secret-redactor` — mentioned, not endorsed: runtime redaction
+is the approach above we deliberately do not take.
+
 ## Worked sessions
 
 Three real runs against disposable fixtures show the loop end to end:
