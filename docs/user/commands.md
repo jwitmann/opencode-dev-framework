@@ -48,6 +48,17 @@ result channel, so a "nothing to do" turn would be pure waste. At session
 startup the plugin mentions drift (if any) with a one-line
 `dev_framework_update` pointer — current and empty trees stay silent.
 
+`/df-ignore` is the same shape (server-side command plus the
+`dev_framework_ignore` custom tool for in-agent use): it manages the
+completion-gate ignore hotlist. Bare patterns (`/df-ignore scratch/**
+*.local`) skip matching files for this session only — the gate treats them
+as unchanged (no steps, no review duty, no fingerprint). Flags: `-s` stores
+to `gate.ignore` in the config file (permanent, shape-aware: flat files grow
+the `gate_ignore:` line, native files the `gate: ignore:` sequence),
+`-l` lists session plus stored patterns, `-r` drops session patterns
+(stored config is never modified by removals — un-storing needs a config
+edit). Session-scoped by default; permanence is always explicit.
+
 `/df-goal <objective>` is a **server-side command** instead (registered by the
 server plugin, not the TUI): it starts a **verified** native goal. The plugin
 appends a short verification contract to your objective verbatim and delegates
@@ -77,8 +88,8 @@ between the plan and "done".
 
 ## On DSH
 
-The same eight names exist as host commands returning text instead of
+The same nine names exist as host commands returning text instead of
 modals (`df-status`, `df-runtime`, `df-help`, `df-profile`,
-`df-verify`, `df-init`, `df-update`, `df-goal`). Behavior contracts
+`df-verify`, `df-init`, `df-update`, `df-goal`, `df-ignore`). Behavior contracts
 are identical; only the rendering differs. Details:
 [`dsh.md`](dsh.md).

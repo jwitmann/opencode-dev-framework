@@ -10,10 +10,12 @@ import {
   artifactStateFirst,
   createPassCache,
   evaluateCompletion,
+  filterGateIgnored,
   gitChangedFiles,
   inspectCompletion,
   LEGACY_PREFLIGHT_ARTIFACT_REL,
   LEGACY_REVIEW_ARTIFACT_REL,
+  matchGateIgnore,
   mergeChangedFiles,
   PREFLIGHT_ARTIFACT_REL,
   preflightBlockReason,
@@ -708,6 +710,118 @@ describe("inspectCompletion (side-effect-free inspection)", () => {
     // the point is the git file got the gate running at all.
     expect(inspection.reviewMissing).toBe(true);
     expect(inspection.ok).toBe(false);
+  });
+});
+
+describe("gate-ignore hotlist (matchGateIgnore / filterGateIgnored)", () => {
+  let dir: string;
+
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), "df-ignore-"));
+  });
+
+  afterEach(async () => {
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  function makeInspection(
+    raw: Config,
+    opts: {
+      resultFor?: (command: string[]) => Partial<CommandResult>;
+      trackerFiles?: string[];
+      sessionIgnores?: string[];
+    } = {},
+  ) {
+    const { run } = stubRun(opts.resultFor ?? GITLESS_PASS);
+    const config = resolve(raw);
+    return { run, config, directory: dir, sessionIgnores: opts.sessionIgnores ?? [] };
+  }
+
+  it("matches config patterns against nested relative paths", () => {
+    const config = resolve({ profile: "standard", gate: { ignore: ["scratch/**"] } });
+    expect(matchGateIgnore(config, [], "scratch/notes.md", "/project")).toBe("scratch/**");
+  });
+
+  it("relativizes absolute paths against the directory", () => {
+    const config = resolve({ profile: "standard", gate: { ignore: ["dist/**"] } });
+    expect(matchGateIgnore(config, [], "/project/dist/out.js", "/project")).toBe("dist/**");
+  });
+
+  it("matches slash-less patterns against basenames at any depth", () => {
+    const config = resolve({ profile: "standard", gate: { ignore: ["*.local"] } });
+    expect(matchGateIgnore(config, [], "config/app.local", "/project")).toBe("*.local");
+  });
+
+  it("matches session additions independently of config", () => {
+    const config = resolve({ profile: "standard" });
+    expect(matchGateIgnore(config, ["wip/**"], "wip/draft.md", "/project")).toBe("wip/**");
+    expect(matchGateIgnore(config, [], "wip/draft.md", "/project")).toBeUndefined();
+  });
+
+  it("returns undefined when nothing matches", () => {
+    const config = resolve({ profile: "standard", gate: { ignore: ["dist/**"] } });
+    expect(matchGateIgnore(config, [], "src/main.ts", "/project")).toBeUndefined();
+  });
+
+  it("filterGateIgnored drops both config and session patterns", () => {
+    const config = resolve({ profile: "standard", gate: { ignore: ["scratch/**"] } });
+    expect(
+      filterGateIgnored(config, ["wip/**"], ["src/a.ts", "scratch/n.md", "wip/d.md"], "/project"),
+    ).toEqual(["src/a.ts"]);
+  });
+
+  it("inspectCompletion drops a session-ignored file from the whole gate", async () => {
+    const { run, config, directory, sessionIgnores } = makeInspection(
+      { profile: "standard", commands: { typecheck: "true", test: "true" } },
+      { trackerFiles: ["scratch/notes.md"], sessionIgnores: ["scratch/**"] },
+    );
+    const inspection = await inspectCompletion({
+      run,
+      config,
+      directory,
+      trackerFiles: ["scratch/notes.md"],
+      sessionIgnores,
+    });
+    expect(inspection.changedFiles).toEqual([]);
+    expect(inspection.ok).toBe(true);
+    expect(inspection.summary).toContain("no changed files");
+  });
+
+  it("inspectCompletion drops a config-ignored file from the whole gate", async () => {
+    const { run, config, directory } = makeInspection(
+      {
+        profile: "standard",
+        commands: { typecheck: "true", test: "true" },
+        gate: { ignore: ["scratch/**"] },
+      },
+      { trackerFiles: ["scratch/notes.md"] },
+    );
+    const inspection = await inspectCompletion({
+      run,
+      config,
+      directory,
+      trackerFiles: ["scratch/notes.md"],
+    });
+    expect(inspection.changedFiles).toEqual([]);
+    expect(inspection.ok).toBe(true);
+  });
+
+  it("review coverage names only the uncovered file, never the ignored one", async () => {
+    const { run, config, directory, sessionIgnores } = makeInspection(
+      { profile: "standard", commands: { typecheck: "true", test: "true" } },
+      { trackerFiles: ["src/a.ts", "scratch/notes.md"], sessionIgnores: ["scratch/**"] },
+    );
+    const inspection = await inspectCompletion({
+      run,
+      config,
+      directory,
+      trackerFiles: ["src/a.ts", "scratch/notes.md"],
+      sessionIgnores,
+    });
+    expect(inspection.changedFiles).toEqual(["src/a.ts"]);
+    expect(inspection.reviewMissing).toBe(true);
+    expect(inspection.summary).toContain("src/a.ts");
+    expect(inspection.summary).not.toContain("scratch/notes.md");
   });
 });
 

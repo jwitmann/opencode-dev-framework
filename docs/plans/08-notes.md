@@ -49,6 +49,13 @@ live probe wins — never "align" adapter code to these pages.
   `fork` — fork would seed the child with the parent's full
   history), `label` set per review kind, `signal` wired from
   turn-stopping into the child call. No gap found.
+- Landed 2026-11-24: the gate-ignore hotlist (`gate.ignore` config +
+  `/df-ignore` session additions, `dev_framework_ignore` tool on both
+  hosts, `df-ignore` slash command on DSH). Bare patterns skip files for
+  this session at the `inspectCompletion` merge point (steps, review
+  coverage, pass-cache fingerprint all read the filtered list); `-s`
+  persists shape-aware to the config file. Worst case it sits unused and
+  nothing changes — the filter fast-paths on empty lists.
 
 ## Deferred: restore OpenCode `experimental.stopping` (2026-11-18)
 

@@ -2,6 +2,7 @@ import { promises as fs } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
+import { type Document, isMap, isScalar, isSeq, parseDocument } from "yaml";
 import { splitCommand } from "./command-utils.js";
 import {
   checkConfigEnforceable,
@@ -697,4 +698,144 @@ export async function setProfileInFile(configPath: string, profile: Profile): Pr
     content = content.trim() === "" ? `${line}\n` : `${content.trimEnd()}\n${line}\n`;
   }
   await fs.writeFile(configPath, content, "utf8");
+}
+
+/** Read a raw YAML/JSON value as a pattern list: strings split on
+ * whitespace (flat `gate_ignore: "a b"` form), sequences as-is, anything
+ * else as empty. YAML nodes arrive as `Seq`, not plain arrays — both are
+ * handled. */
+function toPatternList(value: unknown): string[] {
+  if (typeof value === "string") {
+    return value.split(/\s+/).filter((p) => p !== "");
+  }
+  const items = isSeq(value) ? value.items : Array.isArray(value) ? value : null;
+  if (items === null) {
+    return [];
+  }
+  return items
+    .map((item) => (isScalar(item) ? String(item.value) : String(item)))
+    .filter((p) => p !== "");
+}
+
+/**
+ * Persist gate-ignore patterns to a config file, shape-aware: flat files
+ * grow the `gate_ignore:` line, native files grow the `gate: ignore:`
+ * sequence, scalar-only files (e.g. just `profile:`) gain a flat line,
+ * and JSON files (native-only by design) grow `gate.ignore`. A missing
+ * file is created flat. `parseDocument` round-trips the YAML so user
+ * comments and formatting survive outside the edited node. Returns the
+ * patterns newly stored (already-present ones are skipped, never
+ * duplicated). Throws a readable error when the file exists but the
+ * `gate:` value is not a mapping.
+ */
+export async function storeGateIgnores(configPath: string, patterns: string[]): Promise<string[]> {
+  const fresh = patterns.map((p) => p.trim()).filter((p) => p !== "");
+  if (fresh.length === 0) {
+    return [];
+  }
+  if (configPath.endsWith(".json")) {
+    return storeGateIgnoresJson(configPath, fresh);
+  }
+  let text = "";
+  try {
+    text = await fs.readFile(configPath, "utf8");
+  } catch {
+    // File does not exist yet; it will be created below.
+  }
+  const doc = parseDocument(text);
+  if (doc.contents !== null && !isMap(doc.contents)) {
+    throw new Error(`Cannot store gate ignores in ${configPath}: root is not a mapping.`);
+  }
+  const added: string[] = [];
+  const union = (existing: string[]): string[] => {
+    for (const p of fresh) {
+      if (!existing.includes(p)) {
+        existing.push(p);
+        added.push(p);
+      }
+    }
+    return existing;
+  };
+  // Same sniffing as `selectConfigRecord`: native-only keys (with
+  // non-null values — the loader filters nulls, so `doc.has` alone would
+  // over-count commented-out debris) or object-form `rules:` mean native
+  // shape, so a new key must not introduce a flat line (which the loader
+  // would reject as mixed-shape).
+  const hasNativeKeys =
+    doc.contents !== null &&
+    (["commands", "gate", "on_edit"].some((key) => hasLiveKey(doc, key)) ||
+      isMap(doc.get("rules", true)));
+  if (!hasNativeKeys) {
+    // Flat shape: values are space-separated on one line, so patterns
+    // with spaces cannot round-trip — fail loudly instead of silently
+    // storing two bogus patterns.
+    const spaced = fresh.filter((p) => /\s/.test(p));
+    if (spaced.length > 0) {
+      throw new Error(
+        `Cannot store ${spaced.join(", ")} in ${configPath}: flat-shape ignores are ` +
+          `space-separated. Convert the config to native shape (a gate: ignore: list) first.`,
+      );
+    }
+    if (doc.has("gate_ignore")) {
+      doc.set("gate_ignore", union(toPatternList(doc.get("gate_ignore"))).join(" "));
+    } else {
+      doc.set("gate_ignore", fresh.join(" "));
+      added.push(...fresh);
+    }
+  } else {
+    // Null-valued `gate:` counts as absent (the loader filters nulls) —
+    // only a non-null non-mapping gate is a real error.
+    const gate = doc.get("gate", true);
+    if (gate === undefined || gate === null || (isScalar(gate) && gate.value == null)) {
+      doc.set("gate", { ignore: union([]) });
+    } else if (!isMap(gate)) {
+      throw new Error(`Cannot store gate ignores in ${configPath}: gate: is not a mapping.`);
+    } else {
+      gate.set("ignore", union(toPatternList(gate.get("ignore"))));
+    }
+  }
+  await fs.writeFile(configPath, String(doc), "utf8");
+  return added;
+}
+
+/** A key the loader's shape sniffing would count: present with a
+ * non-null value (`doc.has` alone counts commented-out `key:` debris). */
+function hasLiveKey(doc: Document, key: string): boolean {
+  const node = doc.get(key, true);
+  return node !== undefined && node !== null && !(isScalar(node) && node.value == null);
+}
+
+async function storeGateIgnoresJson(configPath: string, fresh: string[]): Promise<string[]> {
+  let obj: Record<string, unknown> = {};
+  try {
+    const text = await fs.readFile(configPath, "utf8");
+    const parsed: unknown = JSON.parse(text);
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+      throw new Error(`Cannot store gate ignores in ${configPath}: root is not an object.`);
+    }
+    obj = parsed as Record<string, unknown>;
+  } catch (error) {
+    if ((error as { code?: unknown })?.code !== "ENOENT") {
+      throw error;
+    }
+    // File does not exist yet; it will be created below.
+  }
+  const added: string[] = [];
+  let gate: Record<string, unknown>;
+  if (typeof obj.gate === "object" && obj.gate !== null && !Array.isArray(obj.gate)) {
+    gate = obj.gate as Record<string, unknown>;
+  } else {
+    gate = {};
+    obj.gate = gate;
+  }
+  const current = Array.isArray(gate.ignore) ? gate.ignore.map((item) => String(item)) : [];
+  for (const p of fresh) {
+    if (!current.includes(p)) {
+      current.push(p);
+      added.push(p);
+    }
+  }
+  gate.ignore = current;
+  await fs.writeFile(configPath, `${JSON.stringify(obj, null, 2)}\n`, "utf8");
+  return added;
 }

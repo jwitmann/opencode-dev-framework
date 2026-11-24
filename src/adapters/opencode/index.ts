@@ -207,6 +207,7 @@ const plugin = Plugin.define({
       configMtime,
       lintLimiter: createLintLimiter(),
       passCache: createPassCache(),
+      sessionIgnores: [],
       lastConfigCheck: 0,
       lastIdleHandled: new Map<string, number>(),
     };
@@ -803,6 +804,89 @@ const plugin = Plugin.define({
         });
 
         editor.add({
+          name: "dev_framework_ignore",
+          description:
+            "Add glob patterns to the completion-gate ignore hotlist (e.g. scratch notes, generated output) so the gate skips them. Session-scoped by default; pass store:true to persist to gate.ignore in the config file. Use list:true to show session and stored patterns, or remove:[...] to drop session patterns (removals never touch stored config).",
+          input: {
+            type: "object",
+            properties: {
+              patterns: {
+                type: "array",
+                items: { type: "string" },
+                description: "Glob patterns to ignore (e.g. ['scratch/**', '*.local'])",
+              },
+              store: {
+                type: "boolean",
+                description:
+                  "Persist to gate.ignore in the config file (default false: session only)",
+              },
+              list: {
+                type: "boolean",
+                description: "List session and stored patterns instead of changing anything",
+              },
+              remove: {
+                type: "array",
+                items: { type: "string" },
+                description: "Session patterns to drop",
+              },
+              directory: {
+                type: "string",
+                description: "Project directory (defaults to current project)",
+              },
+            },
+            additionalProperties: false,
+          },
+          async execute(input: unknown) {
+            const { dfIgnore } = await import("../../core/commands.js");
+            const { clearConfigCache: ccc, loadConfig: lc } = await import("../../core/config.js");
+            const { loadConstitution: lc2 } = await import("../../core/rules.js");
+            const args = input as {
+              patterns?: string[];
+              store?: boolean;
+              list?: boolean;
+              remove?: string[];
+              directory?: string;
+            };
+            const targetDir = args.directory ?? directory;
+            const liveState = getActiveState();
+            const live = liveState && liveState.directory === targetDir ? liveState : null;
+            const own = state.directory === targetDir ? state : null;
+            const holder = live ?? own;
+            if (holder === null && (args.patterns?.length ?? 0) > 0 && !args.store) {
+              return {
+                content: `No live session for ${targetDir}: session ignores have nowhere to live. Re-run with store:true to persist to gate.ignore instead.`,
+              };
+            }
+            const sessionIgnores = holder?.sessionIgnores ?? [];
+            const cfg = holder?.config ?? lc(targetDir);
+            const result = await dfIgnore(targetDir, sessionIgnores, cfg, {
+              patterns: args.patterns ?? [],
+              store: args.store ?? false,
+              list: args.list ?? false,
+              remove: args.remove ?? [],
+            });
+            if (args.store) {
+              ccc();
+              const newConfig = lc(targetDir);
+              const { constitution: newConstitution } = await lc2(newConfig, targetDir);
+              if (state.directory === targetDir) {
+                state.config = newConfig;
+                state.constitution = newConstitution;
+              }
+              if (live && live !== state && live.directory === targetDir) {
+                live.config = newConfig;
+                live.constitution = newConstitution;
+              }
+            }
+            let content = result.message;
+            if (holder === null && result.added.length > 0) {
+              content += ` (No live session for ${targetDir}: kept in config only.)`;
+            }
+            return { content };
+          },
+        });
+
+        editor.add({
           name: "dev_framework_verify",
           description:
             "Run the full opencode-dev-framework completion contract now (typecheck, tests, changed-file lint, peer-review state) and return the summary. The first line is DEV_FRAMEWORK_VERDICT: PASS or FAIL, reporting the raw inspection outcome. Use for a mid-session gate check without waiting for session idle; unlike the idle gate this never re-prompts, it only reports, and it never mutates retry state.",
@@ -828,7 +912,13 @@ const plugin = Plugin.define({
             // mid-session verify scopes `changed` steps to real edits.
             const cfg = holder?.config ?? loadConfig(targetDir);
             const changed = holder ? holder.tracker.getChangedFiles() : [];
-            const { summary } = await verifyGate(state.run, targetDir, cfg, changed);
+            const { summary } = await verifyGate(
+              state.run,
+              targetDir,
+              cfg,
+              changed,
+              holder?.sessionIgnores ?? [],
+            );
             return { content: summary };
           },
         });

@@ -18,8 +18,9 @@
  */
 
 import { readFile, stat } from "node:fs/promises";
-import { isAbsolute, join, normalize, relative } from "node:path";
+import { basename, isAbsolute, join, normalize, relative } from "node:path";
 import type { BlockStore, StuckSnapshotStore } from "./block-store.js";
+import { compileGlobMatchers } from "./command-utils.js";
 import { type ChangedFileTracker, type GateReport, runGate, summarizeGate } from "./gate.js";
 import type { RunCommand } from "./host.js";
 import type { LintLimiter } from "./lint.js";
@@ -284,6 +285,61 @@ export function mergeChangedFiles(trackerFiles: string[], gitFiles: string[]): s
 }
 
 /**
+ * Match a file path against the gate-ignore patterns: permanent config
+ * (`gate.ignore`) plus this session's `/df-ignore` additions. Returns the
+ * matching pattern, or undefined. Mirrors `matchExclude` semantics — paths
+ * resolve against the project directory, and patterns without a slash also
+ * match basenames at any depth. Matchers compile once per pattern array via
+ * the shared `compileGlobMatchers` cache, so callers pass the live arrays
+ * (never a spread copy) to keep the cache hot.
+ */
+export function matchGateIgnore(
+  config: ResolvedConfig,
+  sessionIgnores: readonly string[],
+  filePath: string,
+  directory?: string,
+): string | undefined {
+  let candidate = filePath;
+  if (directory !== undefined && isAbsolute(filePath)) {
+    candidate = relative(directory, filePath);
+  }
+  candidate = candidate.replace(/^\.\//, "");
+  const name = basename(candidate);
+
+  const sources: readonly (readonly string[])[] = [config.gate.ignore, sessionIgnores];
+  for (const patterns of sources) {
+    for (const { pattern, match } of compileGlobMatchers(patterns)) {
+      if (match(candidate)) {
+        return pattern;
+      }
+      if (!pattern.includes("/") && match(name)) {
+        return pattern;
+      }
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Drop gate-ignored files from a changed-file list. Applied once at the
+ * `inspectCompletion` merge point so ignored files leave the whole gate:
+ * command steps, review coverage, and the pass-cache fingerprint all read
+ * the filtered list. Session additions and permanent config filter
+ * identically — permanence differs, behavior does not.
+ */
+export function filterGateIgnored(
+  config: ResolvedConfig,
+  sessionIgnores: readonly string[],
+  files: string[],
+  directory?: string,
+): string[] {
+  if (config.gate.ignore.length === 0 && sessionIgnores.length === 0) {
+    return files;
+  }
+  return files.filter((f) => matchGateIgnore(config, sessionIgnores, f, directory) === undefined);
+}
+
+/**
  * Decide whether a pre-flight config blocks a tool call. Returns the denial
  * reason, or null when the call is allowed. The artifact path itself is
  * always writable so the agent can produce the artifact; read-only tools are
@@ -362,6 +418,8 @@ export interface CompletionDeps {
   /** Last-blocked-evaluation snapshots for no-progress early stand-down. */
   stuckSnapshots: StuckSnapshotStore;
   log: LogFn;
+  /** This session's `/df-ignore` additions (live `HookState.sessionIgnores`). */
+  sessionIgnores?: readonly string[];
   /** Shared limiter bounding concurrent linter subprocesses. */
   lintLimiter?: LintLimiter;
   /** Session pass cache; skips redundant gate suites across idle boundaries. */
@@ -406,6 +464,12 @@ export interface InspectionDeps {
   directory: string;
   /** Read-only snapshot of tracker files; never mutated. */
   trackerFiles: string[];
+  /**
+   * This session's `/df-ignore` additions (live `HookState.sessionIgnores`).
+   * Unioned with config `gate.ignore` at the merge point; absent reads as
+   * no session additions.
+   */
+  sessionIgnores?: readonly string[];
   /** Shared limiter bounding concurrent linter subprocesses. */
   lintLimiter?: LintLimiter;
   /**
@@ -568,7 +632,14 @@ export async function inspectCompletion(deps: InspectionDeps): Promise<Completio
   }
 
   const gitFiles = await gitChangedFiles(run, directory);
-  const changedFiles = mergeChangedFiles(trackerFiles, gitFiles);
+  // Gate-ignore hotlist: ignored files leave the whole gate — steps, review
+  // coverage, and the fingerprint below all read this filtered list.
+  const changedFiles = filterGateIgnored(
+    config,
+    deps.sessionIgnores ?? [],
+    mergeChangedFiles(trackerFiles, gitFiles),
+    directory,
+  );
 
   if (config.gate.skip_unchanged && changedFiles.length === 0) {
     return {
@@ -698,6 +769,7 @@ export async function evaluateCompletion(deps: CompletionDeps): Promise<Completi
     config,
     directory,
     trackerFiles: tracker.getChangedFiles(),
+    sessionIgnores: deps.sessionIgnores ?? [],
     lintLimiter: deps.lintLimiter,
     passCache: deps.passCache,
     baseline: deps.baseline,

@@ -1,7 +1,8 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { clearConfigCache, loadConfig } from "../src/core/config";
 import type { CommandResult, RunCommand, RunCommandOptions } from "../src/core/host";
 import {
   buildWizardBrief,
@@ -12,6 +13,7 @@ import {
   listTemplateFiles,
   mirrorSkillsToDsh,
   statusTemplates,
+  storeGateIgnores,
   trialRunDetectedCommands,
   writeDetectedConfig,
 } from "../src/core/installer";
@@ -380,5 +382,117 @@ describe("wizard brief (Phase 32)", () => {
     expect(brief.questions).toHaveLength(3);
     expect(brief.questions[0]).toContain("Makefile targets detected");
     expect(brief.questions[1]).toContain("Trial-run flagged test");
+  });
+});
+
+describe("storeGateIgnores", () => {
+  it("appends to the flat gate_ignore line and preserves comments", async () => {
+    const path = join(dir, ".dev-framework.yml");
+    await writeFile(path, "# keep me\nprofile: standard\ngate_ignore: scratch/**\n", "utf8");
+    const added = await storeGateIgnores(path, ["wip/**", "scratch/**"]);
+    expect(added).toEqual(["wip/**"]);
+    const content = await readFile(path, "utf8");
+    expect(content).toContain("# keep me");
+    expect(content).toContain("gate_ignore: scratch/** wip/**");
+  });
+
+  it("grows the native gate.ignore sequence and preserves comments", async () => {
+    const path = join(dir, ".opencode-dev-framework.yml");
+    await writeFile(
+      path,
+      "# keep me\nprofile: standard\ngate:\n  skip_unchanged: true\n  ignore:\n    - scratch/**\n",
+      "utf8",
+    );
+    const added = await storeGateIgnores(path, ["wip/**"]);
+    expect(added).toEqual(["wip/**"]);
+    const content = await readFile(path, "utf8");
+    expect(content).toContain("# keep me");
+    expect(content).toContain("scratch/**");
+    expect(content).toContain("wip/**");
+  });
+
+  it("inserts ignore under a native gate block that lacks it", async () => {
+    const path = join(dir, ".opencode-dev-framework.yml");
+    await writeFile(path, "profile: standard\ngate:\n  skip_unchanged: true\n", "utf8");
+    await storeGateIgnores(path, ["scratch/**"]);
+    const content = await readFile(path, "utf8");
+    expect(content).toContain("ignore:");
+    expect(content).toContain("scratch/**");
+  });
+
+  it("gains a flat line in a scalar-only file", async () => {
+    const path = join(dir, ".dev-framework.yml");
+    await writeFile(path, "profile: standard\n", "utf8");
+    await storeGateIgnores(path, ["scratch/**"]);
+    expect(await readFile(path, "utf8")).toContain("gate_ignore: scratch/**");
+  });
+
+  it("creates a missing file flat", async () => {
+    const path = join(dir, ".dev-framework.yml");
+    const added = await storeGateIgnores(path, ["scratch/**"]);
+    expect(added).toEqual(["scratch/**"]);
+    expect(await readFile(path, "utf8")).toContain("gate_ignore: scratch/**");
+  });
+
+  it("grows gate.ignore in JSON files", async () => {
+    const path = join(dir, ".opencode-dev-framework.json");
+    await writeFile(path, JSON.stringify({ profile: "standard" }), "utf8");
+    await storeGateIgnores(path, ["scratch/**"]);
+    const parsed = JSON.parse(await readFile(path, "utf8"));
+    expect(parsed.gate.ignore).toEqual(["scratch/**"]);
+  });
+
+  it("throws a readable error when gate is not a mapping", async () => {
+    const path = join(dir, ".opencode-dev-framework.yml");
+    await writeFile(path, "profile: standard\ngate: nope\n", "utf8");
+    await expect(storeGateIgnores(path, ["x"])).rejects.toThrowError(/gate: is not a mapping/);
+  });
+
+  it("stores nothing for blank patterns", async () => {
+    const path = join(dir, ".dev-framework.yml");
+    await writeFile(path, "profile: standard\n", "utf8");
+    expect(await storeGateIgnores(path, ["  "])).toEqual([]);
+    expect(await readFile(path, "utf8")).toBe("profile: standard\n");
+  });
+});
+
+describe("storeGateIgnores shape edge cases", () => {
+  it("treats object-form rules as native and grows gate.ignore", async () => {
+    const path = join(dir, ".opencode-dev-framework.yml");
+    await writeFile(
+      path,
+      "profile: standard\nrules:\n  mode: replace\n  files:\n    - '**/*.md'\n",
+      "utf8",
+    );
+    const added = await storeGateIgnores(path, ["scratch/**"]);
+    expect(added).toEqual(["scratch/**"]);
+    const content = await readFile(path, "utf8");
+    expect(content).toContain("ignore:");
+    expect(content).toContain("scratch/**");
+    // The stored file must still load (the bug this guards: a flat
+    // gate_ignore line in a native-shape file throws mixed-shape).
+    clearConfigCache();
+    expect(loadConfig(dir).gate.ignore).toEqual(["scratch/**"]);
+  });
+
+  it("treats null-valued gate as absent instead of throwing", async () => {
+    const path = join(dir, ".opencode-dev-framework.yml");
+    await writeFile(path, "profile: standard\ncommands:\n  test: npm test\ngate:\n", "utf8");
+    const added = await storeGateIgnores(path, ["scratch/**"]);
+    expect(added).toEqual(["scratch/**"]);
+    expect(await readFile(path, "utf8")).toContain("scratch/**");
+  });
+
+  it("rejects space-containing patterns in flat files", async () => {
+    const path = join(dir, ".dev-framework.yml");
+    await writeFile(path, "profile: standard\ngate_ignore: scratch/**\n", "utf8");
+    await expect(storeGateIgnores(path, ["my dir/**"])).rejects.toThrowError(/native shape/);
+  });
+
+  it("stores space-containing patterns in native files", async () => {
+    const path = join(dir, ".opencode-dev-framework.yml");
+    await writeFile(path, "profile: standard\ngate:\n  skip_unchanged: true\n", "utf8");
+    await storeGateIgnores(path, ["my dir/**"]);
+    expect(await readFile(path, "utf8")).toContain("my dir/**");
   });
 });

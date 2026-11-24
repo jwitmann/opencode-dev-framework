@@ -22,7 +22,13 @@ import { readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { createBlockStore, createStuckSnapshotStore } from "../../core/block-store.js";
 
-import { changeProfile, verifyGate } from "../../core/commands.js";
+import {
+  changeProfile,
+  type DfIgnoreArgs,
+  dfIgnore,
+  parseIgnoreArgs,
+  verifyGate,
+} from "../../core/commands.js";
 import { CONFIG_FILE_PRECEDENCE, clearConfigCache, loadConfig } from "../../core/config.js";
 import { renderHelp, renderRuntimeStatus, renderStatus } from "../../core/format-status.js";
 import { createChangedFileTracker } from "../../core/gate.js";
@@ -1086,6 +1092,7 @@ export function apply(ctx: DshContext): void {
     stuckSnapshots: createStuckSnapshotStore(undefined),
     lintLimiter: createLintLimiter(),
     passCache: createPassCache(),
+    sessionIgnores: [],
     lastConfigCheck: 0,
     lastIdleHandled: new Map<string, number>(),
     // Probed once at mount so `df-status` reads degraded mounts as
@@ -1930,6 +1937,37 @@ export function apply(ctx: DshContext): void {
     },
   });
 
+  // Ignore hotlist: session-scoped gate skips with an explicit path to
+  // permanence. Bare patterns add for this session; -s stores to
+  // gate.ignore; -l lists both sources; -r drops session patterns.
+  ctx.commands.register({
+    name: "df-ignore",
+    description:
+      "Add glob patterns to the completion-gate ignore hotlist (session-scoped; -s stores to gate.ignore, -l lists, -r removes).",
+    input: {
+      hint: "[patterns] [-s|--store] [-l|--list] [-r|--remove ...] (removals are session-only)",
+    },
+    handler: async (invocation) => {
+      try {
+        await reloadConfigIfChanged(state);
+        let parsed: DfIgnoreArgs;
+        try {
+          parsed = parseIgnoreArgs(invocation.rawInput);
+        } catch (error) {
+          return { kind: "error", text: (error as Error).message };
+        }
+        const result = await dfIgnore(state.directory, state.sessionIgnores, state.config, parsed);
+        if (parsed.store) {
+          clearConfigCache();
+          state.config = loadConfig(state.directory);
+        }
+        return { kind: "success", text: result.message };
+      } catch (error) {
+        return { kind: "error", text: `df-ignore failed: ${(error as Error)?.message ?? error}` };
+      }
+    },
+  });
+
   // On-demand gate: same full completion contract as the turn-stopping gate,
   // run when asked instead of at the boundary. Fills the slot the missing
   // TUI `/df-verify` leaves on DSH.
@@ -1945,6 +1983,7 @@ export function apply(ctx: DshContext): void {
           state.directory,
           state.config,
           state.tracker.getChangedFiles(),
+          state.sessionIgnores,
         );
         return { kind: "success", text: result.summary };
       } catch (error) {
@@ -2133,7 +2172,13 @@ export function apply(ctx: DshContext): void {
       // verify scopes `changed` steps to real edits (mirror of opencode).
       const cfg = holder?.config ?? loadConfig(targetDir);
       const changed = holder !== null ? holder.tracker.getChangedFiles() : [];
-      const { summary } = await verifyGate(run, targetDir, cfg, changed);
+      const { summary } = await verifyGate(
+        run,
+        targetDir,
+        cfg,
+        changed,
+        holder?.sessionIgnores ?? [],
+      );
       return summary;
     },
   });
@@ -2179,6 +2224,84 @@ export function apply(ctx: DshContext): void {
         liveState.constitution = newConstitution;
       }
       return `${message} Change applied immediately.`;
+    },
+  });
+
+  registerDshTool(ctx, state, {
+    name: "dev_framework_ignore",
+    description:
+      "Add glob patterns to the completion-gate ignore hotlist (session-scoped; store:true persists to gate.ignore, list:true shows both sources, remove:[...] drops session patterns only, never stored config).",
+    parameters: {
+      type: "object",
+      properties: {
+        patterns: {
+          type: "array",
+          items: { type: "string" },
+          description: "Glob patterns to ignore (e.g. ['scratch/**', '*.local'])",
+        },
+        store: {
+          type: "boolean",
+          description: "Persist to gate.ignore in the config file (default false: session only)",
+        },
+        list: {
+          type: "boolean",
+          description: "List session and stored patterns instead of changing anything",
+        },
+        remove: {
+          type: "array",
+          items: { type: "string" },
+          description: "Session patterns to drop",
+        },
+        directory: {
+          type: "string",
+          description: "Project directory (defaults to current project)",
+        },
+      },
+      additionalProperties: false,
+    },
+    execute: async (input: unknown) => {
+      const args = input as {
+        patterns?: string[];
+        store?: boolean;
+        list?: boolean;
+        remove?: string[];
+        directory?: string;
+      };
+      const targetDir = args.directory ?? state.directory;
+      const liveState = getActiveState();
+      const live = liveState !== null && liveState.directory === targetDir ? liveState : null;
+      const own = state.directory === targetDir ? state : null;
+      const holder = live ?? own;
+      const parsed = {
+        patterns: args.patterns ?? [],
+        store: args.store ?? false,
+        list: args.list ?? false,
+        remove: args.remove ?? [],
+      };
+      if (holder === null && parsed.patterns.length > 0 && !parsed.store) {
+        return (
+          `No live session for ${targetDir}: session ignores have nowhere to live. ` +
+          `Re-run with store:true to persist to gate.ignore instead.`
+        );
+      }
+      const sessionIgnores = holder?.sessionIgnores ?? [];
+      const cfg = holder?.config ?? loadConfig(targetDir);
+      const result = await dfIgnore(targetDir, sessionIgnores, cfg, parsed);
+      if (parsed.store) {
+        clearConfigCache();
+        const newConfig = loadConfig(targetDir);
+        if (state.directory === targetDir) {
+          state.config = newConfig;
+        }
+        if (live !== null && live !== state) {
+          live.config = newConfig;
+        }
+      }
+      let message = result.message;
+      if (holder === null && result.added.length > 0) {
+        message += ` (No live session for ${targetDir}: kept in config only.)`;
+      }
+      return message;
     },
   });
 

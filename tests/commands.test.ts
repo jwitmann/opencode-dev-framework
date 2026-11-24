@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { changeProfile, verifyGate } from "../src/core/commands";
+import { changeProfile, dfIgnore, parseIgnoreArgs, verifyGate } from "../src/core/commands";
 import { clearConfigCache, resolveConfig } from "../src/core/config";
 import type { RunCommand } from "../src/core/host";
 
@@ -174,5 +174,165 @@ describe("verifyGate helper", () => {
     const snapshot = ["src/a.ts"];
     await verifyGate(run, dir, config, snapshot);
     expect(snapshot).toEqual(["src/a.ts"]);
+  });
+});
+
+describe("parseIgnoreArgs", () => {
+  it("parses bare patterns", () => {
+    expect(parseIgnoreArgs("scratch/** *.local")).toEqual({
+      patterns: ["scratch/**", "*.local"],
+      store: false,
+      list: false,
+      remove: [],
+    });
+  });
+
+  it("accepts flags anywhere and quotes", () => {
+    expect(parseIgnoreArgs('-s "my dir/**" -l')).toEqual({
+      patterns: ["my dir/**"],
+      store: true,
+      list: true,
+      remove: [],
+    });
+  });
+
+  it("routes tokens after -r to removals", () => {
+    expect(parseIgnoreArgs("a/** -r b/** c/**")).toEqual({
+      patterns: ["a/**"],
+      store: false,
+      list: false,
+      remove: ["b/**", "c/**"],
+    });
+  });
+
+  it("ends flag parsing at --", () => {
+    expect(parseIgnoreArgs("-- -s")).toEqual({
+      patterns: ["-s"],
+      store: false,
+      list: false,
+      remove: [],
+    });
+  });
+
+  it("throws a readable error on unknown flags", () => {
+    expect(() => parseIgnoreArgs("--frobnicate x")).toThrowError(/Unknown \/df-ignore flag/);
+  });
+
+  it("parses empty input as a bare list", () => {
+    expect(parseIgnoreArgs("")).toEqual({ patterns: [], store: false, list: false, remove: [] });
+  });
+});
+
+describe("dfIgnore helper", () => {
+  function standardConfig() {
+    return resolveConfig(
+      { profile: "standard", gate: { ignore: ["stored/**"] } },
+      join(dir, ".opencode-dev-framework.yml"),
+    );
+  }
+
+  it("adds patterns to the session in place and notes session scope", async () => {
+    const session: string[] = ["old/**"];
+    const result = await dfIgnore(dir, session, standardConfig(), {
+      patterns: ["scratch/**"],
+      store: false,
+      list: false,
+      remove: [],
+    });
+    expect(session).toEqual(["old/**", "scratch/**"]);
+    expect(result.added).toEqual(["scratch/**"]);
+    expect(result.message).toContain("Session-scoped only");
+  });
+
+  it("dedupes already-present patterns", async () => {
+    const session: string[] = ["scratch/**"];
+    const result = await dfIgnore(dir, session, standardConfig(), {
+      patterns: ["scratch/**"],
+      store: false,
+      list: false,
+      remove: [],
+    });
+    expect(session).toEqual(["scratch/**"]);
+    expect(result.alreadyPresent).toEqual(["scratch/**"]);
+  });
+
+  it("removes session patterns and names the missing", async () => {
+    const session: string[] = ["a/**", "b/**"];
+    const result = await dfIgnore(dir, session, standardConfig(), {
+      patterns: [],
+      store: false,
+      list: false,
+      remove: ["a/**", "nope/**"],
+    });
+    expect(session).toEqual(["b/**"]);
+    expect(result.removed).toEqual(["a/**"]);
+    expect(result.notFound).toEqual(["nope/**"]);
+  });
+
+  it("lists both sources on -l", async () => {
+    const result = await dfIgnore(dir, ["s/**"], standardConfig(), {
+      patterns: [],
+      store: false,
+      list: true,
+      remove: [],
+    });
+    expect(result.message).toContain("Session ignores: s/**.");
+    expect(result.message).toContain("Config gate.ignore: stored/**.");
+  });
+
+  it("lists on a bare invocation", async () => {
+    const result = await dfIgnore(dir, [], standardConfig(), {
+      patterns: [],
+      store: false,
+      list: false,
+      remove: [],
+    });
+    expect(result.message).toContain("Session ignores: (none).");
+  });
+
+  it("stores new patterns to a created config file", async () => {
+    clearConfigCache();
+    const config = resolveConfig({ profile: "standard" }, join(dir, ".dev-framework.yml"));
+    const session: string[] = [];
+    const result = await dfIgnore(dir, session, config, {
+      patterns: ["scratch/**"],
+      store: true,
+      list: false,
+      remove: [],
+    });
+    expect(result.stored).toEqual(["scratch/**"]);
+    expect(session).toEqual(["scratch/**"]);
+    const stored = await readFile(join(dir, ".dev-framework.yml"), "utf8");
+    expect(stored).toContain("gate_ignore: scratch/**");
+  });
+});
+
+describe("dfIgnore store feedback", () => {
+  function standardConfig() {
+    return resolveConfig({ profile: "standard" }, join(dir, ".opencode-dev-framework.yml"));
+  }
+
+  it("reports nothing to store for a bare -s with an empty session", async () => {
+    const result = await dfIgnore(dir, [], standardConfig(), {
+      patterns: [],
+      store: true,
+      list: false,
+      remove: [],
+    });
+    expect(result.stored).toEqual([]);
+    expect(result.message).toContain("Nothing to store.");
+  });
+
+  it("reflects stored patterns in the -l output", async () => {
+    clearConfigCache();
+    const config = resolveConfig({ profile: "standard" }, join(dir, ".dev-framework.yml"));
+    const result = await dfIgnore(dir, [], config, {
+      patterns: ["scratch/**"],
+      store: true,
+      list: true,
+      remove: [],
+    });
+    expect(result.stored).toEqual(["scratch/**"]);
+    expect(result.message).toContain("Config gate.ignore: scratch/**.");
   });
 });

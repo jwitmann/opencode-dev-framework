@@ -80,6 +80,13 @@ export interface HookState {
   /** Fingerprint of the last clean gate pass; skips redundant suites. */
   passCache: PassCache;
   /**
+   * This session's gate-ignore hotlist (`/df-ignore` additions, bare form).
+   * Session-scoped by design: permanence is an explicit act (`-s|--store`
+   * writes config instead). Mutated in place so the shared glob-matcher
+   * cache stays hot; read at every gate evaluation via `runCompletion`.
+   */
+  sessionIgnores: string[];
+  /**
    * Host seam availability (see `HostSeams`), probed once at mount with
    * guarded reads. Rendered by status so a degraded mount reads as
    * degraded, never as silently whole. The DSH adapter probes this at
@@ -270,6 +277,7 @@ export function runCompletion(state: HookState, sessionID: string): Promise<Comp
     tracker: state.tracker,
     blockCounts: state.blocks,
     stuckSnapshots: state.stuckSnapshots,
+    sessionIgnores: state.sessionIgnores,
     lintLimiter: state.lintLimiter,
     passCache: state.passCache,
     baseline: state.initialEnforceable,

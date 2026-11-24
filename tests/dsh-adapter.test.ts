@@ -587,6 +587,7 @@ describe("DSH adapter (plan 25 slice 4)", () => {
     expect(captured.tools.map((t) => t.name)).toEqual([
       "dev_framework_verify",
       "dev_framework_set_profile",
+      "dev_framework_ignore",
       "dev_framework_status",
       "dev_framework_init",
       "dev_framework_update",
@@ -1474,6 +1475,7 @@ describe("DSH adapter (plan 25 slice 4)", () => {
     expect(names).toEqual([
       "dev_framework_verify",
       "dev_framework_set_profile",
+      "dev_framework_ignore",
       "dev_framework_status",
       "dev_framework_init",
       "dev_framework_update",
@@ -1507,6 +1509,12 @@ describe("DSH adapter (plan 25 slice 4)", () => {
     expect(updated).toContain("templates current");
     const runtime = (await find("dev_framework_runtime")?.execute({}, {})) as string;
     expect(runtime.length).toBeGreaterThan(0);
+    const ignored = (await find("dev_framework_ignore")?.execute(
+      { patterns: ["scratch/**"] },
+      {},
+    )) as string;
+    expect(ignored).toContain("scratch/**");
+    expect(ignored).toContain("Session-scoped only");
   });
 
   it("agent update tool returns the drift brief on a stale tree", async () => {
@@ -2266,7 +2274,7 @@ describe("child tool guard (hardening: investigation-only by construction)", () 
     writeConfig(directory, "profile: standard\n");
     const { ctx, captured } = stubContext();
     apply(ctx);
-    expect(captured.tools).toHaveLength(6);
+    expect(captured.tools).toHaveLength(7);
     for (const tool of captured.tools) {
       const out = (await tool.execute({}, childExec())) as string;
       expect(out).toContain("Child sessions may not invoke");
