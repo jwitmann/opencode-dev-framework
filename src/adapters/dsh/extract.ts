@@ -55,7 +55,7 @@ export function extractDshPaths(exec: DshExec): string[] {
     args !== null
   ) {
     const record = args as Record<string, unknown>;
-    const snake = record["file_path"];
+    const snake = record.file_path;
     if (typeof snake === "string" && snake !== "") {
       return [snake];
     }
@@ -66,7 +66,7 @@ export function extractDshPaths(exec: DshExec): string[] {
     return [];
   }
   if (exec.name === "apply_patch" && typeof args === "object" && args !== null) {
-    const input = (args as Record<string, unknown>)["input"];
+    const input = (args as Record<string, unknown>).input;
     if (typeof input !== "string") {
       return [];
     }

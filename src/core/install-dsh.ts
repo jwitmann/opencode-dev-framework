@@ -48,7 +48,7 @@ export interface InstallDshResult {
 }
 
 export function resolveDshHome(explicit?: string): string {
-  const fromEnv = process.env["DSH_HOME"];
+  const fromEnv = process.env.DSH_HOME;
   return (
     explicit ?? (typeof fromEnv === "string" && fromEnv !== "" ? fromEnv : join(homedir(), ".dsh"))
   );

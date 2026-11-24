@@ -12,9 +12,11 @@ const ALL = [...READ_ONLY, "test-grounder"];
 const V1_KEYS = ["name:", "permission:", "tools:", "prompt:", "disable:", "maxSteps"];
 
 function frontmatter(body: string): string {
-  const match = body.match(/^---\n([\s\S]*?)\n---\n/);
-  expect(match, "agent file must start with a frontmatter block").not.toBeNull();
-  return match![1]!;
+  const match = /^---\n([\s\S]*?)\n---\n/.exec(body);
+  if (match === null || match[1] === undefined) {
+    throw new Error("agent file must start with a frontmatter block");
+  }
+  return match[1];
 }
 
 function editDeny(fm: string): boolean {

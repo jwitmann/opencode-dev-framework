@@ -551,9 +551,9 @@ function selectConfigRecord(configPath: string, asRecord: Record<string, unknown
   }
   const nativeHit =
     NATIVE_OBJECT_KEYS.some((key) => keys.includes(key)) ||
-    (typeof asRecord["rules"] === "object" &&
-      asRecord["rules"] !== null &&
-      !Array.isArray(asRecord["rules"]));
+    (typeof asRecord.rules === "object" &&
+      asRecord.rules !== null &&
+      !Array.isArray(asRecord.rules));
   if (!nativeHit) {
     return mapFlatConfig(asRecord);
   }

@@ -395,7 +395,7 @@ export interface DshContext {
 
 /** Resolve the project directory: explicit env override, else process cwd. */
 export function resolveDshDirectory(env: NodeJS.ProcessEnv = process.env): string {
-  const override = env["ODF_WORKDIR"];
+  const override = env.ODF_WORKDIR;
   if (typeof override === "string" && override !== "") {
     return override;
   }
@@ -1296,7 +1296,7 @@ export function apply(ctx: DshContext): void {
       const paths = extractDshPaths(exec);
       const rawInput =
         typeof exec.arguments === "object" && exec.arguments !== null
-          ? (exec.arguments as Record<string, unknown>)["input"]
+          ? (exec.arguments as Record<string, unknown>).input
           : undefined;
       warnApplyPatchSkip(state, exec, rawInput, paths);
       // Children never write the parent's review artifact. Not a
@@ -1450,7 +1450,7 @@ export function apply(ctx: DshContext): void {
       const execArgs = exec.arguments;
       const rawInput =
         typeof execArgs === "object" && execArgs !== null
-          ? (execArgs as Record<string, unknown>)["input"]
+          ? (execArgs as Record<string, unknown>).input
           : undefined;
       warnApplyPatchSkip(state, exec, rawInput, paths);
       if (state.config.precommit === "auto" && state.precommitAvailable === undefined) {

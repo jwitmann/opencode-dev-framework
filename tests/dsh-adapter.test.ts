@@ -261,15 +261,15 @@ describe("DSH adapter (plan 25 slice 4)", () => {
 
   beforeEach(() => {
     directory = mkdtempSync(join(tmpdir(), "odf-dsh-"));
-    savedEnv = process.env["ODF_WORKDIR"];
-    process.env["ODF_WORKDIR"] = directory;
+    savedEnv = process.env.ODF_WORKDIR;
+    process.env.ODF_WORKDIR = directory;
   });
 
   afterEach(() => {
     if (savedEnv === undefined) {
-      delete process.env["ODF_WORKDIR"];
+      delete process.env.ODF_WORKDIR;
     } else {
-      process.env["ODF_WORKDIR"] = savedEnv;
+      process.env.ODF_WORKDIR = savedEnv;
     }
     clearConfigCache();
     rmSync(directory, { recursive: true, force: true });
@@ -1575,15 +1575,15 @@ describe("specialist spawn (plan 26 slice 26.2)", () => {
 
   beforeEach(() => {
     directory = mkdtempSync(join(tmpdir(), "odf-spec-"));
-    savedEnv = process.env["ODF_WORKDIR"];
-    process.env["ODF_WORKDIR"] = directory;
+    savedEnv = process.env.ODF_WORKDIR;
+    process.env.ODF_WORKDIR = directory;
   });
 
   afterEach(() => {
     if (savedEnv === undefined) {
-      delete process.env["ODF_WORKDIR"];
+      delete process.env.ODF_WORKDIR;
     } else {
-      process.env["ODF_WORKDIR"] = savedEnv;
+      process.env.ODF_WORKDIR = savedEnv;
     }
     clearConfigCache();
     rmSync(directory, { recursive: true, force: true });
@@ -1601,13 +1601,13 @@ describe("specialist spawn (plan 26 slice 26.2)", () => {
     } = {},
   ): Array<Record<string, unknown>> {
     const started: Array<Record<string, unknown>> = [];
-    (ctx as unknown as Record<string, unknown>)["subagents"] = {
+    (ctx as unknown as Record<string, unknown>).subagents = {
       getProvider: (name: string) =>
         opts.capabilities === undefined ? { name } : { name, capabilities: opts.capabilities },
       resolveMaxDepth: () => undefined,
       startActivation: async (request: Record<string, unknown>) => {
         started.push(request);
-        return { name: request["name"] };
+        return { name: request.name };
       },
     };
     return started;
@@ -1627,10 +1627,10 @@ describe("specialist spawn (plan 26 slice 26.2)", () => {
     mode: "ok" | "duplicate" | "fail" = "ok",
   ): { definitions: Array<Record<string, unknown>> } {
     const definitions: Array<Record<string, unknown>> = [];
-    (ctx as unknown as Record<string, unknown>)["agentPresets"] = {
+    (ctx as unknown as Record<string, unknown>).agentPresets = {
       register: async (definition: Record<string, unknown>) => {
         if (mode === "duplicate") {
-          throw new Error(`Duplicate agent preset: ${definition["id"]}`);
+          throw new Error(`Duplicate agent preset: ${definition.id}`);
         }
         if (mode === "fail") {
           throw new Error("registry unavailable");
@@ -1685,7 +1685,7 @@ describe("specialist spawn (plan 26 slice 26.2)", () => {
     expect(started).toHaveLength(3);
     const byKind = new Map(
       (started as Array<Record<string, unknown>>).map((request) => [
-        (request["label"] as string).replace("odf specialist review (", "").replace(")", ""),
+        (request.label as string).replace("odf specialist review (", "").replace(")", ""),
         request,
       ]),
     );
@@ -1696,18 +1696,16 @@ describe("specialist spawn (plan 26 slice 26.2)", () => {
     ]);
     for (const [kind, request] of byKind) {
       const typed = request as Record<string, unknown>;
-      expect(typed["provider"]).toBe("spawn");
-      expect(typed["delivery"]).toBe("parent");
-      expect(typed["name"]).toMatch(new RegExp(`^odf-${kind}-\\d+$`));
-      const prompt = (typed["prompt"] as Array<{ text: string }>)
-        .map((part) => part.text)
-        .join("\n");
+      expect(typed.provider).toBe("spawn");
+      expect(typed.delivery).toBe("parent");
+      expect(typed.name).toMatch(new RegExp(`^odf-${kind}-\\d+$`));
+      const prompt = (typed.prompt as Array<{ text: string }>).map((part) => part.text).join("\n");
       expect(prompt).toContain(kind);
       expect(prompt).toContain("work.ts");
     }
     const text = steerText(agent);
     for (const request of started) {
-      expect(text).toContain(request["name"] as string);
+      expect(text).toContain(request.name as string);
     }
   });
 
@@ -1744,8 +1742,8 @@ describe("specialist spawn (plan 26 slice 26.2)", () => {
     await blockOnce(captured);
     expect(started).toHaveLength(3);
     const pgName = (started as Array<Record<string, unknown>>).find((request) =>
-      (request["name"] as string).startsWith("odf-pattern-guardian-"),
-    )?.["name"] as string;
+      (request.name as string).startsWith("odf-pattern-guardian-"),
+    )?.name as string;
     const notice = {
       role: "user",
       content: [
@@ -1787,7 +1785,7 @@ describe("specialist spawn (plan 26 slice 26.2)", () => {
     expect(steerText(second)).toContain("NO-DUP-HELPERS FOUND");
     // Only the collected kind re-spawns (style + correctness still pending).
     expect(started).toHaveLength(4);
-    expect(started[3]["name"]).toMatch(/^odf-pattern-guardian-\d+$/);
+    expect(started[3].name).toMatch(/^odf-pattern-guardian-\d+$/);
     // Findings are consumed: a further block carries no stale copy.
     await track("extra.ts");
     const third = {
@@ -1808,7 +1806,7 @@ describe("specialist spawn (plan 26 slice 26.2)", () => {
     const started = withSubagents(ctx);
     apply(ctx);
     await blockOnce(captured);
-    const childName = started[0]["name"] as string;
+    const childName = started[0].name as string;
     const silent = {
       role: "user",
       content: [
@@ -1865,20 +1863,20 @@ describe("specialist spawn (plan 26 slice 26.2)", () => {
     await flushPresetRegistration();
     expect(definitions).toHaveLength(1);
     const definition = definitions[0] as Record<string, unknown>;
-    expect(definition["id"]).toBe("odf-reviewer");
-    const plugins = definition["plugins"] as Array<Record<string, unknown>>;
-    const fs = plugins.find((plugin) => plugin["name"] === "@deepseek-ai/dsh-tool-fs");
-    expect(fs?.["config"]).toMatchObject({
+    expect(definition.id).toBe("odf-reviewer");
+    const plugins = definition.plugins as Array<Record<string, unknown>>;
+    const fs = plugins.find((plugin) => plugin.name === "@deepseek-ai/dsh-tool-fs");
+    expect(fs?.config).toMatchObject({
       read: true,
       write: false,
       edit: false,
       applyPatch: false,
     });
-    expect(plugins.some((plugin) => (plugin["name"] as string).includes("bash"))).toBe(false);
+    expect(plugins.some((plugin) => (plugin.name as string).includes("bash"))).toBe(false);
     await blockOnce(captured);
     expect(started).toHaveLength(3);
     for (const request of started) {
-      expect(request["agentPreset"]).toBe("odf-reviewer");
+      expect(request.agentPreset).toBe("odf-reviewer");
     }
   });
 
@@ -1892,7 +1890,7 @@ describe("specialist spawn (plan 26 slice 26.2)", () => {
     await blockOnce(captured);
     expect(started).toHaveLength(3);
     for (const request of started) {
-      expect(request["agentPreset"]).toBe("odf-reviewer");
+      expect(request.agentPreset).toBe("odf-reviewer");
     }
   });
 
@@ -1927,7 +1925,7 @@ describe("specialist spawn (plan 26 slice 26.2)", () => {
     const started = withSubagents(ctx);
     apply(ctx);
     await blockOnce(captured);
-    const prompt = (started[0]["prompt"] as Array<{ text: string }>)
+    const prompt = (started[0].prompt as Array<{ text: string }>)
       .map((part) => part.text)
       .join("\n");
     expect(prompt).toContain("NEUTRAL-BRIEF-MARKER");
@@ -1945,7 +1943,7 @@ describe("specialist spawn (plan 26 slice 26.2)", () => {
     const started = withSubagents(ctx);
     apply(ctx);
     await blockOnce(captured);
-    const prompt = (started[0]["prompt"] as Array<{ text: string }>)
+    const prompt = (started[0].prompt as Array<{ text: string }>)
       .map((part) => part.text)
       .join("\n");
     expect(prompt).toContain("OPENCODE-BRIEF-MARKER");
@@ -1981,11 +1979,11 @@ describe("specialist spawn (plan 26 slice 26.2)", () => {
     await blockOnce(captured);
     expect(started).toHaveLength(3);
     for (const request of started) {
-      expect(request["outputSchema"]).toMatchObject({
+      expect(request.outputSchema).toMatchObject({
         type: "object",
         required: ["summary", "findings"],
       });
-      const prompt = (request["prompt"] as Array<{ text: string }>)
+      const prompt = (request.prompt as Array<{ text: string }>)
         .map((part) => part.text)
         .join("\n");
       expect(prompt).toContain("structured-output tool");
@@ -2001,7 +1999,7 @@ describe("specialist spawn (plan 26 slice 26.2)", () => {
     expect(started).toHaveLength(3);
     for (const request of started) {
       expect(request).not.toHaveProperty("outputSchema");
-      const prompt = (request["prompt"] as Array<{ text: string }>)
+      const prompt = (request.prompt as Array<{ text: string }>)
         .map((part) => part.text)
         .join("\n");
       expect(prompt).not.toContain("structured-output tool");
@@ -2015,8 +2013,8 @@ describe("specialist spawn (plan 26 slice 26.2)", () => {
     apply(ctx);
     await blockOnce(captured);
     const pgName = (started as Array<Record<string, unknown>>).find((request) =>
-      (request["name"] as string).startsWith("odf-pattern-guardian-"),
-    )?.["name"] as string;
+      (request.name as string).startsWith("odf-pattern-guardian-"),
+    )?.name as string;
     const structured = {
       summary: "STRUCTURED-SUMMARY",
       findings: [
@@ -2072,8 +2070,8 @@ describe("specialist spawn (plan 26 slice 26.2)", () => {
     apply(ctx);
     await blockOnce(captured);
     const pgName = (started as Array<Record<string, unknown>>).find((request) =>
-      (request["name"] as string).startsWith("odf-pattern-guardian-"),
-    )?.["name"] as string;
+      (request.name as string).startsWith("odf-pattern-guardian-"),
+    )?.name as string;
     const notice = {
       role: "user",
       content: [
@@ -2221,13 +2219,13 @@ describe("extractStructuredFindings (plan 27)", () => {
         }
       }
       const record = node as Record<string, unknown>;
-      if (typeof record["properties"] === "object" && record["properties"] !== null) {
-        for (const [name, child] of Object.entries(record["properties"])) {
+      if (typeof record.properties === "object" && record.properties !== null) {
+        for (const [name, child] of Object.entries(record.properties)) {
           walk(child, `${path}.${name}`);
         }
       }
-      if (typeof record["items"] === "object" && record["items"] !== null) {
-        walk(record["items"], `${path}[]`);
+      if (typeof record.items === "object" && record.items !== null) {
+        walk(record.items, `${path}[]`);
       }
     };
     walk(SPECIALIST_FINDINGS_SCHEMA, "schema");
@@ -2242,15 +2240,15 @@ describe("child tool guard (hardening: investigation-only by construction)", () 
   let savedEnv: string | undefined;
 
   beforeEach(() => {
-    savedEnv = process.env["ODF_WORKDIR"];
-    process.env["ODF_WORKDIR"] = directory;
+    savedEnv = process.env.ODF_WORKDIR;
+    process.env.ODF_WORKDIR = directory;
   });
 
   afterEach(() => {
     if (savedEnv === undefined) {
-      delete process.env["ODF_WORKDIR"];
+      delete process.env.ODF_WORKDIR;
     } else {
-      process.env["ODF_WORKDIR"] = savedEnv;
+      process.env.ODF_WORKDIR = savedEnv;
     }
   });
 
