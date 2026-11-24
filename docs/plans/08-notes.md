@@ -32,7 +32,10 @@ live probe wins — never "align" adapter code to these pages.
   plugin-level no-grandchildren rule fights the host's own delegation
   machinery (budgets, not prohibitions). `toolFilter` as specified is
   host-blocked; its intent is already covered by the read-only reviewer
-  preset (plan 26.3).
+  preset (plan 26.3). Update 2026-11-24: the OpenCode side of that intent
+  is covered too — the shipped reviewer agents deny `edit` (and `shell`
+  except test-grounder) via `permissions` frontmatter, pinned by
+  `tests/agents.test.ts`.
 - Already honored, confirmed by the read: one-shot `spawn` (not
   `fork` — fork would seed the child with the parent's full
   history), `label` set per review kind, `signal` wired from
