@@ -146,6 +146,9 @@ semantics, block budgeting, `protect_off` scope, and all eight
   at session start (bundled default, overridable per project).
 - **Guardrails.** Blocks or warns on protected paths (`.env`, vendored
   code, your own globs) and dangerous shell commands (`git push`, `rm -rf`).
+  Secrets are blocked at the write, never scrubbed from sight —
+  [secret handling](docs/user/enforcement.md#secrets) recommends gitleaks
+  at the commit boundary.
 - **Per-edit lint.** Runs your linter on each edited file. On OpenCode
   the result is logged against the landed edit; on DSH a finding fails
   the tool call so the agent retries clean in the same turn.
