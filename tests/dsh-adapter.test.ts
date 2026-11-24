@@ -140,7 +140,7 @@ function stubContext(
       },
     },
     goals: {
-      create: (agent: unknown, request: { objective: string }) => {
+      create: (_agent: unknown, request: { objective: string }) => {
         captured.goalsCreated.push(request);
         return { id: "goal-1" };
       },
