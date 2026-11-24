@@ -55,3 +55,18 @@ This page is an orientation map, not a spec. Authority lives in:
   primitive mapping table, per-hook behavior, anti-patterns.
 - [`../plans/12-idle-hook-cutover.md`](../plans/12-idle-hook-cutover.md) —
   idle-hook cutover and the event-net fallback.
+
+## Deliberate non-goals
+
+- **No per-reviewer model pinning (`agentOptions` / `model:`).**
+  Considered and rejected. Reviewer children inherit the parent session's
+  model on both hosts (DSH `agentOptions` left unset; shipped OpenCode
+  agents carry no `model:` field). Pinning cheap models on reviewers would
+  save cents per task, but a weak reviewer fails silently — a laundered
+  PASS is indistinguishable from a real one downstream, which is the one
+  failure this plugin must never produce. And the safety case can't be
+  built at reasonable cost: scoring reviewer quality needs seeded-defect
+  cases plus human-hours for the rubric and spot-checks, and any
+  model-as-judge layer reintroduces the subjectivity the benchmark is
+  supposed to resolve. Revisit only if reviewer token spend becomes a real
+  line item *and* a trustworthy evaluation exists.
