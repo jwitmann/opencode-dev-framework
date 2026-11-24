@@ -125,6 +125,23 @@ and the clean pass is cached so the gate does not re-run it every idle.
 If your gate ever cites a file you already deleted, update the plugin —
 that was a bug in older versions, not your tree.
 
+## Gate blocks over scratch / untracked files
+
+"Done" means the whole tree, not just what's committed: the gate
+reviews committed branch work, uncommitted modifications, and untracked
+files alike, and the review artifact must account for all of it. An
+uncommitted change is unreviewed by definition — scoping the gate to
+committed files would let unverified work sit next to blessed work
+under a green "done."
+
+The honest tradeoff: the scanner can't tell deliberate scratch (working
+notes, experiment logs) from forgotten work — both look like unnamed
+files. It is tuned all the way toward completeness, so it accepts false
+positives (annoying blocks over scratch) to make one failure mode
+structurally impossible: declaring done while unreviewed changes sit in
+the tree. Keep scratch out of the tree — delete working notes or commit
+them — and future blocks can only mean real unreviewed work.
+
 ## Still stuck
 
 Every gate evaluation is logged as JSON lines: `OPENCODE_DEV_FRAMEWORK_LOG_FILE`
