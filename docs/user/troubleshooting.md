@@ -139,8 +139,11 @@ notes, experiment logs) from forgotten work — both look like unnamed
 files. It is tuned all the way toward completeness, so it accepts false
 positives (annoying blocks over scratch) to make one failure mode
 structurally impossible: declaring done while unreviewed changes sit in
-the tree. Keep scratch out of the tree — delete working notes or commit
-them — and future blocks can only mean real unreviewed work.
+the tree. When a block is genuinely just scratch, say so explicitly:
+`/df-ignore scratch/**` skips globs for the session, `-s` stores them
+in `gate.ignore` for scratch that always lives in the tree (details:
+[`commands.md`](commands.md)). A future block over unignored files can
+then only mean real unreviewed work.
 
 ## Still stuck
 
