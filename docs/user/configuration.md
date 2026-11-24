@@ -51,6 +51,13 @@ gate:
   # after the latest session edit; an older same-file review is stale.
   require_review: true
 
+  # Optional: glob patterns the gate treats as unchanged (scratch notes,
+  # generated output). Ignored files skip gate steps, review duty, and the
+  # pass-cache fingerprint. Session additions via /df-ignore filter
+  # identically; flat-key equivalent: gate_ignore: "scratch/**".
+  # ignore:
+  #   - scratch/**
+
   # Optional: named project-specific acceptance checks. Run sequentially
   # after the typecheck/test steps; a failure fails the gate but other
   # steps still run. Timeouts are per-check seconds (default: gate timeout).
