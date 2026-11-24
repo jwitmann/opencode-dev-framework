@@ -373,6 +373,38 @@ describe("resolveConfig", () => {
     expect(config.profile).toBe("off");
     expect(config.gate.scope).toBe("all");
     expect(config.gate.max_blocks).toBe(3);
+    expect(config.gate.ignore).toEqual([]);
+  });
+
+  it("round-trips gate.ignore from native YAML", () => {
+    write(
+      ".opencode-dev-framework.yml",
+      [
+        "profile: strict",
+        "gate:",
+        "  ignore:",
+        "    - .dev-framework/review.md",
+        "    - scratch/**",
+        "",
+      ].join("\n"),
+    );
+    expect(loadConfig(dir).gate.ignore).toEqual([".dev-framework/review.md", "scratch/**"]);
+  });
+
+  it("maps gate_ignore from flat config", () => {
+    write(
+      ".dev-framework.yml",
+      ["profile: strict", "gate_ignore: .dev-framework/review.md scratch/**", ""].join("\n"),
+    );
+    expect(loadConfig(dir).gate.ignore).toEqual([".dev-framework/review.md", "scratch/**"]);
+  });
+
+  it("rejects a non-list gate.ignore", () => {
+    write(
+      ".opencode-dev-framework.yml",
+      ["profile: strict", "gate:", "  ignore: not-a-list", ""].join("\n"),
+    );
+    expect(() => loadConfig(dir)).toThrowError(/Invalid configuration in .*gate\.ignore/s);
   });
 });
 

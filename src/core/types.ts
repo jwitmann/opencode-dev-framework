@@ -81,6 +81,14 @@ export interface GateConfig {
   timeout?: number;
   /** Maximum number of times a failing gate may re-block before standing down. */
   max_blocks: number;
+  /**
+   * Ignore hotlist: project-relative globs the completion gate treats as
+   * not-the-work (scratch, generated output). Applies to gate steps and
+   * review coverage uniformly; the review artifact itself is always
+   * retained regardless. Session-scoped `/df-ignore` entries union with
+   * this list and die with the session.
+   */
+  ignore: string[];
 }
 
 export interface OnEditConfig {

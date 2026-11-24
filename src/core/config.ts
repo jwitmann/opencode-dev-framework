@@ -96,6 +96,7 @@ const configSchema = z.object({
       require_review: z.boolean().optional(),
       timeout: z.number().positive().optional(),
       max_blocks: z.number().int().positive().optional(),
+      ignore: z.array(z.string()).optional(),
       acceptance: acceptanceListSchema,
     })
     .optional(),
@@ -289,6 +290,9 @@ export function mapFlatConfig(flat: Record<string, unknown>): Config {
       case "gate_max_blocks":
         gate.max_blocks = toNumber(value);
         break;
+      case "gate_ignore":
+        gate.ignore = splitGlobs(value);
+        break;
       case "protect_off":
         config.protect_off = toBoolean(value);
         break;
@@ -386,6 +390,7 @@ export function resolveConfig(raw: Config, configPath?: string): ResolvedConfig 
       require_review: raw.gate?.require_review ?? profile !== "off",
       timeout: raw.gate?.timeout,
       max_blocks: raw.gate?.max_blocks ?? 3,
+      ignore: raw.gate?.ignore ?? [],
       acceptance: raw.gate?.acceptance ?? [],
     },
     on_edit: {
@@ -530,6 +535,7 @@ const FLAT_ONLY_KEYS: ReadonlySet<string> = new Set([
   "gate_require_review",
   "gate_timeout",
   "gate_max_blocks",
+  "gate_ignore",
 ]);
 
 function isFlatDottedKey(key: string): boolean {
