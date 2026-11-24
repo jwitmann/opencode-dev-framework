@@ -17,6 +17,16 @@ Inspired by
 which supports Copilot CLI, Claude Code, and Codex CLI; this is an independent
 implementation. DSH guide: [`docs/user/dsh.md`](docs/user/dsh.md).
 
+## Principles
+
+These principles guide every mechanism in this plugin:
+
+- **Verbatim evidence.** Work is judged as performed — original output or explicitly marked pointers, never silently rewritten. No output redaction, no revised reports, no laundered context.
+- **Read-only reviewers.** The judging party cannot touch the work. Findings are reported visibly; rework happens in the open, and the gate re-verifies from scratch.
+- **Reveal, don't sanitize.** Audit trails over hidden rewrites — what happened stays inspectable.
+- **No bypass-required measures.** Nothing that fights legitimate use; if a control needs a workaround, it's the control that's wrong.
+- **Bounded and loud.** Enforcement budgets are explicit and stand-down is announced, never a quiet pass.
+
 ## Quickstart
 
 Five minutes from zero to your first gated session.
