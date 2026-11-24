@@ -55,7 +55,12 @@ list assumptions.
    looking for: the full verification command(s), per-language
    lint/format invocations, integration tests with special needs (docker,
    network, credentials), generated assets and how they rebuild, and
-   paths that must never be edited.
+   paths that must never be edited. Also check the formatting split: on
+   OpenCode the host owns formatting — if the project's `opencode.json`
+   declares no `formatter` but the project has formatter tooling
+   (Prettier, Biome, rustfmt, gofmt, …), flag adding one (the plugin
+   defers to it and never runs its own). On DSH there is nothing to
+   flag — the adapter runs the project's formatter itself.
 
 2. **Prefer wrappers over bare tools.** If the project verifies via
    `make check`, `npm run verify`, or a CI job, the config's `commands`
