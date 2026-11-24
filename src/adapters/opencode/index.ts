@@ -168,7 +168,6 @@ const plugin = Plugin.define({
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       await log("error", message, { directory });
-      // No client.app.log in V2 — stderr is enough
       return;
     }
 

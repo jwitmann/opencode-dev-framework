@@ -10,24 +10,6 @@ import {
   rotateLogFile,
 } from "../src/core/logger";
 
-function stubClient(implementation?: () => Promise<void>) {
-  const calls: { level: string; message: string; extra?: Record<string, unknown> }[] = [];
-  const client = {
-    app: {
-      log: async (options: {
-        body: { level: string; message: string; extra?: Record<string, unknown> };
-      }) => {
-        if (implementation) {
-          await implementation();
-          return;
-        }
-        calls.push(options.body);
-      },
-    },
-  };
-  return { client: client as never, calls };
-}
-
 describe("createLogger", () => {
   const stderrSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
 
@@ -50,55 +32,19 @@ describe("createLogger", () => {
     await rm(sandboxDir, { recursive: true, force: true });
   });
 
-  it("forwards level, message and extra to client.app.log", async () => {
-    const { client, calls } = stubClient();
-    const log = createLogger(client);
+  it("writes service, level, message and extra to stderr", async () => {
+    const log = createLogger();
     await log("warn", "something happened", { key: "value" });
-    expect(calls).toEqual([
-      {
-        service: LOG_SERVICE,
-        level: "warn",
-        message: "something happened",
-        extra: { key: "value" },
-      },
-    ]);
+    const written = stderrSpy.mock.calls.map(String).join("\n");
+    expect(written).toContain(`[${LOG_SERVICE}] warn something happened`);
+    expect(written).toContain(`extra: ${JSON.stringify({ key: "value" })}`);
   });
 
-  it("uses the plugin service name", async () => {
-    const logged: string[] = [];
-    const client = {
-      app: {
-        log: async (options: { body: { service: string } }) => {
-          logged.push(options.body.service);
-        },
-      },
-    };
-    const log = createLogger(client as never);
-    await log("info", "hello");
-    expect(logged).toEqual([LOG_SERVICE]);
-  });
-
-  it("falls back to stderr when app.log throws, and never rejects", async () => {
-    const { client } = stubClient(async () => {
-      throw new Error("app.log exploded");
-    });
-    const log = createLogger(client);
-    await expect(log("error", "gate failed")).resolves.toBeUndefined();
-    expect(stderrSpy).toHaveBeenCalledOnce();
-    const written = String(stderrSpy.mock.calls[0]?.[0]);
-    expect(written).toContain(LOG_SERVICE);
-    expect(written).toContain("error gate failed");
-    expect(written).toContain("app.log exploded");
-  });
-
-  it("resolves even when both app.log and stderr fail", async () => {
-    const { client } = stubClient(async () => {
-      throw new Error("app.log exploded");
-    });
+  it("never rejects when stderr fails", async () => {
     stderrSpy.mockImplementationOnce(() => {
       throw new Error("stderr exploded");
     });
-    const log = createLogger(client);
+    const log = createLogger();
     await expect(log("error", "gate failed")).resolves.toBeUndefined();
   });
 
@@ -114,23 +60,23 @@ describe("createLogger", () => {
       else process.env.OPENCODE_DEV_FRAMEWORK_LOG_LEVEL = previousLevel;
     });
 
-    it("drops below-minimum levels everywhere (client, stderr, file)", async () => {
+    it("drops below-minimum levels everywhere (stderr, file)", async () => {
       process.env.OPENCODE_DEV_FRAMEWORK_LOG_LEVEL = "warn";
-      const { client, calls } = stubClient();
-      const log = createLogger(client);
+      const log = createLogger();
       await log("debug", "quiet");
       await log("info", "also quiet");
       await log("warn", "loud");
       await log("error", "louder");
-      expect(calls.map((c) => c.level)).toEqual(["warn", "error"]);
-      expect(stderrSpy.mock.calls.join("\n")).not.toContain("quiet");
+      const written = stderrSpy.mock.calls.map(String).join("\n");
+      expect(written).toContain("loud");
+      expect(written).toContain("louder");
+      expect(written).not.toContain("quiet");
     });
 
     it("treats unknown values as debug (current behavior)", async () => {
       process.env.OPENCODE_DEV_FRAMEWORK_LOG_LEVEL = "verbose";
-      const { client, calls } = stubClient();
-      await createLogger(client)("debug", "still here");
-      expect(calls).toHaveLength(1);
+      await createLogger()("debug", "still here");
+      expect(stderrSpy.mock.calls.map(String).join("\n")).toContain("still here");
     });
   });
 });

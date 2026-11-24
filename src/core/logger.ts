@@ -1,5 +1,5 @@
 /**
- * Structured logging wrapper. Supports both V1 (client.app.log) and V2 (stderr/file).
+ * Structured logging wrapper. Logs to stderr and the user-level log file.
  */
 
 import { appendFile, mkdir, rename, rm, stat } from "node:fs/promises";
@@ -41,15 +41,6 @@ export type LogFn = (
   message: string,
   extra?: Record<string, unknown>,
 ) => Promise<void>;
-
-// V1 client shape (subset) — kept for test compatibility
-type V1Client = {
-  app?: {
-    log?: (args: {
-      body: { service: string; level: LogLevel; message: string; extra?: Record<string, unknown> };
-    }) => Promise<unknown>;
-  };
-};
 
 export interface LogPathInput {
   platform?: string;
@@ -161,12 +152,9 @@ export async function rotateLogFile(filePath: string, maxBytes: number): Promise
 }
 
 /**
- * Create a logger. If a V1 client is provided, forwards to `client.app.log`
- * (as tests expect). Otherwise logs to stderr/file (V2 runtime).
+ * Create a logger. Writes to stderr and the user-level log file.
  */
-export function createLogger(
-  client?: V1Client | { app: { log: (...args: unknown[]) => Promise<unknown> } },
-): LogFn {
+export function createLogger(): LogFn {
   // Explicit override wins (empty string disables file logging:
   // the falsy filePath below skips all writes); otherwise a
   // user-level default so the "loud" record exists without
@@ -184,27 +172,6 @@ export function createLogger(
       message,
       extra,
     });
-
-    if (client?.app?.log) {
-      try {
-        // biome-ignore lint/style/noNonNullAssertion: guarded by if above
-        await (client as V1Client).app!.log!({
-          body: { service: LOG_SERVICE, level, message, extra },
-        });
-      } catch (error) {
-        try {
-          process.stderr.write(
-            `[${LOG_SERVICE}] ${level} ${message} (app.log failed: ${String(error)})\n`,
-          );
-        } catch {
-          // ignore
-        }
-      }
-      if (filePath) {
-        await appendLogFile(filePath, line);
-      }
-      return;
-    }
 
     try {
       process.stderr.write(`[${LOG_SERVICE}] ${level} ${message}\n`);
