@@ -6,6 +6,41 @@ Generated from conventional commits (`scripts/changelog.sh`).
 Single source: CI publishes each version's section as the GitHub
 release notes, so this file and the release page never diverge.
 
+## [v1.12.0] - 2026-11-24
+
+### Features
+
+- require duties before summary in Definition of done ([`3700e87`](https://github.com/jwitmann/opencode-dev-framework/commit/3700e87a120fbebddabb5a953a4cc2e099a13b49))
+- structured specialist findings on DSH via outputSchema ([`eb84aec`](https://github.com/jwitmann/opencode-dev-framework/commit/eb84aec911a80419910fb4c63670f7a50520815e))
+- least-privilege permissions on shipped reviewer agents ([`3c7035d`](https://github.com/jwitmann/opencode-dev-framework/commit/3c7035d88ea38b6bbe278beb5b3f4b2f1fe71d3d))
+
+### Fixes
+
+- prefix unused goals.create stub param ([`ffc45e5`](https://github.com/jwitmann/opencode-dev-framework/commit/ffc45e501e23737ded2f4ac7fb8598915256f97a))
+- single-line boolean returns in agents.test.ts ([`196a271`](https://github.com/jwitmann/opencode-dev-framework/commit/196a27133703a96abb7ee7839d7a7fdf0b70d0c4))
+- clear all biome warnings (literal keys, non-null assertions) ([`15520e7`](https://github.com/jwitmann/opencode-dev-framework/commit/15520e76112e613f599fcdb7b6ce663c285925b6))
+
+### Documentation
+
+- point OpenCode users at host formatter config ([`0b7a733`](https://github.com/jwitmann/opencode-dev-framework/commit/0b7a733d7250b776479deac0fd9f3fdf920f61b9))
+- skill flags missing host formatter on OpenCode, skips DSH ([`5976271`](https://github.com/jwitmann/opencode-dev-framework/commit/5976271a9962b8d4ea7a46fde9b135dc8a4e96c3))
+- tick 26.0 plan-written box, executed 2026-11-17 ([`df5bff9`](https://github.com/jwitmann/opencode-dev-framework/commit/df5bff9876e7166a87d05470e3d8da039c050d25))
+- record parked-list ranking and verdicts ([`ab50764`](https://github.com/jwitmann/opencode-dev-framework/commit/ab50764739fef1d72752dd2038716f0ea148e5b3))
+- correct parked-list ranking against host source ([`eebd967`](https://github.com/jwitmann/opencode-dev-framework/commit/eebd9671e6794a2ac7749d119d90d572d60bed7d))
+- record OpenCode side of toolFilter intent as covered ([`1940e34`](https://github.com/jwitmann/opencode-dev-framework/commit/1940e34d6248dc9fdd7e344ff6c31be5b0221fd5))
+- close out #1 with the mirrored OpenCode/DSH designs ([`befe5c8`](https://github.com/jwitmann/opencode-dev-framework/commit/befe5c82fc896a528f047c41181a04b66e466563))
+- record model-pinning rejection as deliberate non-goal ([`c2ad222`](https://github.com/jwitmann/opencode-dev-framework/commit/c2ad222ec9c0dc0ec9e653c02763559522c92cb8))
+- reframe model pinning as deferred-until-requested ([`20f7cca`](https://github.com/jwitmann/opencode-dev-framework/commit/20f7ccaadfda48f5c000d676a7f3e7617251453c))
+- note agentOptions feasible on spawn provider ([`f79923d`](https://github.com/jwitmann/opencode-dev-framework/commit/f79923d56907f9f4fedf46b327267b79769d08b0))
+- record depth-cap decline alongside deferred model pinning ([`8a1c309`](https://github.com/jwitmann/opencode-dev-framework/commit/8a1c309cf4987b62705cd763a005b99a95557db6))
+- depth-cap decline originated OpenCode-side ([`d6ff014`](https://github.com/jwitmann/opencode-dev-framework/commit/d6ff014d232f3466017bc2dfa5be281f689a9848))
+- note least-privilege reviewer frontmatter in README ([`5a7935f`](https://github.com/jwitmann/opencode-dev-framework/commit/5a7935f5e9b6d37e59104f83590cc2fb09ba2a93))
+
+### Other
+
+- drop V1 agent frontmatter for native V2 format ([`0c4a159`](https://github.com/jwitmann/opencode-dev-framework/commit/0c4a159a32b6022abc1330257c9f9d1002f9d69d))
+- remove dead V1 client path from logger ([`e4a0065`](https://github.com/jwitmann/opencode-dev-framework/commit/e4a0065cb2cf290f41a3c322d8a67b0d1a4d7b2a))
+
 ## [v1.11.1] - 2026-11-24
 
 ### Documentation
