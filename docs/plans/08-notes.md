@@ -197,6 +197,7 @@ Throwing from an event handler may show an error toast but will not make the age
 1. **No hard completion block.** OpenCode has no `agentStop` hook. The gate runs on `session.idle` and reports failure; it cannot force the agent to keep working.
 2. **Permission rules are best-effort.** If OpenCode plugins cannot contribute `permission` fragments dynamically, the guardrail relies on the `tool.execute.before` hook, which runs after OpenCode's native permission check.
 3. **Formatting is delegated to OpenCode native formatters.** The plugin configures them but does not replace them.
+4. **No gate under `opencode run` (verified 2026-11-24).** One-shot `run` sessions exit after the final message without reaching an idle boundary — server logs show zero plugin hook activity, so neither the constitution's duties nor the completion gate take effect. Automated A/B testing of constitution wording is therefore not possible via `opencode run`; DSH headless has the same gap (no `kimi-coding` adapter in the headless bundle). Constitution changes are validated mechanically here and verified in the field in interactive sessions.
 
 ## Design alternatives considered
 

@@ -35,6 +35,11 @@ A task is done only when:
   review file left over from a previous task; rewrite it fresh every time.
 - You ran the project's full verification yourself (not just the completion
   gate) and read the output — the gate is a backstop, not your test run.
+- Duties before summary: refresh any required review artifact and run the
+  project's verification BEFORE writing the final summary — never summarize
+  work the gate hasn't cleared yet. The summary is the last thing you write
+  in the turn; a gate block and its remediation work land below it and bury
+  it out of view.
 
 If you cannot meet the bar, stop and tell the user what is blocking you rather than
 declaring success.
