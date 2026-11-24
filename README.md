@@ -290,7 +290,10 @@ of modals. Full reference:
   always re-verifies the final tree from scratch.
 - Formatting and linting use your project tooling — the framework never
   reimplements them. On OpenCode the host runs the formatter; on DSH the
-  adapter runs your configured formatter command before linting.
+  adapter runs your configured formatter command before linting. Want
+  formatting on OpenCode? Configure the host `formatter` in
+  `opencode.json` ([docs](https://opencode.ai/docs/formatters/)) — the
+  plugin defers to it and never runs its own.
 
 ### OpenCode
 
