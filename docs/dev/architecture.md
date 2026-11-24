@@ -62,8 +62,9 @@ This page is an orientation map, not a spec. Authority lives in:
   until someone asks for it — e.g. an advanced option for users who want
   the gate to always run on model X. Until then the default stands:
   reviewer children inherit the parent session's model on both hosts
-  (DSH `agentOptions` left unset; shipped OpenCode agents carry no
-  `model:` field). Notes for the day it's requested: pinning cheap models
+  (DSH `agentOptions` left unset — feasible when requested: the `spawn`
+  provider honors `agentOptions`, unlike the ACP/out-of-process providers;
+  shipped OpenCode agents carry no `model:` field). Notes for the day it's requested: pinning cheap models
   on reviewers saves cents per task but risks silent-PASS laundering (a
   weak PASS is indistinguishable from a real one downstream), so it must
   ship as explicit opt-in with a loud default-inherit rule, never a quiet
