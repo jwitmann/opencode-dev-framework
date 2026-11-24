@@ -18,13 +18,17 @@ live probe wins — never "align" adapter code to these pages.
   unlists), so any future skill edit must keep the frontmatter
   valid. Mirror root `.dsh/skills` is rank 100 (top), beating
   `.agents/skills` (200) and user roots — placement is optimal.
-- Parked (need per-provider capability checks, none urgent):
-  `toolFilter` for host-native read-only reviewer enforcement
-  (today: prompt-level restriction + per-exec guards),
-  `outputSchema` for structured reviewer findings (today: notice
-  text parsing), `agentOptions` to pin reviewer children to a
-  cheap model, `depthLimit` for an explicit no-grandchildren
-  guarantee.
+- Parked (need per-provider capability checks, none urgent), ranked
+  2026-11-24: `toolFilter` first (host-native read-only reviewer
+  enforcement — the principle made mechanical instead of
+  prose-requested; today: prompt-level restriction + per-exec guards);
+  `outputSchema` second (structured reviewer findings instead of
+  notice-text parsing); `agentOptions` bottom and only with a loud
+  default-inherit rule (cheap models on judgment checks launder weak
+  verification as PASS — mechanical checks may pin cheap,
+  correctness/security stay strong); `depthLimit` likely never — a
+  plugin-level no-grandchildren rule fights the host's own delegation
+  machinery (budgets, not prohibitions).
 - Already honored, confirmed by the read: one-shot `spawn` (not
   `fork` — fork would seed the child with the parent's full
   history), `label` set per review kind, `signal` wired from
