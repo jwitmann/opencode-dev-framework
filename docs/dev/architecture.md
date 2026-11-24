@@ -73,10 +73,10 @@ This page is an orientation map, not a spec. Authority lives in:
   spot-check labor, and any model-as-judge layer reintroduces the
   subjectivity the measurement is supposed to resolve.
 
-- **Plugin-level depth cap (`depthLimit` / no-grandchildren rule).**
-  Declined. On DSH the `spawn` provider already enforces recursion caps —
-  budgets, not prohibitions — and a plugin-level rule would fight the
-  host's own delegation machinery. On OpenCode there is no per-dispatch
-  depth knob at all (only the global `experimental.subagent_depth`
-  config), so the same rule would be home-rolled enforcement facing the
-  same objection. No action unless a host drops its own machinery.
+- **Plugin-level depth cap (no-grandchildren rule).** Declined. The idea
+  originated OpenCode-side, where depth is an experimental global
+  (`experimental.subagent_depth`), not a per-dispatch knob — so a plugin
+  rule would be home-rolled enforcement duplicating host machinery. On
+  DSH the same objection holds in mirror: the `spawn` provider already
+  enforces its own recursion caps (budgets, not prohibitions). No action
+  unless a host drops its own machinery.
