@@ -1,5 +1,4 @@
 ---
-name: pattern-guardian
 mode: subagent
 description: >
   Anti-drift reviewer. Checks new or changed code against the patterns already

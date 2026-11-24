@@ -1,5 +1,4 @@
 ---
-name: style-enforcer
 mode: subagent
 description: >
   Style-guide reviewer. Checks changed files against the project's documented

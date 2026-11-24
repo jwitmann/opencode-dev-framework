@@ -257,7 +257,7 @@ const plugin = Plugin.define({
     // the stale hook must NOT double-enforce), and (c) teardown racing
     // an in-flight handler between awaits (captured `state` stays valid
     // while the global may be cleared). See issue #1 follow-up.
-    // 1) Constitution injection — per model request (V1: experimental.chat.system.transform -> V2: session.hook("context", ...))
+    // 1) Constitution injection — per model request (session.hook("context", ...))
     trackRegistration(
       await ctx.session.hook("context", async (event) => {
         if (getActiveState() !== state) return;
@@ -593,7 +593,7 @@ const plugin = Plugin.define({
       );
     }
 
-    // 2) Guardrails — tool execution blocking (V1: tool.execute.before -> V2: ctx.tool.hook("execute.before", ...))
+    // 2) Guardrails — tool execution blocking (ctx.tool.hook("execute.before", ...))
     // Stale-hook fail-open: the closure captures its own `state` and allows
     // the call whenever it is no longer live — torn down (activeState null)
     // or superseded by a newer setup (activeState is a different instance,

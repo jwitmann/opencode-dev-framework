@@ -36,7 +36,7 @@ Five minutes from zero to your first gated session.
 
 **On OpenCode:**
 
-Requires OpenCode `v2.x` (live-verified on `v2.0.26` and `v2.2.0`).
+Requires OpenCode `v2.x` (live-verified on `v2.0.26` and `v2.2.0`). V1 agent frontmatter and the V1 plugin API are deprecated upstream and unsupported — agent names come from filenames.
 
 ```bash
 opencode plugin add opencode-dev-framework
