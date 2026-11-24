@@ -6,6 +6,20 @@ Generated from conventional commits (`scripts/changelog.sh`).
 Single source: CI publishes each version's section as the GitHub
 release notes, so this file and the release page never diverge.
 
+## [v1.13.0] - 2026-11-24
+
+### Features
+
+- add gate.ignore schema with native and flat config support ([`efb17d6`](https://github.com/jwitmann/opencode-dev-framework/commit/efb17d65159e429222b018867767ca13ab14858a))
+- gate-ignore hotlist with /df-ignore session command ([`c7c0bbd`](https://github.com/jwitmann/opencode-dev-framework/commit/c7c0bbd0e7a123bf869d411368347ef40d12c577))
+
+### Documentation
+
+- read exit codes from the command, never downstream of a pipe ([`f7d389e`](https://github.com/jwitmann/opencode-dev-framework/commit/f7d389edd6e4b1dc5f2f7497b1e6eacffdeb0b73))
+- gate blocks over scratch files is completeness-by-design ([`818b568`](https://github.com/jwitmann/opencode-dev-framework/commit/818b56828b837a52492adf2764c1f01006645136))
+- document gate.ignore in the configuration reference ([`a567289`](https://github.com/jwitmann/opencode-dev-framework/commit/a56728933197545586dbc0b0aa67ac7b00c868d5))
+- cover /df-ignore in README command table and gate bullet ([`627882b`](https://github.com/jwitmann/opencode-dev-framework/commit/627882b9b7dfadc059ef1b20770afc830c15e3b0))
+
 ## [v1.12.0] - 2026-11-24
 
 ### Features
