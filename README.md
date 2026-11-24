@@ -125,7 +125,7 @@ differ. Neither harness is the "real" one; each is stronger somewhere:
 | Redirect targets (`a > file`) | Not guard-checked | **Guard-checked** (wider than OpenCode) |
 | denial identity | Reason text | Reason text + structured `{name, code}` |
 | Skills | `.opencode/skills` (native) | `.dsh/skills` (installed by `df-init`, kept current by `df-update`) |
-| Reviewer agents | `.opencode/agents` specialists run as subagents | **Adapter-dispatched DSH children on review-blocks** (one per kind; read-only preset where the registry exists; findings fold into the steer; customize via `.dev-framework/agents/`); inline steer when the seam is absent |
+| Reviewer agents | `.opencode/agents` specialists run as subagents (least-privilege `permissions` frontmatter: no edits, no shell except test-grounder) | **Adapter-dispatched DSH children on review-blocks** (one per kind; read-only preset where the registry exists; findings fold into the steer; customize via `.dev-framework/agents/`); inline steer when the seam is absent |
 | Goals | `/df-goal` wraps native `/goal` | `df-goal` creates the host goal with the same verification contract |
 | Install | One command (`opencode plugin add`) | `dsh plugin add` + `df install-dsh` (bundle auto-wires the base entry) |
 | Review UI | Instant TUI modals, never feed the LLM | Host commands returning text |
