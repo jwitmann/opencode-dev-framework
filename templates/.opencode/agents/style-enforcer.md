@@ -1,5 +1,12 @@
 ---
 mode: subagent
+permissions:
+  - action: edit
+    resource: "*"
+    effect: deny
+  - action: shell
+    resource: "*"
+    effect: deny
 description: >
   Style-guide reviewer. Checks changed files against the project's documented
   style guide (and, in its absence, the conventions of the surrounding code):

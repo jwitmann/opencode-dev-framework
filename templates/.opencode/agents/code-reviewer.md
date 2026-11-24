@@ -1,5 +1,12 @@
 ---
 mode: subagent
+permissions:
+  - action: edit
+    resource: "*"
+    effect: deny
+  - action: shell
+    resource: "*"
+    effect: deny
 description: >
   Correctness reviewer. Scans changed code for bugs, logic errors, security
   issues, and unsafe edge cases — independent of style and pattern concerns.

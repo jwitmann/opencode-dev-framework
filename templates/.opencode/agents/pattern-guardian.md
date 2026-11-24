@@ -1,5 +1,12 @@
 ---
 mode: subagent
+permissions:
+  - action: edit
+    resource: "*"
+    effect: deny
+  - action: shell
+    resource: "*"
+    effect: deny
 description: >
   Anti-drift reviewer. Checks new or changed code against the patterns already
   established in this codebase and flags duplication, re-invented helpers,
