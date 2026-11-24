@@ -900,7 +900,7 @@ Dogfood the fork's V2 pre-terminal hook (upstream PR
 
 ## Phase 26 — DSH specialist subagents (SCOPED 2026-11-17, not started)
 
-- [ ] 26.0 Plan written (`docs/plans/26-dsh-specialists.md`): seam
+- [x] 26.0 Plan written (`docs/plans/26-dsh-specialists.md`): seam
   verified against installed host `0.2.2-rc.3` (`ctx.subagents`
   `startActivation`, async delivery-to-parent, `spawn`/`fork`
   providers present on headless). Interim docs fix shipped
