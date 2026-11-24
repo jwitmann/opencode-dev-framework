@@ -36,6 +36,15 @@ live probe wins — never "align" adapter code to these pages.
   is covered too — the shipped reviewer agents deny `edit` (and `shell`
   except test-grounder) via `permissions` frontmatter, pinned by
   `tests/agents.test.ts`.
+- Closed 2026-11-24: #1 is addressed on both hosts with mirrored designs.
+  Per-dispatch `toolFilter` exists on neither start path, so each host uses
+  its native equivalent. On OpenCode the *model* launches reviewers through
+  the subagent tool, so enforcement lives in the shipped agent files
+  (`permissions` frontmatter: edit denied everywhere, shell denied except
+  test-grounder). On DSH the *plugin* spawns reviewers, so enforcement lives
+  at the dispatch call (`agentPreset: "odf-reviewer"` — reads + search only,
+  no writes, no exec, no delegation; test-grounder stays lead-side). Same
+  least-privilege intent, enforced at whichever point owns the launch.
 - Already honored, confirmed by the read: one-shot `spawn` (not
   `fork` — fork would seed the child with the parent's full
   history), `label` set per review kind, `signal` wired from
