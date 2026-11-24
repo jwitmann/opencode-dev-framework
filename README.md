@@ -290,6 +290,8 @@ of modals. Full reference:
   from the bounded completion mechanisms below.
 - A cached pass never survives a restart — after a restart the gate
   always re-verifies the final tree from scratch.
+- Session ignore patterns (`/df-ignore` without `-s`) also live in server
+  memory — a restart clears them. Store what must survive with `-s`.
 - Formatting and linting use your project tooling — the framework never
   reimplements them. On OpenCode the host runs the formatter; on DSH the
   adapter runs your configured formatter command before linting. Want
