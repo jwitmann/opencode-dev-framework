@@ -8,9 +8,11 @@ import {
   type DshContext,
   type DshPostDecision,
   type DshPreDecision,
+  extractStructuredFindings,
   guardErrorDecision,
   isChildAgent,
   lintBlockLines,
+  SPECIALIST_FINDINGS_SCHEMA,
 } from "../src/adapters/dsh/index";
 import { clearConfigCache, loadConfig } from "../src/core/config";
 import type { LintOutcome } from "../src/core/lint";
@@ -1587,10 +1589,21 @@ describe("specialist spawn (plan 26 slice 26.2)", () => {
     rmSync(directory, { recursive: true, force: true });
   });
 
-  function withSubagents(ctx: DshContext): Array<Record<string, unknown>> {
+  function withSubagents(
+    ctx: DshContext,
+    opts: {
+      capabilities?: {
+        agentOptions?: boolean;
+        agentPreset?: boolean;
+        outputSchema?: boolean;
+        depthLimit?: boolean;
+      };
+    } = {},
+  ): Array<Record<string, unknown>> {
     const started: Array<Record<string, unknown>> = [];
     (ctx as unknown as Record<string, unknown>)["subagents"] = {
-      getProvider: (name: string) => ({ name }),
+      getProvider: (name: string) =>
+        opts.capabilities === undefined ? { name } : { name, capabilities: opts.capabilities },
       resolveMaxDepth: () => undefined,
       startActivation: async (request: Record<string, unknown>) => {
         started.push(request);
@@ -1599,6 +1612,15 @@ describe("specialist spawn (plan 26 slice 26.2)", () => {
     };
     return started;
   }
+
+  const capableOpts = {
+    capabilities: {
+      agentOptions: true,
+      agentPreset: true,
+      outputSchema: true,
+      depthLimit: true,
+    },
+  };
 
   function withPresets(
     ctx: DshContext,
@@ -1949,6 +1971,269 @@ describe("specialist spawn (plan 26 slice 26.2)", () => {
     await captured.stopping?.({ agent: child, turn: 1 });
     expect(started).toHaveLength(0);
     expect(child.steer).not.toHaveBeenCalled();
+  });
+
+  it("passes outputSchema when the provider supports it", async () => {
+    writeConfig(directory, "profile: standard\n");
+    const { ctx, captured } = stubContext();
+    const started = withSubagents(ctx, capableOpts);
+    apply(ctx);
+    await blockOnce(captured);
+    expect(started).toHaveLength(3);
+    for (const request of started) {
+      expect(request["outputSchema"]).toMatchObject({
+        type: "object",
+        required: ["summary", "findings"],
+      });
+      const prompt = (request["prompt"] as Array<{ text: string }>)
+        .map((part) => part.text)
+        .join("\n");
+      expect(prompt).toContain("structured-output tool");
+    }
+  });
+
+  it("omits outputSchema when the provider does not advertise it", async () => {
+    writeConfig(directory, "profile: standard\n");
+    const { ctx, captured } = stubContext();
+    const started = withSubagents(ctx);
+    apply(ctx);
+    await blockOnce(captured);
+    expect(started).toHaveLength(3);
+    for (const request of started) {
+      expect(request).not.toHaveProperty("outputSchema");
+      const prompt = (request["prompt"] as Array<{ text: string }>)
+        .map((part) => part.text)
+        .join("\n");
+      expect(prompt).not.toContain("structured-output tool");
+    }
+  });
+
+  it("folds structured findings with the marker, preferring them over closing prose", async () => {
+    writeConfig(directory, "profile: standard\n");
+    const { ctx, captured } = stubContext();
+    const started = withSubagents(ctx, capableOpts);
+    apply(ctx);
+    await blockOnce(captured);
+    const pgName = (started as Array<Record<string, unknown>>).find((request) =>
+      (request["name"] as string).startsWith("odf-pattern-guardian-"),
+    )?.["name"] as string;
+    const structured = {
+      summary: "STRUCTURED-SUMMARY",
+      findings: [
+        { file: "work.ts", line: 3, issue: "STRUCTURED-ISSUE", severity: "blocking" },
+        { file: "other.ts", issue: "SECOND-ISSUE", severity: "note" },
+      ],
+    };
+    const notice = {
+      role: "user",
+      content: [
+        {
+          type: "text",
+          text:
+            `Background subagent ${pgName} finished and will do no further ` +
+            "work unless you send it more. Its closing message: CLOSING-PROSE",
+        },
+        { type: "text", text: `Structured result: ${JSON.stringify(structured)}` },
+      ],
+      source: { kind: "subagent" },
+    };
+    await captured.preStep?.(
+      {
+        agent: { session: { header: { id: "ses-spec" } } },
+        messages: [notice],
+        turn: 2,
+      },
+      async () => ({ kind: "enter", messages: [] }),
+    );
+    writeFileSync(join(directory, "more.ts"), "export const x = 1;\n");
+    await captured.post?.(
+      { name: "write", arguments: { file_path: "more.ts" } },
+      { isError: false },
+      async () => ({ kind: "accept" as const }),
+    );
+    const second = {
+      steer: vi.fn(),
+      followup: vi.fn(),
+      session: { header: { id: "ses-spec" } },
+    };
+    await captured.stopping?.({ agent: second, turn: 2 });
+    expect(second.steer).toHaveBeenCalledTimes(1);
+    const text = steerText(second);
+    expect(text).toContain("(structured)");
+    expect(text).toContain("STRUCTURED-SUMMARY");
+    expect(text).toContain("[work.ts:3] STRUCTURED-ISSUE (blocking)");
+    expect(text).toContain("[other.ts] SECOND-ISSUE (note)");
+  });
+
+  it("malformed structured block falls back to the closing text", async () => {
+    writeConfig(directory, "profile: standard\n");
+    const { ctx, captured } = stubContext();
+    const started = withSubagents(ctx, capableOpts);
+    apply(ctx);
+    await blockOnce(captured);
+    const pgName = (started as Array<Record<string, unknown>>).find((request) =>
+      (request["name"] as string).startsWith("odf-pattern-guardian-"),
+    )?.["name"] as string;
+    const notice = {
+      role: "user",
+      content: [
+        {
+          type: "text",
+          text:
+            `Background subagent ${pgName} finished and will do no further ` +
+            "work unless you send it more. Its closing message: FALLBACK-PROSE\n" +
+            "Structured result: {not json",
+        },
+      ],
+      source: { kind: "subagent" },
+    };
+    await captured.preStep?.(
+      {
+        agent: { session: { header: { id: "ses-spec" } } },
+        messages: [notice],
+        turn: 2,
+      },
+      async () => ({ kind: "enter", messages: [] }),
+    );
+    writeFileSync(join(directory, "more.ts"), "export const x = 1;\n");
+    await captured.post?.(
+      { name: "write", arguments: { file_path: "more.ts" } },
+      { isError: false },
+      async () => ({ kind: "accept" as const }),
+    );
+    const second = {
+      steer: vi.fn(),
+      followup: vi.fn(),
+      session: { header: { id: "ses-spec" } },
+    };
+    await captured.stopping?.({ agent: second, turn: 2 });
+    expect(second.steer).toHaveBeenCalledTimes(1);
+    expect(steerText(second)).toContain("FALLBACK-PROSE");
+    expect(steerText(second)).not.toContain("(structured)");
+  });
+});
+
+describe("extractStructuredFindings (plan 27)", () => {
+  const valid = {
+    summary: "SUM",
+    findings: [{ file: "a.ts", line: 1, issue: "ISS", severity: "blocking" }],
+  };
+
+  it("returns null without the prefix", () => {
+    expect(extractStructuredFindings("Background subagent x finished.")).toBeNull();
+  });
+
+  it("returns null on malformed JSON", () => {
+    expect(extractStructuredFindings("Structured result: {oops")).toBeNull();
+  });
+
+  it("returns null on the wrong shape", () => {
+    expect(extractStructuredFindings("Structured result: [1,2]")).toBeNull();
+    expect(extractStructuredFindings('Structured result: {"summary":"s"}')).toBeNull();
+    expect(
+      extractStructuredFindings('Structured result: {"summary":"s","findings":[]}'),
+    ).toBeNull();
+  });
+
+  it("renders summary plus one line per finding", () => {
+    expect(extractStructuredFindings(`Structured result: ${JSON.stringify(valid)}`)).toEqual([
+      "SUM",
+      "- [a.ts:1] ISS (blocking)",
+    ]);
+  });
+
+  it("skips unusable entries, coerces unknown severities to note", () => {
+    const mixed = {
+      summary: "SUM",
+      findings: [
+        { file: "", issue: "empty file", severity: "blocking" },
+        { file: "b.ts", issue: "", severity: "blocking" },
+        { file: "c.ts", issue: "KEPT-AS-NOTE", severity: "critical" },
+        { file: "d.ts", issue: "KEPT", severity: "should-fix" },
+        { file: "e.ts", issue: "KEPT-NOLINE", severity: "note", line: 1.5 },
+        { file: "f.ts", issue: "KEPT-NOSUFFIX", severity: "blocking", line: 0 },
+        { file: "g.ts", issue: "KEPT-NOSUFFIX", severity: "blocking", line: -3 },
+      ],
+    };
+    expect(extractStructuredFindings(`Structured result: ${JSON.stringify(mixed)}`)).toEqual([
+      "SUM",
+      "- [c.ts] KEPT-AS-NOTE (note)",
+      "- [d.ts] KEPT (should-fix)",
+      "- [e.ts] KEPT-NOLINE (note)",
+      "- [f.ts] KEPT-NOSUFFIX (blocking)",
+      "- [g.ts] KEPT-NOSUFFIX (blocking)",
+    ]);
+    const allBad = { summary: "SUM", findings: [{ file: "", issue: "", severity: "x" }] };
+    expect(extractStructuredFindings(`Structured result: ${JSON.stringify(allBad)}`)).toBeNull();
+  });
+
+  it("defaults an empty summary instead of rendering a blank line", () => {
+    const empty = {
+      summary: "   ",
+      findings: [{ file: "a.ts", issue: "ISS", severity: "blocking" }],
+    };
+    expect(extractStructuredFindings(`Structured result: ${JSON.stringify(empty)}`)).toEqual([
+      "(no summary)",
+      "- [a.ts] ISS (blocking)",
+    ]);
+  });
+
+  it("caps folded findings and truncates long summaries", () => {
+    const many = {
+      summary: "S",
+      findings: Array.from({ length: 25 }, (_, i) => ({
+        file: `f${i}.ts`,
+        issue: `ISSUE-${i}`,
+        severity: "note",
+      })),
+    };
+    const folded = extractStructuredFindings(`Structured result: ${JSON.stringify(many)}`);
+    expect(folded?.length).toBe(22);
+    expect(folded?.[1]).toBe("- [f0.ts] ISSUE-0 (note)");
+    expect(folded?.[20]).toBe("- [f19.ts] ISSUE-19 (note)");
+    expect(folded?.[21]).toBe("(findings omitted for 5 more entries)");
+    const long = {
+      summary: `x${"y".repeat(3000)}`,
+      findings: [{ file: "a.ts", issue: "ISS", severity: "blocking" }],
+    };
+    const truncated = extractStructuredFindings(`Structured result: ${JSON.stringify(long)}`);
+    expect(truncated?.[0].length).toBe(2000);
+  });
+
+  it("keeps the schema inside the host subset (object root, closed, minimal keywords)", () => {
+    const allowed = new Set([
+      "type",
+      "properties",
+      "required",
+      "additionalProperties",
+      "items",
+      "enum",
+    ]);
+    const violations: string[] = [];
+    const walk = (node: unknown, path: string): void => {
+      if (typeof node !== "object" || node === null) {
+        violations.push(`${path} must be an object`);
+        return;
+      }
+      for (const key of Object.keys(node)) {
+        if (!allowed.has(key)) {
+          violations.push(`${path}.${key} not in host subset`);
+        }
+      }
+      const record = node as Record<string, unknown>;
+      if (typeof record["properties"] === "object" && record["properties"] !== null) {
+        for (const [name, child] of Object.entries(record["properties"])) {
+          walk(child, `${path}.${name}`);
+        }
+      }
+      if (typeof record["items"] === "object" && record["items"] !== null) {
+        walk(record["items"], `${path}[]`);
+      }
+    };
+    walk(SPECIALIST_FINDINGS_SCHEMA, "schema");
+    expect(violations).toEqual([]);
+    expect(SPECIALIST_FINDINGS_SCHEMA.type).toBe("object");
+    expect(SPECIALIST_FINDINGS_SCHEMA.additionalProperties).toBe(false);
   });
 });
 

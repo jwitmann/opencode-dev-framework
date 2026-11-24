@@ -219,7 +219,24 @@ export interface DshAgentPresets {
 
 /** Minimal structural face of the host subagent service (plan 26). */
 export interface DshSubagents {
-  getProvider(name: string): { name: string } | undefined;
+  getProvider(name: string):
+    | {
+        name: string;
+        /**
+         * Start-request capabilities the provider honors. Read once per
+         * dispatch (plan 27): the host rejects a request needing an
+         * unsupported capability, so the adapter only sends what the
+         * provider for this start supports. Absent on older hosts —
+         * absence degrades to the capability-less (text-only) path.
+         */
+        capabilities?: {
+          agentOptions?: boolean;
+          agentPreset?: boolean;
+          outputSchema?: boolean;
+          depthLimit?: boolean;
+        };
+      }
+    | undefined;
   resolveMaxDepth(value: unknown): unknown;
   startActivation(request: {
     provider: string;
@@ -228,6 +245,12 @@ export interface DshSubagents {
     prompt: Array<{ type: "text"; text: string }>;
     parent: unknown;
     agentPreset?: string;
+    /**
+     * Structured-findings schema (plan 27): object-rooted, within the
+     * host's enforced subset. Sent only after a positive capability
+     * probe — the host rejects the start otherwise.
+     */
+    outputSchema?: unknown;
     maxDepth?: unknown;
     signal?: AbortSignal;
     delivery: "parent";
@@ -867,6 +890,110 @@ function reviewerPresetDefinition(): {
 const SPECIALIST_NOTICE_RE =
   /Background subagent ([a-z0-9][a-z0-9-]*) finished[\s\S]*?[Ii]ts closing message:\s*([\s\S]*?)\s*$/;
 
+/**
+ * Structured-findings schema (plan 27): what a specialist child reports
+ * through the host's capture tool when the provider supports
+ * `outputSchema`. Object-rooted and keyword-minimal (`type` / `properties`
+ * / `required` / `additionalProperties` / `items` / `enum`) so it stays
+ * inside the host's enforced subset — the host rejects the start
+ * otherwise. Closed (`additionalProperties: false`) so a drifting child
+ * fails validation loudly instead of smuggling extra fields past the
+ * fold.
+ */
+export const SPECIALIST_FINDINGS_SCHEMA = {
+  type: "object",
+  properties: {
+    summary: { type: "string" },
+    findings: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          file: { type: "string" },
+          line: { type: "integer" },
+          issue: { type: "string" },
+          severity: { type: "string", enum: ["blocking", "should-fix", "note"] },
+        },
+        required: ["file", "issue", "severity"],
+        additionalProperties: false,
+      },
+    },
+  },
+  required: ["summary", "findings"],
+  additionalProperties: false,
+} as const;
+
+/** Notice-block prefix the host prepends to a satisfied structured result. */
+const SPECIALIST_STRUCTURED_RESULT_PREFIX = "Structured result:";
+
+/** Severities the fold accepts; anything else is coerced to `note` (see below). */
+const SPECIALIST_FINDING_SEVERITIES = new Set(["blocking", "should-fix", "note"]);
+
+/** Maximum structured findings folded into one steer; the tail names the rest. */
+const MAX_STRUCTURED_FINDINGS = 20;
+
+/** Maximum folded summary length; longer summaries are truncated, not dropped. */
+const MAX_STRUCTURED_SUMMARY_CHARS = 2000;
+
+/**
+ * Structured findings out of one entering text, or null. Prefers the
+ * host-rendered `Structured result:` block (exact JSON the child
+ * submitted, already schema-validated by the provider). Malformed JSON,
+ * wrong shape, or zero usable entries all return null so the caller
+ * falls back to the closing-message regex — structure is an upgrade,
+ * never a new failure mode.
+ */
+export function extractStructuredFindings(text: string): string[] | null {
+  const at = text.indexOf(SPECIALIST_STRUCTURED_RESULT_PREFIX);
+  if (at === -1) {
+    return null;
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text.slice(at + SPECIALIST_STRUCTURED_RESULT_PREFIX.length).trim());
+  } catch {
+    return null;
+  }
+  if (typeof parsed !== "object" || parsed === null) {
+    return null;
+  }
+  const { summary, findings } = parsed as { summary?: unknown; findings?: unknown };
+  if (typeof summary !== "string" || !Array.isArray(findings)) {
+    return null;
+  }
+  const lines: string[] = [];
+  for (const entry of findings) {
+    if (typeof entry !== "object" || entry === null) {
+      continue;
+    }
+    const { file, line, issue, severity } = entry as Record<string, unknown>;
+    if (typeof file !== "string" || file === "" || typeof issue !== "string" || issue === "") {
+      continue;
+    }
+    // Unknown severities coerce to `note` rather than dropping the entry:
+    // a typo must never silently lose a finding, and the gate still blocks
+    // on the missing review artifact, so nothing is smuggled past enforcement.
+    const level =
+      typeof severity === "string" && SPECIALIST_FINDING_SEVERITIES.has(severity)
+        ? severity
+        : "note";
+    const where = typeof line === "number" && Number.isInteger(line) && line >= 1 ? `:${line}` : "";
+    lines.push(`- [${file}${where}] ${issue} (${level})`);
+  }
+  if (lines.length === 0) {
+    return null;
+  }
+  const headline =
+    summary.trim() === "" ? "(no summary)" : summary.trim().slice(0, MAX_STRUCTURED_SUMMARY_CHARS);
+  const folded = [`${headline}`, ...lines];
+  if (lines.length > MAX_STRUCTURED_FINDINGS) {
+    const kept = lines.slice(0, MAX_STRUCTURED_FINDINGS);
+    const omitted = lines.length - MAX_STRUCTURED_FINDINGS;
+    return [`${headline}`, ...kept, `(findings omitted for ${omitted} more entries)`];
+  }
+  return folded;
+}
+
 /** Read-only investigation brief when the agent file is unreadable. */
 const SPECIALIST_FALLBACK_BRIEF =
   "You are the pattern-guardian: check the changed files below against the " +
@@ -1102,6 +1229,17 @@ export function apply(ctx: DshContext): void {
     if (typeof subagents?.startActivation !== "function") {
       return null;
     }
+    // Capability probe (plan 27): `outputSchema` is per-provider — the
+    // host rejects a start that needs an unsupported capability, so probe
+    // the exact provider this start will use and degrade to the
+    // closing-text path on any doubt (absent seam, unknown provider,
+    // throwing probe). Never throws out of dispatch.
+    let structuredCapable = false;
+    try {
+      structuredCapable = subagents.getProvider("spawn")?.capabilities?.outputSchema === true;
+    } catch {
+      structuredCapable = false;
+    }
     try {
       specialistCounter += 1;
       const name = `${SPECIALIST_NAME_STEMS[kind]}-${specialistCounter}`;
@@ -1110,7 +1248,11 @@ export function apply(ctx: DshContext): void {
         `${brief}\n\nYou are investigating, not implementing: report findings ` +
         `as text, do not edit anything.\nChanged files under review:\n` +
         `${changedFiles.map((file) => `- ${file}`).join("\n")}\n\n` +
-        `Gate summary for this block:\n${gateSummary}`;
+        `Gate summary for this block:\n${gateSummary}` +
+        (structuredCapable
+          ? `\n\nAlso report each finding with the structured-output tool ` +
+            `(one entry per finding), then close with a short text summary as usual.`
+          : "");
       const activation = await subagents.startActivation({
         provider: "spawn",
         label: `odf specialist review (${kind})`,
@@ -1118,13 +1260,19 @@ export function apply(ctx: DshContext): void {
         prompt: [{ type: "text", text: prompt }],
         parent: agent,
         ...(reviewerPresetReady ? { agentPreset: REVIEWER_PRESET_ID } : {}),
+        ...(structuredCapable ? { outputSchema: SPECIALIST_FINDINGS_SCHEMA } : {}),
         ...(signal !== undefined ? { signal } : {}),
         delivery: "parent",
       });
       trackSpecialist(sessionKey, kind, activation.name);
-      await safeLog(state, "info", `specialist dispatched: ${activation.name}`, {
-        sessionID: sessionKey,
-      });
+      await safeLog(
+        state,
+        "info",
+        `specialist dispatched: ${activation.name} (${structuredCapable ? "structured" : "text"} findings)`,
+        {
+          sessionID: sessionKey,
+        },
+      );
       return activation.name;
     } catch (error) {
       await safeLog(
@@ -1453,13 +1601,27 @@ export function apply(ctx: DshContext): void {
               }
             }
             const finding = (match[2] ?? "").trim();
-            if (finding !== "") {
+            // Structured first (plan 27): when the child satisfied its
+            // output schema, the notice carries a `Structured result:`
+            // block — exact submitted JSON beats the quoted closing prose.
+            // Null (absent/malformed/empty) falls back to the closing
+            // text, preserving the pre-structured behavior verbatim.
+            const structuredLines = extractStructuredFindings(text);
+            const folded = structuredLines ?? (finding !== "" ? [finding] : []);
+            if (folded.length > 0) {
               const collected = specialistFindings.get(key) ?? [];
-              collected.push(`[${finished}] ${finding}`);
+              collected.push(
+                `[${finished}] ${structuredLines !== null ? "(structured) " : ""}${folded.join("\n")}`,
+              );
               specialistFindings.set(key, collected);
-              await safeLog(state, "info", `specialist findings collected: ${finished}`, {
-                sessionID: key,
-              });
+              await safeLog(
+                state,
+                "info",
+                `specialist findings collected: ${finished} (${structuredLines !== null ? "structured" : "text"})`,
+                {
+                  sessionID: key,
+                },
+              );
             } else {
               await safeLog(state, "debug", `specialist finished silent: ${finished}`, {
                 sessionID: key,
