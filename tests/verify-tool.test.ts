@@ -85,6 +85,28 @@ describe("Phase 26.1: dev_framework_verify tool (server-side gate, reshaped ship
     expect(addedTools.has("dev_framework_runtime")).toBe(true);
   });
 
+  it("returns readable validation errors for malformed dev_framework_ignore input", async () => {
+    writeConfig("profile: standard\n");
+    const { ctx, addedTools } = createMockCtx();
+    const mod = plugin as unknown as { setup: (c: unknown) => Promise<unknown> };
+    cleanup = (await mod.setup(ctx)) as () => Promise<void> | void;
+    const tool = addedTools.get("dev_framework_ignore");
+    expect(tool).toBeDefined();
+    const malformed = [
+      null,
+      { patterns: "scratch/**" },
+      { store: "yes" },
+      { list: 1 },
+      { remove: ["valid/**", 42] },
+      { directory: 42 },
+      { extra: true },
+    ];
+    for (const input of malformed) {
+      const result = await tool?.execute(input);
+      expect(result?.content).toContain("Invalid dev_framework_ignore input");
+    }
+  });
+
   it("runs the gate and returns the summary (marker proof, no re-prompt)", async () => {
     writeConfig(gateConfig());
     const { ctx, addedTools } = createMockCtx();

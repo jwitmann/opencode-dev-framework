@@ -837,35 +837,26 @@ const plugin = Plugin.define({
             additionalProperties: false,
           },
           async execute(input: unknown) {
-            const { dfIgnore } = await import("../../core/commands.js");
+            const { dfIgnore, parseIgnoreToolInput } = await import("../../core/commands.js");
             const { clearConfigCache: ccc, loadConfig: lc } = await import("../../core/config.js");
             const { loadConstitution: lc2 } = await import("../../core/rules.js");
-            const args = input as {
-              patterns?: string[];
-              store?: boolean;
-              list?: boolean;
-              remove?: string[];
-              directory?: string;
-            };
-            const targetDir = args.directory ?? directory;
+            const validated = parseIgnoreToolInput(input);
+            if (!validated.ok) return { content: validated.error };
+            const { directory: requestedDirectory, ...parsed } = validated.args;
+            const targetDir = requestedDirectory ?? directory;
             const liveState = getActiveState();
             const live = liveState && liveState.directory === targetDir ? liveState : null;
             const own = state.directory === targetDir ? state : null;
             const holder = live ?? own;
-            if (holder === null && (args.patterns?.length ?? 0) > 0 && !args.store) {
+            if (holder === null && parsed.patterns.length > 0 && !parsed.store) {
               return {
                 content: `No live session for ${targetDir}: session ignores have nowhere to live. Re-run with store:true to persist to gate.ignore instead.`,
               };
             }
             const sessionIgnores = holder?.sessionIgnores ?? [];
             const cfg = holder?.config ?? lc(targetDir);
-            const result = await dfIgnore(targetDir, sessionIgnores, cfg, {
-              patterns: args.patterns ?? [],
-              store: args.store ?? false,
-              list: args.list ?? false,
-              remove: args.remove ?? [],
-            });
-            if (args.store) {
+            const result = await dfIgnore(targetDir, sessionIgnores, cfg, parsed);
+            if (parsed.store) {
               ccc();
               const newConfig = lc(targetDir);
               const { constitution: newConstitution } = await lc2(newConfig, targetDir);

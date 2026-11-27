@@ -1517,6 +1517,27 @@ describe("DSH adapter (plan 25 slice 4)", () => {
     expect(ignored).toContain("Session-scoped only");
   });
 
+  it("agent ignore tool returns readable validation errors for malformed input", async () => {
+    writeConfig(directory, "profile: standard\n");
+    const { ctx, captured } = stubContext();
+    apply(ctx);
+    const tool = captured.tools.find((t) => t.name === "dev_framework_ignore");
+    expect(tool).toBeDefined();
+    const malformed = [
+      null,
+      { patterns: "scratch/**" },
+      { store: "yes" },
+      { list: 1 },
+      { remove: ["valid/**", 42] },
+      { directory: 42 },
+      { extra: true },
+    ];
+    for (const input of malformed) {
+      const result = await tool?.execute(input, {});
+      expect(result).toContain("Invalid dev_framework_ignore input");
+    }
+  });
+
   it("agent update tool returns the drift brief on a stale tree", async () => {
     writeConfig(directory, "profile: standard\n");
     const { ctx, captured } = stubContext();

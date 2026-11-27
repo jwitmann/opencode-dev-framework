@@ -1,4 +1,5 @@
 import { join } from "node:path";
+import { z } from "zod";
 import { splitCommand } from "./command-utils.js";
 import { existingConfigPath, loadConfig } from "./config.js";
 import type { GateReport } from "./gate.js";
@@ -79,6 +80,36 @@ export interface DfIgnoreArgs {
   store: boolean;
   list: boolean;
   remove: string[];
+}
+
+const ignoreToolInputSchema = z
+  .object({
+    patterns: z.array(z.string()).default([]),
+    store: z.boolean().default(false),
+    list: z.boolean().default(false),
+    remove: z.array(z.string()).default([]),
+    directory: z.string().optional(),
+  })
+  .strict();
+
+export type DfIgnoreToolInput = z.infer<typeof ignoreToolInputSchema>;
+
+/**
+ * Validate a direct `dev_framework_ignore` tool call. The hosts normally
+ * enforce the advertised JSON Schema, but the execute seam accepts unknown
+ * input and tests or other integrations can call it directly. Return a
+ * readable error instead of letting a type assertion turn bad input into an
+ * uncaught TypeError. Defaults are normalized here for both adapters.
+ */
+export function parseIgnoreToolInput(
+  input: unknown,
+): { ok: true; args: DfIgnoreToolInput } | { ok: false; error: string } {
+  const result = ignoreToolInputSchema.safeParse(input);
+  if (result.success) return { ok: true, args: result.data };
+  const issues = result.error.issues
+    .map((issue) => `  - ${issue.path.join(".") || "(root)"}: ${issue.message}`)
+    .join("\n");
+  return { ok: false, error: `Invalid dev_framework_ignore input:\n${issues}` };
 }
 
 /**

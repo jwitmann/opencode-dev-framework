@@ -27,6 +27,7 @@ import {
   type DfIgnoreArgs,
   dfIgnore,
   parseIgnoreArgs,
+  parseIgnoreToolInput,
   verifyGate,
 } from "../../core/commands.js";
 import { CONFIG_FILE_PRECEDENCE, clearConfigCache, loadConfig } from "../../core/config.js";
@@ -2260,24 +2261,14 @@ export function apply(ctx: DshContext): void {
       additionalProperties: false,
     },
     execute: async (input: unknown) => {
-      const args = input as {
-        patterns?: string[];
-        store?: boolean;
-        list?: boolean;
-        remove?: string[];
-        directory?: string;
-      };
-      const targetDir = args.directory ?? state.directory;
+      const validated = parseIgnoreToolInput(input);
+      if (!validated.ok) return validated.error;
+      const { directory: requestedDirectory, ...parsed } = validated.args;
+      const targetDir = requestedDirectory ?? state.directory;
       const liveState = getActiveState();
       const live = liveState !== null && liveState.directory === targetDir ? liveState : null;
       const own = state.directory === targetDir ? state : null;
       const holder = live ?? own;
-      const parsed = {
-        patterns: args.patterns ?? [],
-        store: args.store ?? false,
-        list: args.list ?? false,
-        remove: args.remove ?? [],
-      };
       if (holder === null && parsed.patterns.length > 0 && !parsed.store) {
         return (
           `No live session for ${targetDir}: session ignores have nowhere to live. ` +

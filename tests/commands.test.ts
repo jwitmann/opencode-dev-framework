@@ -3,7 +3,13 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { changeProfile, dfIgnore, parseIgnoreArgs, verifyGate } from "../src/core/commands";
+import {
+  changeProfile,
+  dfIgnore,
+  parseIgnoreArgs,
+  parseIgnoreToolInput,
+  verifyGate,
+} from "../src/core/commands";
 import { clearConfigCache, resolveConfig } from "../src/core/config";
 import type { RunCommand } from "../src/core/host";
 
@@ -220,6 +226,29 @@ describe("parseIgnoreArgs", () => {
 
   it("parses empty input as a bare list", () => {
     expect(parseIgnoreArgs("")).toEqual({ patterns: [], store: false, list: false, remove: [] });
+  });
+});
+
+describe("parseIgnoreToolInput", () => {
+  it("normalizes omitted fields once for both adapters", () => {
+    expect(parseIgnoreToolInput({ patterns: ["scratch/**"], store: true })).toEqual({
+      ok: true,
+      args: {
+        patterns: ["scratch/**"],
+        store: true,
+        list: false,
+        remove: [],
+      },
+    });
+  });
+
+  it("returns field-level errors instead of throwing", () => {
+    const result = parseIgnoreToolInput({ remove: ["valid/**", 42] });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error).toContain("Invalid dev_framework_ignore input");
+      expect(result.error).toContain("remove.1");
+    }
   });
 });
 
