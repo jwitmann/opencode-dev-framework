@@ -40,7 +40,7 @@ runs — a deletion can break dependents).
 ## Where to start next session
 
 The implementation plan is complete (all checklist items done through
-Phase 32; `v1.5.0` on npm). There is no next unchecked item. Instead:
+Phase 32; `v1.13.1` on npm). There is no next unchecked item. Instead:
 
 1. Read `05-implementation-checklist.md` for state and `08-notes.md`
    for tripwires (pre-stop veto, plugin skill hooks, Effect-first
