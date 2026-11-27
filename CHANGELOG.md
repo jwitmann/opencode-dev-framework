@@ -6,6 +6,17 @@ Generated from conventional commits (`scripts/changelog.sh`).
 Single source: CI publishes each version's section as the GitHub
 release notes, so this file and the release page never diverge.
 
+## [v1.13.2] - 2026-11-27
+
+### Fixes
+
+- aggregate review artifact diagnostics ([`25cdf59`](https://github.com/jwitmann/opencode-dev-framework/commit/25cdf59953865162d054ef1c9f6e5eda33329468))
+
+### Documentation
+
+- record v1.13.1 npm publication ([`c51e5d5`](https://github.com/jwitmann/opencode-dev-framework/commit/c51e5d533f5afa350eb823465cd1e2278bfbc6e1))
+- explain review artifact block diagnostics ([`555390c`](https://github.com/jwitmann/opencode-dev-framework/commit/555390c75aa98dc0aaf454e001e0626a43fae5ff))
+
 ## [v1.13.1] - 2026-11-27
 
 ### Fixes
