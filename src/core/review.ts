@@ -59,6 +59,24 @@ const TEMPLATE_PATTERNS = [
 /** Review artifact state with substance gradations. */
 export type ReviewState = "missing" | "empty" | "thin" | "template" | "stale" | "present";
 
+/** Independently detectable freshness defects for one artifact snapshot. */
+export interface ReviewFreshnessIssues {
+  uncovered: string[];
+  predatesChanges: boolean;
+}
+
+/** Primary state plus every meaningful secondary issue found in one read. */
+export interface ReviewArtifactAssessment extends ReviewFreshnessIssues {
+  state: ReviewState;
+}
+
+/** Trimmed-character and word floors, independent of template markers. */
+export function hasReviewSubstance(content: string): boolean {
+  const trimmed = content.trim();
+  const words = trimmed === "" ? 0 : trimmed.split(/\s+/).length;
+  return trimmed.length >= REVIEW_MIN_CHARS && words >= REVIEW_MIN_WORDS;
+}
+
 /**
  * Assess already-read review content. Pure. Order matters: empty,
  * then template markers (a short file with TODOs reports the more
@@ -69,8 +87,7 @@ export function assessReviewContent(content: string): Exclude<ReviewState, "miss
   if (TEMPLATE_PATTERNS.some((pattern) => pattern.test(content))) return "template";
   // Unfilled checklist scaffolding with nothing checked off.
   if (/\[ \]/.test(content) && !/\[[xX]\]/.test(content)) return "template";
-  const words = content.trim().split(/\s+/).length;
-  if (content.trim().length < REVIEW_MIN_CHARS || words < REVIEW_MIN_WORDS) return "thin";
+  if (!hasReviewSubstance(content)) return "thin";
   return "present";
 }
 
@@ -104,12 +121,36 @@ export function thinReviewMessage(changedFiles: string[]): string {
   );
 }
 
-export function templateReviewMessage(changedFiles: string[]): string {
+function freshnessProblems(issues: ReviewFreshnessIssues): string[] {
+  const problems: string[] = [];
+  if (issues.uncovered.length > 0) {
+    const missing = issues.uncovered.map((file) => `  - ${file}`).join("\n");
+    problems.push(`it does not cover this session's changes. Not mentioned:\n${missing}`);
+  }
+  if (issues.predatesChanges) {
+    problems.push(
+      "it was not written after the latest session changes, or its freshness could not be established.",
+    );
+  }
+  return problems;
+}
+
+export function templateReviewMessage(
+  changedFiles: string[],
+  issues?: ReviewFreshnessIssues,
+): string {
   const files = changedFiles.map((f) => `  - ${f}`).join("\n");
+  const problems = issues === undefined ? [] : freshnessProblems(issues);
+  const beforeFiles =
+    problems.length === 0
+      ? " This session changed files:\n"
+      : `\n\nAdditional artifact problems:\n${problems
+          .map((problem) => `- ${problem}`)
+          .join("\n")}\n\nThis session changed files:\n`;
   return (
     `opencode-dev-framework completion gate — the peer-review artifact still contains ` +
     `template placeholders or an unfilled checklist. Finish the review before declaring ` +
-    `done. This session changed files:\n${files}\n\n` +
+    `done.${beforeFiles}${files}\n\n` +
     `Rewrite ${REVIEW_REL} fresh for THIS session's changes — scope, findings, ` +
     `and resolutions, with every placeholder replaced by real findings.\n\n` +
     reviewCadenceReminder()
@@ -153,12 +194,16 @@ export function findUncoveredFiles(content: string, files: string[]): string[] {
   });
 }
 
-export function staleReviewMessage(changedFiles: string[], uncovered: string[]): string {
+export function staleReviewMessage(
+  changedFiles: string[],
+  uncovered: string[],
+  predatesChanges = uncovered.length === 0,
+): string {
   const files = changedFiles.map((f) => `  - ${f}`).join("\n");
-  const missing = uncovered.map((f) => `  - ${f}`).join("\n");
+  const problems = freshnessProblems({ uncovered, predatesChanges });
   const reason =
-    uncovered.length > 0
-      ? `it does not cover this session's changes. Not mentioned:\n${missing}\n\n`
+    problems.length > 0
+      ? `${problems.join("\n\n")}\n\n`
       : "it was not written after the latest session changes, or its freshness could not be established.\n\n";
   return (
     `opencode-dev-framework completion gate — the peer-review artifact is substantive ` +

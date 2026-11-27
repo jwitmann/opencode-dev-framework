@@ -36,7 +36,9 @@ import {
 import {
   assessReviewContent,
   findUncoveredFiles,
+  hasReviewSubstance,
   normalizeReviewPath,
+  type ReviewArtifactAssessment,
   type ReviewState,
   staleReviewMessage,
   templateReviewMessage,
@@ -188,26 +190,48 @@ async function reviewPredatesChanges(
 }
 
 /**
- * Grade the peer-review artifact including substance (plan 17 §3) and
- * freshness (plan 18): a substantive review of the wrong task reports
- * `stale` unless it names every file this session changed. Never throws
- * — unreadable files count as missing. Thin or template content names the
- * duty-escape on the record instead of passing a checkbox note.
+ * Grade one artifact snapshot including substance (plan 17 §3) and freshness
+ * (plan 18) without losing secondary diagnostics to the primary-state short
+ * circuit. A substantive review of the wrong task reports `stale` unless it
+ * names every changed file. Never throws — unreadable files count as missing.
+ * Substantive template-marked content also receives coverage/freshness checks;
+ * thin or empty content gets one concise rewrite request instead of a noisy
+ * list of every omitted file.
  */
+export async function readReviewAssessment(
+  directory: string,
+  changedFiles: string[] = [],
+): Promise<ReviewArtifactAssessment> {
+  const review = await readReviewSnapshot(directory);
+  if (review === undefined) {
+    return { state: "missing", uncovered: [], predatesChanges: false };
+  }
+  const substance = assessReviewContent(review.content);
+  const checkFreshness =
+    substance === "present" || (substance === "template" && hasReviewSubstance(review.content));
+  if (!checkFreshness) {
+    return { state: substance, uncovered: [], predatesChanges: false };
+  }
+
+  const covered = coverableChangedFiles(directory, changedFiles);
+  const uncovered = findUncoveredFiles(review.content, covered);
+  const predatesChanges =
+    covered.length > 0 && (await reviewPredatesChanges(directory, review.rel, covered));
+  const state =
+    substance !== "present"
+      ? substance
+      : uncovered.length > 0 || predatesChanges
+        ? "stale"
+        : "present";
+  return { state, uncovered, predatesChanges };
+}
+
+/** Preserve the primary-state API for policy and stuck-signature callers. */
 export async function readReviewState(
   directory: string,
   changedFiles: string[] = [],
 ): Promise<ReviewState> {
-  const review = await readReviewSnapshot(directory);
-  if (review === undefined) {
-    return "missing";
-  }
-  const substance = assessReviewContent(review.content);
-  if (substance !== "present") return substance;
-  const covered = coverableChangedFiles(directory, changedFiles);
-  if (findUncoveredFiles(review.content, covered).length > 0) return "stale";
-  if (covered.length === 0) return "present";
-  return (await reviewPredatesChanges(directory, review.rel, covered)) ? "stale" : "present";
+  return (await readReviewAssessment(directory, changedFiles)).state;
 }
 
 /**
@@ -705,9 +729,10 @@ export async function inspectCompletion(deps: InspectionDeps): Promise<Completio
   });
   const gateFailed = report.ran && !report.ok;
 
-  const reviewState: ReviewState = reviewRequired
-    ? await readReviewState(directory, changedFiles)
-    : "present";
+  const reviewAssessment: ReviewArtifactAssessment = reviewRequired
+    ? await readReviewAssessment(directory, changedFiles)
+    : { state: "present", uncovered: [], predatesChanges: false };
+  const reviewState = reviewAssessment.state;
   const reviewMissing = reviewRequired && reviewState !== "present";
 
   const ok = !gateFailed && !reviewMissing && !weakened;
@@ -716,9 +741,13 @@ export async function inspectCompletion(deps: InspectionDeps): Promise<Completio
     : reviewState === "thin"
       ? thinReviewMessage(changedFiles)
       : reviewState === "template"
-        ? templateReviewMessage(changedFiles)
+        ? templateReviewMessage(changedFiles, reviewAssessment)
         : reviewState === "stale"
-          ? staleReviewMessage(changedFiles, await uncoveredReviewFiles(directory, changedFiles))
+          ? staleReviewMessage(
+              changedFiles,
+              reviewAssessment.uncovered,
+              reviewAssessment.predatesChanges,
+            )
           : reviewMissing
             ? reviewMissingMessage(changedFiles)
             : report.ran

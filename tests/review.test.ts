@@ -253,6 +253,76 @@ describe("review substance at the gate", () => {
     expect(inspection.summary).toContain("placeholders");
   });
 
+  it("keeps short template diagnostics concise", async () => {
+    await writeReview("TODO: looks good");
+    const { deps } = makeDeps(GREEN);
+    const inspection = await inspectCompletion({
+      run: deps.run,
+      config: deps.config,
+      directory: deps.directory,
+      trackerFiles: ["src/a.ts", "src/b.ts"],
+    });
+    expect(inspection.reviewState).toBe("template");
+    expect(inspection.summary).toContain("placeholders");
+    expect(inspection.summary).not.toContain("Additional artifact problems:");
+  });
+
+  it("reports placeholders, missing coverage, and staleness together", async () => {
+    await mkdir(join(dir, "src"), { recursive: true });
+    const sourceA = join(dir, "src/a.ts");
+    const sourceB = join(dir, "src/b.ts");
+    await writeFile(sourceA, "export const a = true;\n");
+    await writeFile(sourceB, "export const b = true;\n");
+    await writeReview(`${REVIEW_BODY} TODO: record the final reviewer result.`);
+    const review = join(dir, REVIEW_ARTIFACT_REL);
+    const old = new Date("2026-01-01T00:00:00Z");
+    const recent = new Date("2026-01-02T00:00:00Z");
+    await utimes(review, old, old);
+    await utimes(sourceA, recent, recent);
+    await utimes(sourceB, recent, recent);
+
+    const { deps } = makeDeps(GREEN);
+    const inspection = await inspectCompletion({
+      run: deps.run,
+      config: deps.config,
+      directory: deps.directory,
+      trackerFiles: ["src/a.ts", "src/b.ts"],
+    });
+    expect(inspection.reviewState).toBe("template");
+    expect(inspection.summary).toContain("placeholders");
+    expect(inspection.summary).toContain("Additional artifact problems:");
+    expect(inspection.summary).toMatch(/Not mentioned:\n\s+- src\/b\.ts/);
+    expect(inspection.summary).toContain("not written after");
+    expect(inspection.summary.match(/Before declaring done/g)).toHaveLength(1);
+  });
+
+  it("reports stale coverage and temporal freshness together", async () => {
+    await mkdir(join(dir, "src"), { recursive: true });
+    const sourceA = join(dir, "src/a.ts");
+    const sourceB = join(dir, "src/b.ts");
+    await writeFile(sourceA, "export const a = true;\n");
+    await writeFile(sourceB, "export const b = true;\n");
+    await writeReview(REVIEW_BODY);
+    const review = join(dir, REVIEW_ARTIFACT_REL);
+    const old = new Date("2026-01-01T00:00:00Z");
+    const recent = new Date("2026-01-02T00:00:00Z");
+    await utimes(review, old, old);
+    await utimes(sourceA, recent, recent);
+    await utimes(sourceB, recent, recent);
+
+    const { deps } = makeDeps(GREEN);
+    const inspection = await inspectCompletion({
+      run: deps.run,
+      config: deps.config,
+      directory: deps.directory,
+      trackerFiles: ["src/a.ts", "src/b.ts"],
+    });
+    expect(inspection.reviewState).toBe("stale");
+    expect(inspection.summary).toMatch(/Not mentioned:\n\s+- src\/b\.ts/);
+    expect(inspection.summary).toContain("not written after");
+    expect(inspection.summary.match(/Before declaring done/g)).toHaveLength(1);
+  });
+
   it("passes a substantive review", async () => {
     await writeReview(REVIEW_BODY);
     const { deps } = makeDeps(GREEN);
