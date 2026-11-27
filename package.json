@@ -1,6 +1,6 @@
 {
   "name": "opencode-dev-framework",
-  "version": "1.13.0",
+  "version": "1.13.1",
   "description": "Enforcement gates for AI coding agents on OpenCode and DeepSeek Harness",
   "license": "MIT",
   "type": "module",

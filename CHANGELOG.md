@@ -6,6 +6,21 @@ Generated from conventional commits (`scripts/changelog.sh`).
 Single source: CI publishes each version's section as the GitHub
 release notes, so this file and the release page never diverge.
 
+## [v1.13.1] - 2026-11-27
+
+### Fixes
+
+- validate dev_framework_ignore tool input ([`fd0a4fc`](https://github.com/jwitmann/opencode-dev-framework/commit/fd0a4fc034940b95c75057f9fd683fb0ab8aca35))
+
+### Documentation
+
+- scratch pitfall points at the ignore hotlist ([`faafed9`](https://github.com/jwitmann/opencode-dev-framework/commit/faafed9ef539699affc846da7eca6fa3e73c72ea))
+- README df-ignore row states purpose and cross-links ([`4fcee26`](https://github.com/jwitmann/opencode-dev-framework/commit/4fcee268ca6ee9efd5849839b414a3a11dff246f))
+- README limitations note session-ignore lifetime ([`19471d9`](https://github.com/jwitmann/opencode-dev-framework/commit/19471d95ede2217e207b71a1d103a24cde87d075))
+- principles cover evidence-over-heuristics and single-job scope ([`bbee327`](https://github.com/jwitmann/opencode-dev-framework/commit/bbee327441ea0599bf338a06f8a04eead989a706))
+- close deferred items - stopping shelved, Effect declined, npm live ([`bc78e0a`](https://github.com/jwitmann/opencode-dev-framework/commit/bc78e0a2f04883c0c2a4cbc83d23d4173dd6e09e))
+- Effect stays deferred with Effect-only host trigger ([`ba5daf8`](https://github.com/jwitmann/opencode-dev-framework/commit/ba5daf8a446a02546dbd944716d390eb027ebaac))
+
 ## [v1.13.0] - 2026-11-24
 
 ### Features
