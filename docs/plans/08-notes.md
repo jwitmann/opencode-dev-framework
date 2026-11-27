@@ -59,6 +59,11 @@ live probe wins — never "align" adapter code to these pages.
 
 ## Deferred: restore OpenCode `experimental.stopping` (2026-11-18)
 
+Status 2026-11-27: blocked on upstream, shelved (not merely unscheduled).
+The pre-stop veto hook is an OpenCode feature dependency with no near-term
+prospect — not going to happen any time soon. DSH-first priority stands if
+it ever lands.
+
 **Priority: DSH first. Do not start this OpenCode task unless the user
 schedules it.** The product benchmark is the blocking-completion intent of
 `anticomputer/dev-framework`, not the compatibility compromise required on
@@ -688,7 +693,11 @@ dead stream (stale guard must drop them, live loop must still re-prompt via
 a hermetic failing-gate config), plus throwing subscribers (sync throw and
 mid-iteration throw must neither break `setup()` nor brick the session).
 Result: no leaks, no double-enforcement, no unhandled rejections — the
-promise loop holds. This stays deferred.
+promise loop holds. Status 2026-11-27: declined — expensive for nothing.
+The hand-rolled loop works, is regression-covered, and migration buys no
+behavior; Effect stays a nice-to-have. Reopen only on real strain (leaked
+loops, reload races the stale-guard can't cover, or parallel gate runs
+`Promise.all` can't cover).
 
 ## v0.2.5 upgrade probe: 2.0.11 → 2.0.26 (Phase 21, 2026-10-09)
 
@@ -1919,6 +1928,10 @@ Revisit trigger: the first external/registry user, a stale-version
 issue from a stranger, or the day a deployment installs from the
 registry instead of the path. Until then, local installs skip npm
 checks entirely.
+
+Update 2026-11-27: `opencode-dev-framework@1.13.0` published to npm
+(verified via `npm view`). No known registry installs yet — the update
+hint above stays deferred until the revisit trigger fires.
 
 ## Specialist subagents inherit session duties (2026-11-13)
 
