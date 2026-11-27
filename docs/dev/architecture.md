@@ -58,6 +58,12 @@ This page is an orientation map, not a spec. Authority lives in:
 
 ## Deferred and declined options
 
+- **Additional host adapters.** Not scheduled without actual maintainer usage
+  or a concrete supported-user request. The dated
+  [host-expansion survey](../plans/28-host-expansion-survey.md) records the
+  verified surfaces for Pi, Gemini CLI, Goose, Copilot CLI, Claude Code, Codex
+  CLI, and Cursor, plus the durable-state cost of command-hook hosts.
+
 - **Per-reviewer model pinning (`agentOptions` / `model:`).** Deferred
   until someone asks for it — e.g. an advanced option for users who want
   the gate to always run on model X. Until then the default stands:
