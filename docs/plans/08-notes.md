@@ -693,11 +693,9 @@ dead stream (stale guard must drop them, live loop must still re-prompt via
 a hermetic failing-gate config), plus throwing subscribers (sync throw and
 mid-iteration throw must neither break `setup()` nor brick the session).
 Result: no leaks, no double-enforcement, no unhandled rejections — the
-promise loop holds. Status 2026-11-27: declined — expensive for nothing.
-The hand-rolled loop works, is regression-covered, and migration buys no
-behavior; Effect stays a nice-to-have. Reopen only on real strain (leaked
-loops, reload races the stale-guard can't cover, or parallel gate runs
-`Promise.all` can't cover).
+promise loop holds. Status 2026-11-27: stays deferred — expensive for
+nothing today. The trigger is host-side: if OpenCode starts shipping
+seams Effect-only, we migrate; otherwise the hand-rolled loop stands.
 
 ## v0.2.5 upgrade probe: 2.0.11 → 2.0.26 (Phase 21, 2026-10-09)
 
