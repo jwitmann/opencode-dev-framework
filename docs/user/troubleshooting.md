@@ -145,6 +145,14 @@ in `gate.ignore` for scratch that always lives in the tree (details:
 [`commands.md`](commands.md)). A future block over unignored files can
 then only mean real unreviewed work.
 
+## Review artifact blocks
+
+A review block lists detectable artifact problems together: unfinished
+markers, changed files the review does not name, and a review older than the
+latest covered edit. Fix every listed problem, then write the artifact fresh
+after the final edit. Command failures remain separate: fix red typecheck or
+tests before finalizing the review.
+
 ## Still stuck
 
 Every gate evaluation is logged as JSON lines: `OPENCODE_DEV_FRAMEWORK_LOG_FILE`
